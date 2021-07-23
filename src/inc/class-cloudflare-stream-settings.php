@@ -114,7 +114,7 @@ class Cloudflare_Stream_Settings {
 
 			add_settings_field(
 				self::OPTION_HEAP_ANALYTICS,
-				'Opt out of Heap Analytics',
+				'Opt-out of Heap Analytics',
 				array( $this, 'reporting_opt_out_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_REPORTING
@@ -261,7 +261,8 @@ class Cloudflare_Stream_Settings {
 	 * @since 1.0.0
 	 */
 	public function settings_section_reporting() {
-		echo '<p>By choosing to share diagnostic and usage data, you help improve Cloudflare Stream for WordPress. You can opt out at any time by unchecking the box below.</p>';
+		echo '<p>By choosing to share diagnostic and usage data, you help improve Cloudflare Stream for WordPress.</p>'
+		. '<p>You can opt-out at any time by checking the box below.</p>';
 	}
 
 	/**

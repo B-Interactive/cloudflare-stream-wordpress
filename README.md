@@ -8,12 +8,11 @@ https://wordpress.org/plugins/cloudflare-stream/
 
 Changes
 ------------
-
+* Analytics reporting opt-in/out clearer.
 
 
 To-Do
 ------------
-* Make analytics reporting opt-in/out clearer.
 * Include support for signed URL's.
 * Include support for API Token based API.
 * Include support for zones API.
