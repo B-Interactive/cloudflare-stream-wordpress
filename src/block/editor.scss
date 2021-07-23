@@ -1,0 +1,46 @@
+/**
+ * #.# Editor Styles
+ *
+ * CSS for just Backend enqueued after style.scss
+ * which makes it higher in priority.
+ */
+.wp-block-cloudflare-stream-block-video {
+  margin: 0px;
+  min-width: 50%;
+}
+
+[data-type="cloudflare-stream/block-video"][data-align="left"] .editor-block-list__block-edit,
+[data-type="cloudflare-stream/block-video"][data-align="right"] .editor-block-list__block-edit {
+  min-width: 50%;
+}
+
+.components-placeholder__fieldset .editor-media-placeholder__upload-button,
+.components-placeholder__fieldset .editor-media-placeholder__browse-button {
+  margin-right: 4px;
+}
+
+.ui-progressbar {
+  position: relative;
+}
+.progress-label {
+  position: absolute;
+  width: 100%;
+  text-align: center;
+  font-weight: bold;
+  text-shadow: 1px 1px 0 #fff;
+}
+.ui-progressbar .ui-progressbar-value {
+  margin: 0px !important;
+}
+
+label[data-setting="url"],
+label[data-setting="caption"],
+label[data-setting="description"] {
+	display: none !important;
+}
+
+.upload-ui,
+.max-upload-size {
+  display: none;
+  visibility: hidden;
+}
