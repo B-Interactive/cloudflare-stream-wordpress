@@ -399,7 +399,7 @@
         c = wp.i18n.__,
         d = wp.components,
         f = d.Disabled,
-        p = d.IconButton,
+        p = d.Button,
         h = d.PanelBody,
         m = d.Toolbar,
         b = d.ToggleControl,
@@ -409,7 +409,8 @@
         v = wp.editor,
         w = v.BlockControls,
         E = v.InspectorControls,
-        S = v.MediaUpload,
+        bE = wp.blockEditor,
+        S = bE.MediaUpload,
         C = wp.element,
         A = C.Fragment,
         j = C.Component,
@@ -689,7 +690,7 @@
                             }, wp.element.createElement("div", {
                                 className: "progress-label progress-label-" + this.instanceId
                             }, "Connecting...")), wp.element.createElement(p, {
-                                isDefault: !0,
+                                isSecondary: !0,
                                 isLarge: !0,
                                 icon: "update",
                                 label: c("Retry"),
@@ -715,7 +716,7 @@
                             }, wp.element.createElement("div", {
                                 className: "progress-label progress-label-" + this.instanceId
                             }, "Connecting...")), wp.element.createElement(p, {
-                                isDefault: !0,
+                                isSecondary: !0,
                                 isLarge: !0,
                                 icon: "update",
                                 label: c("Retry"),
@@ -749,7 +750,7 @@
                                 }, c("Stream Library"))
                             }
                         }), wp.element.createElement(p, {
-                            isDefault: !0,
+                            isSecondary: !0,
                             isLarge: !0,
                             icon: "cancel",
                             label: c("Cancel"),
@@ -775,7 +776,7 @@
                                 }, c("Stream Library"))
                             }
                         }), wp.element.createElement(p, {
-                            isDefault: !0,
+                            isSecondary: !0,
                             isLarge: !0,
                             icon: "cancel",
                             label: c("Cancel"),
