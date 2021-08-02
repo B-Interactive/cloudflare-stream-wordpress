@@ -2,6 +2,10 @@
 
 A fork of the official Cloudflare Stream plugin 1.0.4 for WordPress.
 
+The Gutenberg Block method of adding videos appears to be broken (fails to load videos), in the original plugin also.
+Use the Shortcode method instead.  See Shortcode section below.
+
+
 The original official plugin:
 https://wordpress.org/plugins/cloudflare-stream/
 
@@ -9,13 +13,20 @@ https://wordpress.org/plugins/cloudflare-stream/
 Changes
 ------------
 * Analytics reporting opt-in/out clearer.
+* Shortcode method now always uses signed URL's.
+* Added additional shortcode options, controls, autoplay, loop, preload and muted.
 
 
 To-Do
 ------------
-* Include support for signed URL's.
 * Include support for API Token based API.
 * Include support for zones API.
+
+
+Issues
+------------
+* The Gutenberg Block method of adding videos is failing. This is failing in the original plugin too. Shortcode method is working though. Details on how to use it are below.
+
 
 
 Installation
@@ -26,6 +37,26 @@ Installation
 ```
 * In the WordPress admin panel, visit the Plugins section Activate the Cloudflare Stream plugin.
 
+
+Shortcode
+------------
+
+`[cloudflare_stream uid="`_some video id_`"]`
+
+Replace _some video id_ with an actual Cloudflare Stream video ID.
+
+These are optional shortcode flags (with defaults shown here). These are all "true" or "false" options:
+
+>controls="true"
+>autoplay="false"
+>loop="false"
+>preload="false"
+>muted="false"
+
+
+They can be used in this way:
+
+`[cloudflare_stream uid="`_some video id_`" controls="true" autoplay="false" loop="false" preload="false" muted="false"]`
 
 
 Acknowledgements
