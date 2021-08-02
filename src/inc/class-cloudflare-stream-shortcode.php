@@ -75,8 +75,14 @@ class Cloudflare_Stream_Shortcode {
 			),
 			$atts
 		);
+
+        foreach ( $attributes as $attr ) {
+            if ( $attr == $attributes['uid'] ) { continue; } // Do nothing more with the UID.
+            $attr = ( filter_var( $attr, FILTER_VALIDATE_BOOLEAN ) ) ? 'true' : 'false'; // Filter to string based boolean.
+        }
+
 		$stream_api = Cloudflare_Stream_API::instance();
-        $signed_video_token = $stream_api->get_signed_video_token($attributes['uid']);
+        $signed_video_token = $stream_api->get_signed_video_token( $attributes['uid'] );
 
 		return $this->generate_video_embed( $signed_video_token->result->token, $attributes );
 	}
