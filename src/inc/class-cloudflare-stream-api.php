@@ -270,8 +270,22 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_link( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->request( 'media/' . $uid . '/preview', $args, $return_headers );
+        $response_text = $this->request( 'media/' . $uid . '/preview', $args, $return_headers );
 		return $response_text;
+	}
+
+	/**
+	 * Get a specific video's signed id.
+	 *
+	 * @param string $uid Unique Video ID.
+	 * @param array  $args Additional API arguments.
+	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @since 1.0.5
+	 */
+	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
+		$args['method'] = 'POST';
+        $response_text = $this->request( 'media/' . $uid . '/token', $args, $return_headers );
+		return json_decode( $response_text );
 	}
 
 	/**
