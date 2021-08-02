@@ -47,11 +47,11 @@ Replace _some video id_ with an actual Cloudflare Stream video ID.
 
 These are optional shortcode flags (with defaults shown here). These are all "true" or "false" options:
 
->controls="true"
->autoplay="false"
->loop="false"
->preload="false"
->muted="false"
+* controls="true"
+* autoplay="false"
+* loop="false"
+* preload="false"
+* muted="false"
 
 
 They can be used in this way:
