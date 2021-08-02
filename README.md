@@ -13,7 +13,7 @@ https://wordpress.org/plugins/cloudflare-stream/
 Changes
 ------------
 * Analytics reporting opt-in/out clearer.
-* Shortcode method now always uses signed URL's.
+* Shortcode method now always uses signed URL's / tokens.
 * Added additional shortcode options, controls, autoplay, loop, preload and muted.
 
 
