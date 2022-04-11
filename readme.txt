@@ -2,10 +2,10 @@
 Plugin Name: Cloudflare Stream Video
 Plugin URI: https://wordpress.org/plugins/cloudflare-stream/
 Description: Cloudflare Stream is an easy-to-use, affordable, on-demand video streaming platform. The Stream video plugin for WordPress lets you upload videos to Cloudflare where they are securely stored and encoded for native streaming directly from the WordPress editor.
-Version: 1.0.4
-Author: Cloudflare, WP Engine
+Version: 1.0.5
+Author: Cloudflare
 Author URI: https://www.cloudflare.com/products/stream-delivery/
-Contributors: wpengine, cloudflare, stevenkword
+Contributors: cloudflare, stevenkword
 Text Domain: cloudflare-stream
 License: GPL2
 Tags: video, videos, streaming, cloudflare, wpengine, stream, embed, movies, block-enabled, block

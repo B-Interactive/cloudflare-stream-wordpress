@@ -1,6 +1,6 @@
 # Cloudflare Stream for WordPress
 
-A fork of the official Cloudflare Stream plugin 1.0.4 for WordPress.
+A fork of the official Cloudflare Stream plugin 1.0.5 for WordPress.
 
 The Gutenberg Block method of adding videos appears to be broken (fails to list online videos in backend), in the original plugin also.
 Use the Shortcode method instead.  See Shortcode section below.
