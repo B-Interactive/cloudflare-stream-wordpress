@@ -9,6 +9,9 @@ Use the Shortcode method instead.  See Shortcode section below.
 The original official plugin:
 https://wordpress.org/plugins/cloudflare-stream/
 
+Official plugin GitHub page:
+https://github.com/cloudflare/stream-wordpress
+
 
 Changes
 ------------
@@ -67,9 +70,7 @@ Acknowledgements
 License
 -------
 
-Copyright (C) 2021 B-Interactive
 Copyright (C) 2020 Cloudflare
-Copyright (C) 2020 WP Engine
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
