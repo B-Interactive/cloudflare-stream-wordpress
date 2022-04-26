@@ -8,12 +8,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://Binklebonk@github.com/Binklebonk/cloudflare-stream-wordpress.git"
+    "url": "git+https://github.com/B-Interactive/cloudflare-stream-wordpress.git"
   },
   "author": "B-Interactive",
   "license": "GPL-2.0-only",
   "bugs": {
-    "url": "https://github.com/Binklebonk/cloudflare-stream-wordpress/issues"
+    "url": "https://github.com/B-Interactive/cloudflare-stream-wordpress/issues"
   },
-  "homepage": "https://github.com/Binklebonk/cloudflare-stream-wordpress#readme"
+  "homepage": "https://github.com/B-Interactive/cloudflare-stream-wordpress#readme"
 }
