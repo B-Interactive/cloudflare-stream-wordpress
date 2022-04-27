@@ -1,9 +1,9 @@
 # Cloudflare Stream for WordPress
 
-A fork of the official Cloudflare Stream plugin 1.0.5 for WordPress.
+A fork of the official Cloudflare Stream plugin 1.0.6 for WordPress.
 
-The Gutenberg Block method of adding videos appears to be broken (fails to list online videos in backend), in the original plugin also.
-Use the Shortcode method instead.  See Shortcode section below.
+The Gutenberg Block method of adding videos appears to be broken (in the original plugin also) and I plan to remove this feature completely from future versions until resolved.
+USE THE SHORTCODE METHOD INSTEAD.  See Shortcode section below.
 
 
 The original official plugin:
@@ -15,15 +15,21 @@ https://github.com/cloudflare/stream-wordpress
 
 Changes
 ------------
+* Shortcode method always uses signed URL's / tokens.
 * Analytics reporting opt-in/out clearer.
-* Shortcode method now always uses signed URL's / tokens.
 * Added additional shortcode options, controls, autoplay, loop, preload and muted.
+* Uses API Token based API access, for MUCH more secure Cloudflare account access.
+* Uses zones API for more secure Cloudflare account access.
+* Any existing API Key, API account email and API account ID stored in the database are deleted.
+* If updating from version older than 1.0.6, you'll need to enter your API Token and API Zone ID in the configuration page.
 
 
 To-Do
 ------------
-* Include support for API Token based API.
-* Include support for zones API.
+* Add setting for signed URL duration (default is currently 1 hour).
+* Remove analytics.
+* Remove broken Gutenberg block.
+* Rebuild Gutenberg block with dynamic support for signed URL's.
 
 
 Issues

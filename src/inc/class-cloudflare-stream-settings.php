@@ -20,15 +20,18 @@ class Cloudflare_Stream_Settings {
 	 */
 	private static $instance = false;
 
-	const NONCE                     = 'cloudflare-stream';
-	const SETTING_PAGE              = 'cloudflare-stream';
-	const SETTING_GROUP             = 'cloudflare_stream';
-	const SETTING_SECTION_GENERAL   = 'cloudflare_stream_settings_general';
-	const SETTING_SECTION_REPORTING = 'cloudflare_stream_settings_reporting';
-	const OPTION_API_KEY            = 'cloudflare_stream_api_key';
-	const OPTION_API_EMAIL          = 'cloudflare_stream_api_email';
-	const OPTION_API_ACCOUNT        = 'cloudflare_stream_api_account';
-	const OPTION_HEAP_ANALYTICS     = 'cloudflare_stream_reporting_opt_out';
+	const NONCE                       = 'cloudflare-stream';
+	const SETTING_PAGE                = 'cloudflare-stream';
+	const SETTING_GROUP               = 'cloudflare_stream';
+	const SETTING_SECTION_GENERAL     = 'cloudflare_stream_settings_general';
+	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
+	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
+	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id';
+	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
+	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
+	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
+	const OPTION_VIDEO_TOKEN_DURATION = 'cloudflare_stream_video_token_duration';
+	const OPTION_HEAP_ANALYTICS       = 'cloudflare_stream_reporting_opt_out';
 
 	/**
 	 * Singleton
@@ -69,9 +72,8 @@ class Cloudflare_Stream_Settings {
 	public function action_admin_init() {
 
 		// Register Settings.
-		register_setting( self::SETTING_GROUP, self::OPTION_API_EMAIL );
-		register_setting( self::SETTING_GROUP, self::OPTION_API_KEY );
-		register_setting( self::SETTING_GROUP, self::OPTION_API_ACCOUNT );
+		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
+		register_setting( self::SETTING_GROUP, self::OPTION_API_ZONE_ID );
 		register_setting( self::SETTING_GROUP, self::OPTION_HEAP_ANALYTICS );
 
 		add_settings_section(
@@ -82,35 +84,27 @@ class Cloudflare_Stream_Settings {
 		);
 
 			add_settings_field(
-				self::OPTION_API_EMAIL,
-				'API Email',
-				array( $this, 'api_email_cb' ),
+				self::OPTION_API_TOKEN,
+				'API Token',
+				array( $this, 'api_token_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
 
 			add_settings_field(
-				self::OPTION_API_KEY,
-				'API Key',
-				array( $this, 'api_key_cb' ),
+				self::OPTION_API_ZONE_ID,
+				'API Zone ID',
+				array( $this, 'api_zone_id_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
 
-			add_settings_field(
-				self::OPTION_API_ACCOUNT,
-				'API Account ID',
-				array( $this, 'api_account_cb' ),
-				self::SETTING_PAGE,
-				self::SETTING_SECTION_GENERAL
+			add_settings_section(
+				self::SETTING_SECTION_REPORTING,
+				'Reporting',
+				array( $this, 'settings_section_reporting' ),
+				self::SETTING_PAGE
 			);
-
-		add_settings_section(
-			self::SETTING_SECTION_REPORTING,
-			'Reporting',
-			array( $this, 'settings_section_reporting' ),
-			self::SETTING_PAGE
-		);
 
 			add_settings_field(
 				self::OPTION_HEAP_ANALYTICS,
@@ -121,35 +115,28 @@ class Cloudflare_Stream_Settings {
 			);
 
 		add_action( 'admin_notices', array( $this, 'settings_errors_admin_notices' ) );
-
 		add_action( 'admin_notices', array( $this, 'onboarding_admin_notices' ) );
-
 		add_action( 'admin_head', array( $this, 'admin_head' ) );
 		add_action( 'admin_footer', array( $this, 'admin_footer' ), 1 );
 	}
 
 	/**
-	 * Callback for rendering the API Email settings field
+	 * Callback for rendering the API Token settings field
 	 */
-	public function api_email_cb() {
-		$api_email = get_option( self::OPTION_API_EMAIL );
-		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_email" id="cloudflare_stream_api_email" value="' . esc_attr( $api_email ) . '" autocomplete="on"> ';
+	public function api_token_cb() {
+		$api_token = get_option( self::OPTION_API_TOKEN );
+		echo '<input type="password" class="regular-text" name="cloudflare_stream_api_token" id="cloudflare_stream_api_token" value="' . esc_attr( $api_token ) . '" autocomplete="off"> ';
+		echo '<br><small class="form-text text-muted">Cloudflare > My Profile > API Tokens > API Tokens > [Create Token]</small>';
+		echo '<br><small class="form-text text-muted">Must have permission for: Account - Stream:Edit</small>';
 	}
 
 	/**
-	 * Callback for rendering the API Key settings field
+	 * Callback for rendering the API Zone ID settings field
 	 */
-	public function api_key_cb() {
-		$api_key = get_option( self::OPTION_API_KEY );
-		echo '<input type="password" class="regular-text" name="cloudflare_stream_api_key" id="cloudflare_stream_api_key" value="' . esc_attr( $api_key ) . '" autocomplete="off"> ';
-	}
-
-	/**
-	 * Callback for rendering the API Account ID settings field
-	 */
-	public function api_account_cb() {
-		$api_account = get_option( self::OPTION_API_ACCOUNT );
-		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_account" id="cloudflare_stream_api_account" value="' . esc_attr( $api_account ) . '" autocomplete="on"> ';
+	public function api_zone_id_cb() {
+		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
+		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_zone_id" id="cloudflare_stream_api_zone_id" value="' . esc_attr( $api_zone_id ) . '" autocomplete="off"> ';
+		echo '<br><small class="form-text text-muted">Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Zone ID].</small>';
 	}
 
 	/**
@@ -171,6 +158,14 @@ class Cloudflare_Stream_Settings {
 		if ( ! is_super_admin() ) {
 			return false;
 		}
+
+		// Completely remove old less secure API credentials if they exist.
+		if ( get_option( self::OPTION_API_KEY ) !== false ) {
+			delete_option( self::OPTION_API_EMAIL );
+			delete_option( self::OPTION_API_KEY );
+			delete_option( self::OPTION_API_ACCOUNT );
+		}
+
 		add_options_page( __( 'Cloudflare Stream', 'cloudflare-stream' ), __( 'Cloudflare Stream', 'cloudflare-stream' ), 'manage_options', 'cloudflare-stream', array( $this, 'settings_page' ) );
 	}
 
@@ -197,7 +192,7 @@ class Cloudflare_Stream_Settings {
 			if ( 'settings_page_cloudflare-stream' === $screen->id && false === self::test_api_keys() ) {
 				?>
 				<div class="notice notice-error is-dismissible">
-					<p>Cloudflare Stream API keys are incorrect. Visit to  <a href="<?php echo esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) ); ?>"/>settings page</a> to get started.</p>
+					<p>Cloudflare Stream API details are incorrect. Visit to  <a href="<?php echo esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) ); ?>"/>settings page</a> to get started.</p>
 				</div>
 				<?php
 				return;
@@ -252,7 +247,7 @@ class Cloudflare_Stream_Settings {
 	 * @since 1.0.0
 	 */
 	public function settings_section_api_keys() {
-		echo '<p>To use the Cloudflare Stream for WordPress plugin, enter your Cloudflare account information below. If you need help getting started, <a target="_blank" href="' . esc_url( 'https://support.cloudflare.com/hc/en-us/articles/360027744552' ) . '" title="Getting started with Cloudflare Stream">click here.</a><p>';
+		echo '<p>To use the Cloudflare Stream for WordPress plugin, enter your Cloudflare account information below. If you need help getting started, <a target="_blank" href="' . esc_url( 'https://github.com/B-Interactive/cloudflare-stream-wordpress#readme' ) . '" title="Cloudflare Stream for WordPress README">click here.</a><p>';
 	}
 
 	/**
@@ -269,11 +264,10 @@ class Cloudflare_Stream_Settings {
 	 * Helper function for determining if the user has attempted to setup their API keys.
 	 */
 	public static function is_configured() {
-		$api_email   = get_option( self::OPTION_API_EMAIL );
-		$api_key     = get_option( self::OPTION_API_KEY );
-		$api_account = get_option( self::OPTION_API_ACCOUNT );
+		$api_token   = get_option( self::OPTION_API_TOKEN );
+		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
 
-		return ( $api_email && $api_key && $api_account );
+		return ( $api_token && $api_zone_id );
 	}
 
 	/**

@@ -14,6 +14,20 @@
 class Cloudflare_Stream_API {
 
 	/**
+	 * API Token
+	 *
+	 * @var string $api_token Cloudflare API token.
+	 */
+	private $api_token = '';
+
+	/**
+	 * API Zone ID
+	 *
+	 * @var string $api_zone_id Cloudflare API zone ID.
+	 */
+	private $api_zone_id = '';
+
+	/**
 	 * API Email
 	 *
 	 * @var string $api_email Cloudflare API email address.
@@ -100,9 +114,8 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function request( $endpoint, $args = array(), $return_headers = false ) {
-		$this->api_email   = get_option( Cloudflare_Stream_Settings::OPTION_API_EMAIL );
-		$this->api_key     = get_option( Cloudflare_Stream_Settings::OPTION_API_KEY );
-		$this->api_account = get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT );
+		$this->api_token   = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$this->api_zone_id = get_option( Cloudflare_Stream_Settings::OPTION_API_ZONE_ID );
 
 		if ( isset( $args['method'] ) ) {
 			$method = $args['method'];
@@ -110,16 +123,15 @@ class Cloudflare_Stream_API {
 			$method = 'GET';
 		}
 
+		$base_url = 'https://api.cloudflare.com/client/v4/zones/' . $this->api_zone_id . '/';
+		$args['headers'] = array(
+			'Authorization' => 'Bearer ' . $this->api_token,
+			'Content-Type'  => 'application/json',
+		);
+
 		$query_string = isset( $args['query'] ) ? '?' . $args['query'] : '';
 		$endpoint    .= $query_string;
-		$base_url     = 'https://api.cloudflare.com/client/v4/accounts/' . $this->api_account . '/';
 		$route        = $base_url . $endpoint;
-
-		$args['headers'] = array(
-			'X-Auth-Email' => $this->api_email,
-			'X-Auth-Key'   => $this->api_key,
-			'Content-Type' => 'application/json',
-		);
 
 		// Get remote HTML file.
 		$response = wp_remote_request( $route, $args );
