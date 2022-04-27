@@ -27,6 +27,9 @@ class Cloudflare_Stream_Settings {
 	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
 	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
 	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id';
+	const OPTION_API_KEY            = 'cloudflare_stream_api_key';
+	const OPTION_API_EMAIL          = 'cloudflare_stream_api_email';
+	const OPTION_API_ACCOUNT        = 'cloudflare_stream_api_account';
 	const OPTION_VIDEO_TOKEN_DURATION = 'cloudflare_stream_video_token_duration';
 
 	/**
@@ -96,7 +99,6 @@ class Cloudflare_Stream_Settings {
 
 		add_action( 'admin_notices', array( $this, 'settings_errors_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'onboarding_admin_notices' ) );
-		add_action( 'admin_head', array( $this, 'admin_head' ) );
 	}
 
 	/**
@@ -228,26 +230,6 @@ class Cloudflare_Stream_Settings {
 		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
 
 		return ( $api_token && $api_zone_id );
-	}
-
-	/**
-	 * Admin header
-	 */
-	public function admin_head() {
-		$screen = get_current_screen();
-
-		if ( ! in_array( $screen->id, array( 'plugins', 'settings_page_cloudflare-stream' ), true ) ) {
-			return;
-		}
-
-		$current_user = wp_get_current_user();
-
-		wp_localize_script(
-			'cloudflareStream',
-			array(
-				'nonce'   => wp_create_nonce( self::NONCE ),
-			)
-		);
 	}
 }
 Cloudflare_Stream_Settings::instance();
