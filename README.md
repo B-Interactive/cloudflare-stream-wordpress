@@ -29,6 +29,7 @@ Changes
 To-Do
 ------------
 * Remove broken Gutenberg block.
+* Add admin toggle for whether or not to use signed URLs/tokens.
 * Rebuild Gutenberg block with dynamic support for signed URL's.
 
 
