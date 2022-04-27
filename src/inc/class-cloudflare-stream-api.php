@@ -248,8 +248,19 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.5
 	 */
 	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
+		$video_token_duration = get_option( Cloudflare_Stream_Settings::OPTION_VIDEO_TOKEN_DURATION );
+
+		// Determine token expiration time if custom video token duration is set.
+		if ($video_token_duration !== false) {
+			$body = [
+				'exp' => ( time() + ( intval($video_token_duration) * 60 ) ),
+			];
+			$body           = wp_json_encode( $body );
+			$args[ 'body' ] = $body;
+		}
+
 		$args['method'] = 'POST';
-        $response_text = $this->request( 'media/' . $uid . '/token', $args, $return_headers );
+        $response_text  = $this->request( 'media/' . $uid . '/token', $args, $return_headers );
 		return json_decode( $response_text );
 	}
 

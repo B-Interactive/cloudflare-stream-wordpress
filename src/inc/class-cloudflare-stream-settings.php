@@ -27,9 +27,9 @@ class Cloudflare_Stream_Settings {
 	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
 	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
 	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id';
-	const OPTION_API_KEY            = 'cloudflare_stream_api_key';
-	const OPTION_API_EMAIL          = 'cloudflare_stream_api_email';
-	const OPTION_API_ACCOUNT        = 'cloudflare_stream_api_account';
+	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
+	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
+	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
 	const OPTION_VIDEO_TOKEN_DURATION = 'cloudflare_stream_video_token_duration';
 
 	/**
@@ -73,6 +73,7 @@ class Cloudflare_Stream_Settings {
 		// Register Settings.
 		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_API_ZONE_ID );
+		register_setting( self::SETTING_GROUP, self::OPTION_VIDEO_TOKEN_DURATION );
 
 		add_settings_section(
 			self::SETTING_SECTION_GENERAL,
@@ -93,6 +94,14 @@ class Cloudflare_Stream_Settings {
 				self::OPTION_API_ZONE_ID,
 				'API Zone ID',
 				array( $this, 'api_zone_id_cb' ),
+				self::SETTING_PAGE,
+				self::SETTING_SECTION_GENERAL
+			);
+
+			add_settings_field(
+				self::OPTION_VIDEO_TOKEN_DURATION,
+				'Video Token Duration',
+				array( $this, 'api_video_token_duration_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
@@ -119,6 +128,20 @@ class Cloudflare_Stream_Settings {
 		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_zone_id" id="cloudflare_stream_api_zone_id" value="' . esc_attr( $api_zone_id ) . '" autocomplete="off"> ';
 		echo '<br><small class="form-text text-muted">Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Zone ID].</small>';
 	}
+
+	/**
+	 * Callback for rendering the API Zone ID settings field
+	 */
+	public function api_video_token_duration_cb() {
+		$video_token_duration = get_option( self::OPTION_VIDEO_TOKEN_DURATION );
+		if ($video_token_duration === false) {
+			$video_token_duration = 60;
+		}
+		echo '<input type="number" class="regular-text" name="cloudflare_stream_video_token_duration" id="cloudflare_stream_video_token_duration" value="' . esc_attr( intval($video_token_duration) ) . '" autocomplete="off"> ';
+		echo '<br><small class="form-text text-muted">A unique URL/token is created per video, when accessed.</small>';
+		echo '<br><small class="form-text text-muted">This sets how long that unique URL/token remains accessible for, in minutes.</small>';
+	}
+
 	/**
 	 * Setup Admin Menu Options & Settings.
 	 *
