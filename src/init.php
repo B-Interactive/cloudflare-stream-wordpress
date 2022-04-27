@@ -87,9 +87,6 @@ function cloudflare_stream_block_editor_assets() {
 				'view'  => array(),
 				'model' => array(),
 			),
-			'options' => array(
-				'heap' => get_option( Cloudflare_Stream_Settings::OPTION_HEAP_ANALYTICS ),
-			),
 		)
 	);
 
@@ -290,18 +287,3 @@ function action_wp_ajax_cloudflare_stream_update() {
 	wp_send_json_success( $data );
 }
 add_action( 'wp_ajax_cloudflare-stream-update', 'action_wp_ajax_cloudflare_stream_update' );
-
-/**
- * AJAX method for logging a HEAP analytics event.
- *
- * @since 1.0.0
- */
-function action_wp_ajax_cloudflare_stream_analytics() {
-	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	$event = isset( $_REQUEST['event'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['event'] ) ) : '';
-	$data  = array();
-	$api   = Cloudflare_Stream_API::instance();
-	$data  = $api->log_event( $event );
-	wp_send_json_success( $data );
-}
-add_action( 'wp_ajax_cloudflare-stream-analytics', 'action_wp_ajax_cloudflare_stream_analytics' );

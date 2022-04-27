@@ -27,11 +27,7 @@ class Cloudflare_Stream_Settings {
 	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
 	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
 	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id';
-	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
-	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
-	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
 	const OPTION_VIDEO_TOKEN_DURATION = 'cloudflare_stream_video_token_duration';
-	const OPTION_HEAP_ANALYTICS       = 'cloudflare_stream_reporting_opt_out';
 
 	/**
 	 * Singleton
@@ -74,7 +70,6 @@ class Cloudflare_Stream_Settings {
 		// Register Settings.
 		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_API_ZONE_ID );
-		register_setting( self::SETTING_GROUP, self::OPTION_HEAP_ANALYTICS );
 
 		add_settings_section(
 			self::SETTING_SECTION_GENERAL,
@@ -99,25 +94,9 @@ class Cloudflare_Stream_Settings {
 				self::SETTING_SECTION_GENERAL
 			);
 
-			add_settings_section(
-				self::SETTING_SECTION_REPORTING,
-				'Reporting',
-				array( $this, 'settings_section_reporting' ),
-				self::SETTING_PAGE
-			);
-
-			add_settings_field(
-				self::OPTION_HEAP_ANALYTICS,
-				'Opt-out of Heap Analytics',
-				array( $this, 'reporting_opt_out_cb' ),
-				self::SETTING_PAGE,
-				self::SETTING_SECTION_REPORTING
-			);
-
 		add_action( 'admin_notices', array( $this, 'settings_errors_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'onboarding_admin_notices' ) );
 		add_action( 'admin_head', array( $this, 'admin_head' ) );
-		add_action( 'admin_footer', array( $this, 'admin_footer' ), 1 );
 	}
 
 	/**
@@ -138,15 +117,6 @@ class Cloudflare_Stream_Settings {
 		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_zone_id" id="cloudflare_stream_api_zone_id" value="' . esc_attr( $api_zone_id ) . '" autocomplete="off"> ';
 		echo '<br><small class="form-text text-muted">Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Zone ID].</small>';
 	}
-
-	/**
-	 * Callback for rendering the Reporting Opt Out settings field
-	 */
-	public function reporting_opt_out_cb() {
-		$reporting_opt_out = get_option( self::OPTION_HEAP_ANALYTICS );
-		echo '<input type="checkbox" class="regular-text" name="cloudflare_stream_reporting_opt_out" id="cloudflare_stream_reporting_opt_out" value="1"' . checked( $reporting_opt_out, true, false ) . '> ';
-	}
-
 	/**
 	 * Setup Admin Menu Options & Settings.
 	 *
@@ -251,16 +221,6 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Render API Key Settings Section
-	 *
-	 * @since 1.0.0
-	 */
-	public function settings_section_reporting() {
-		echo '<p>By choosing to share diagnostic and usage data, you help improve Cloudflare Stream for WordPress.</p>'
-		. '<p>You can opt-out at any time by checking the box below.</p>';
-	}
-
-	/**
 	 * Helper function for determining if the user has attempted to setup their API keys.
 	 */
 	public static function is_configured() {
@@ -271,7 +231,7 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Heap Analytics Tracking Script
+	 * Admin header
 	 */
 	public function admin_head() {
 		$screen = get_current_screen();
@@ -282,56 +242,12 @@ class Cloudflare_Stream_Settings {
 
 		$current_user = wp_get_current_user();
 
-		$reporting_opt_out = get_option( self::OPTION_HEAP_ANALYTICS );
-		if ( $reporting_opt_out ) {
-			return;
-		}
-
-		wp_enqueue_script(
-			'cloudflare-stream-heap-js',
-			// Handle.
-			plugins_url( 'heap.js', dirname( __FILE__ ) ),
-			// Block.build.js: We register the block here. Built with Webpack.
-			array( 'jquery' ),
-			// Dependencies, defined above.
-			filemtime( plugin_dir_path( __DIR__ ) . 'heap.js' ),
-			// Version: filemtime — Gets file modification time.
-			true
-			// Enqueue the script in the footer.
-		);
-
 		wp_localize_script(
-			'cloudflare-stream-heap-js',
 			'cloudflareStream',
 			array(
-				'options' => array(
-					'heap' => get_option( self::OPTION_HEAP_ANALYTICS ),
-				),
 				'nonce'   => wp_create_nonce( self::NONCE ),
 			)
 		);
-	}
-
-	/**
-	 * Heap Analytics Tracking Script
-	 */
-	public function admin_footer() {
-		$reporting_opt_out = get_option( self::OPTION_HEAP_ANALYTICS );
-		if ( $reporting_opt_out ) {
-			return;
-		}
-
-		$screen = get_current_screen();
-		if ( ! in_array( $screen->id, array( 'plugins', 'settings_page_cloudflare-stream' ), true ) ) {
-			return;
-		}
-		?>
-		<script type="text/javascript">
-			jQuery( document ).ready( function() {
-				cloudflareStream.analytics.logEvent( 'Stream WP Plugin - Settings Page Visit' );
-			} );
-		</script>
-		<?php
 	}
 }
 Cloudflare_Stream_Settings::instance();

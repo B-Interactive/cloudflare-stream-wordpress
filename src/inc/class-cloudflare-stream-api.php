@@ -146,53 +146,6 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Make the request to the API
-	 *
-	 * @param string $event The event to log.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
-	 * @since 1.0.0
-	 */
-	public function log_event( $event, $return_headers = false ) {
-		$current_user = wp_get_current_user();
-
-		$query_string = isset( $args['query'] ) ? '?' . $args['query'] : '';
-		$endpoint     = $query_string;
-		$base_url     = 'https://heapanalytics.com/api/track';
-		$route        = $base_url . $endpoint;
-
-		$args['method']  = 'POST';
-		$args['headers'] = array(
-			'Content-Type' => 'application/json',
-		);
-
-		$args['body'] = wp_json_encode(
-			array(
-				'app_id'    => '129324163',
-				'identity'  => md5( $current_user->user_login ),
-				'event'     => $event,
-				'timestamp' => date( 'c' ),
-			)
-		);
-
-		// phpcs:ignore
-		error_log( '[Cloudflare Stream] POST ' . $args['body'] );
-
-		// Get remote HTML file.
-		$response = wp_remote_request( $route, $args );
-
-		// phpcs:ignore
-		error_log( wp_remote_retrieve_body( $response ) );
-
-		// Check for error.
-		if ( is_wp_error( $response ) ) {
-			return $response->get_error_message();
-		} elseif ( 'headers' === $return_headers ) {
-			return wp_remote_retrieve_headers( $response );
-		}
-		return wp_remote_retrieve_body( $response );
-	}
-
-	/**
 	 * Make a POST request
 	 *
 	 * @param string $endpoint API Endpoint.
