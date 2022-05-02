@@ -30,7 +30,8 @@ class Cloudflare_Stream_Settings {
 	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
 	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
 	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
-	const OPTION_VIDEO_TOKEN_DURATION = 'cloudflare_stream_video_token_duration';
+	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
+	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
 
 	/**
 	 * Singleton
@@ -73,7 +74,8 @@ class Cloudflare_Stream_Settings {
 		// Register Settings.
 		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_API_ZONE_ID );
-		register_setting( self::SETTING_GROUP, self::OPTION_VIDEO_TOKEN_DURATION );
+		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
+		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS_DURATION );
 
 		add_settings_section(
 			self::SETTING_SECTION_GENERAL,
@@ -99,9 +101,17 @@ class Cloudflare_Stream_Settings {
 			);
 
 			add_settings_field(
-				self::OPTION_VIDEO_TOKEN_DURATION,
-				'Video Token Duration',
-				array( $this, 'api_video_token_duration_cb' ),
+				self::OPTION_SIGNED_URLS,
+				'Use Signed URLs',
+				array( $this, 'api_signed_urls_cb' ),
+				self::SETTING_PAGE,
+				self::SETTING_SECTION_GENERAL
+			);
+
+			add_settings_field(
+				self::OPTION_SIGNED_URLS_DURATION,
+				'Signed URL Expiration',
+				array( $this, 'api_signed_urls_duration_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
@@ -130,16 +140,22 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Callback for rendering the API Zone ID settings field
+	 * Callback for rendering the use signed URLs field
 	 */
-	public function api_video_token_duration_cb() {
-		$video_token_duration = get_option( self::OPTION_VIDEO_TOKEN_DURATION );
-		if ($video_token_duration === false) {
-			$video_token_duration = 60;
-		}
-		echo '<input type="number" class="regular-text" name="cloudflare_stream_video_token_duration" id="cloudflare_stream_video_token_duration" value="' . esc_attr( intval($video_token_duration) ) . '" autocomplete="off"> ';
-		echo '<br><small class="form-text text-muted">A unique URL/token is created per video, when accessed.</small>';
-		echo '<br><small class="form-text text-muted">This sets how long that unique URL/token remains accessible for, in minutes.</small>';
+	public function api_signed_urls_cb() {
+		$signed_urls = get_option( self::OPTION_SIGNED_URLS );
+		echo '<input type="checkbox" class="regular-text" name="cloudflare_stream_signed_urls" id="cloudflare_stream_signed_urls" value="1"' . checked( $signed_urls, true, false ) . '> ';
+		echo '<small class="form-text text-muted">Protects video links from being copied, by creating a unique temporary URL.</small>';
+		echo '<br><small class="form-text text-muted">For best protection, also set each video to only be accessible via signed URLs in your Cloudflare Stream dashboard.</small>';
+	}
+
+	/**
+	 * Callback for rendering the signed URLs duration field
+	 */
+	public function api_signed_urls_duration_cb() {
+		$signed_urls_duration = get_option( self::OPTION_SIGNED_URLS_DURATION );
+		echo '<input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" value="' . esc_attr( intval($signed_urls_duration) ) . '" autocomplete="off"> ';
+		echo '<br><small class="form-text text-muted">Sets how long the unique signed URL/token remains accessible for, in minutes.</small>';
 	}
 
 	/**
@@ -153,6 +169,10 @@ class Cloudflare_Stream_Settings {
 		if ( ! is_super_admin() ) {
 			return false;
 		}
+
+		// Defaults
+		add_option( self::OPTION_SIGNED_URLS, true );
+		add_option( self::OPTION_SIGNED_URLS_DURATION, 60 );
 
 		// Completely remove old less secure API credentials if they exist.
 		if ( get_option( self::OPTION_API_KEY ) !== false ) {

@@ -28,11 +28,18 @@ class Cloudflare_Stream_API {
 	private $api_zone_id = '';
 
 	/**
-	 * API Email
+	 * Use signed URLs
 	 *
-	 * @var string $api_email Cloudflare API email address.
+	 * @var bool $signed_urls Use signed URLs.
 	 */
-	private $api_email = '';
+	private $signed_urls = '';
+
+	/**
+	 * Duration of signed URLs
+	 *
+	 * @var int $signed_urls_duration Duration of signed URLs.
+	 */
+	private $signed_urls_duration = '';
 
 	/**
 	 * Last video seen when retrieving paginated results.
@@ -40,20 +47,6 @@ class Cloudflare_Stream_API {
 	 * @var string $last_seen Timestamp of the last returned result.
 	 */
 	public $last_seen = false;
-
-	/**
-	 * API Key
-	 *
-	 * @var string $api_email Cloudflare API key.
-	 */
-	private $api_key = '';
-
-	/**
-	 * API Account ID
-	 *
-	 * @var string $api_email Cloudflare API account ID.
-	 */
-	private $api_account = '';
 
 	/**
 	 * REST API limit
@@ -222,8 +215,49 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_embed( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->request( 'media/' . $uid . '/embed', $args, $return_headers );
-		return $response_text;
+		$signed_urls = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+		if ( $signed_urls ) {
+			$uid = $this->get_signed_video_token($uid)->result->token;
+		}
+		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
+			. ' src="https://iframe.videodelivery.net/' . $uid . '?'
+			. 'muted='    . $args['muted'] . '&'
+			. 'preload='  . $args['preload'] . '&'
+			. 'loop='     . $args['loop'] . '&'
+			. 'autoplay=' . $args['autoplay'] . '&'
+			. 'controls=' . $args['controls'] . '" '
+			. 'style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
+			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
+			. 'allowfullscreen="true" '
+			. 'id="stream-player"'
+			. '></iframe></div>';
+
+		return $video_embed;
+	}
+
+		/**
+	 * Get a specific video's signed id.
+	 *
+	 * @param string $uid Unique Video ID.
+	 * @param array  $args Additional API arguments.
+	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @since 1.0.5
+	 */
+	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
+		$signed_urls_duration = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION );
+
+		// Determine token expiration time if custom signed urls duration is set.
+		if ( $signed_urls_duration != false ) {
+			$body = [
+				'exp' => ( time() + ( intval($signed_urls_duration) * 60 ) ),
+			];
+			$body           = wp_json_encode( $body );
+			$args['body'] = $body;
+		}
+
+		$args['method'] = 'POST';
+        $response_text  = $this->request( 'media/' . $uid . '/token', $args, $return_headers );
+		return json_decode( $response_text );
 	}
 
 	/**
@@ -237,31 +271,6 @@ class Cloudflare_Stream_API {
 	public function get_video_link( $uid, $args = array(), $return_headers = false ) {
         $response_text = $this->request( 'media/' . $uid . '/preview', $args, $return_headers );
 		return $response_text;
-	}
-
-	/**
-	 * Get a specific video's signed id.
-	 *
-	 * @param string $uid Unique Video ID.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
-	 * @since 1.0.5
-	 */
-	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
-		$video_token_duration = get_option( Cloudflare_Stream_Settings::OPTION_VIDEO_TOKEN_DURATION );
-
-		// Determine token expiration time if custom video token duration is set.
-		if ($video_token_duration !== false) {
-			$body = [
-				'exp' => ( time() + ( intval($video_token_duration) * 60 ) ),
-			];
-			$body           = wp_json_encode( $body );
-			$args[ 'body' ] = $body;
-		}
-
-		$args['method'] = 'POST';
-        $response_text  = $this->request( 'media/' . $uid . '/token', $args, $return_headers );
-		return json_decode( $response_text );
 	}
 
 	/**
