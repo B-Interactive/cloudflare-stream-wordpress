@@ -19,7 +19,7 @@ Official plugin GitHub page:
 https://github.com/cloudflare/stream-wordpress
 
 
-Changes
+Changes from Official
 ------------
 * Shortcode method always uses signed URL's / tokens.
 * Removed analytics.
@@ -28,7 +28,7 @@ Changes
 * Uses zones API for more secure Cloudflare account access.
 * Any existing API Key, API account email and API account ID stored in the database are deleted when the settings page is accessed.
 * If updating from version older than 1.0.6, you'll need to enter your API Token and API Zone ID in the configuration page.
-* Add admin setting for signed URL/token duration (default is otherwise 1 hour).
+* Added admin setting for signed URL/token duration (default is otherwise 1 hour).
 
 
 To-Do
