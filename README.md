@@ -21,7 +21,7 @@ https://github.com/cloudflare/stream-wordpress
 
 Changes from Official
 ------------
-* Shortcode method always uses signed URL's / tokens.
+* Shortcode method (optionally) uses signed URL's / tokens.
 * Removed analytics.
 * Added additional shortcode options: controls, autoplay, loop, preload and muted.
 * Uses API Token based API access, for MUCH more secure Cloudflare account access.
