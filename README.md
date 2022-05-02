@@ -7,7 +7,7 @@ A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork
 * Uses a limited access API token for API access, eliminating the use of the general API key which presents a huge security risk.
 * Uses the zone based API, further reducing potential attack surface area.
 
-The Gutenberg Block method of adding videos appears to be broken (in the original plugin also) and I plan to remove this feature completely from future versions until resolved.
+The Gutenberg Block method of adding videos appears to be broken (in the original plugin also). I've only left code related to the Gutenberg Block in this fork, so as to not break existing content should you switch from the official plugin, to this one. Note the Gutenberg Block as it currently exists, does not support signed URL's / tokens.
 
 USE THE SHORTCODE METHOD INSTEAD.  See Shortcode section below.
 
@@ -29,11 +29,11 @@ Changes from Official
 * Any existing API Key, API account email and API account ID stored in the database are deleted when the settings page is accessed.
 * If updating from version older than 1.0.6, you'll need to enter your API Token and API Zone ID in the configuration page.
 * Added admin setting for signed URL/token duration (default is otherwise 1 hour).
+* Added admin toggle for whether or not to use signed URLs/tokens.
 
 
 To-Do
 ------------
-* Add admin toggle for whether or not to use signed URLs/tokens.
 * Rebuild Gutenberg block with dynamic support for signed URL's.
 
 
