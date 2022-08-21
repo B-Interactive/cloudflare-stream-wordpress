@@ -45,10 +45,9 @@ Issues
 
 Installation
 ------------
-* Copy the contents of this repository (excluding the .git folder) to the following location within your WordPress installation:
-```
-/wp-content/plugins/cloudflare-stream/
-```
+* Download the full plugin ZIP file from the [latest release of this plugin](https://github.com/B-Interactive/cloudflare-stream-wordpress/releases/latest)
+* In the WordPress admin panel, go to Plugins > Add New > Upload Plugin and upload the ZIP file
+* Click the "Activate" button
 * In the WordPress admin panel, visit the Plugins section Activate the Cloudflare Stream plugin.
 
 
@@ -114,6 +113,27 @@ They can be used in this way:
 Acknowledgements
 ----------------
 * Cloudflare and WP Engine for developing the original plugin this was forked from.
+
+
+Developers
+------------
+Clone this repo, cd into the `cloudflare-stream-wordpress` directory and run
+
+```bash
+$ npm install
+```
+
+Build for development (uses development mode for Webpack, making browser debugging easier):
+
+```bash
+$ npm run build:dev
+```
+
+Build for production:
+
+```bash
+$ npm run build
+```
 
 
 License
