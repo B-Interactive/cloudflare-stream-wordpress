@@ -1,5 +1,5 @@
 /* Necessary to use TUS protocol for uploads */
-import tus from 'tus-js-client';
+import * as tus from 'tus-js-client';
 
 /* global ajaxurl */
 /* global cloudflareStream */
