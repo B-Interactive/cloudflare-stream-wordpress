@@ -1,11 +1,11 @@
 === Cloudflare Stream Video ===
 Plugin Name: Cloudflare Stream Video
-Plugin URI: https://wordpress.org/plugins/cloudflare-stream/
+Plugin URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
 Description: Cloudflare Stream is an easy-to-use, affordable, on-demand video streaming platform. The Stream video plugin for WordPress lets you upload videos to Cloudflare where they are securely stored and encoded for native streaming directly from the WordPress editor.
-Version: 1.0.6
+Version: 1.0.8
 Author: Cloudflare
 Author URI: https://www.cloudflare.com/products/stream-delivery/
-Contributors: cloudflare, stevenkword, B-Interactive
+Contributors: cloudflare, stevenkword, B-Interactive, davidpurdy
 Text Domain: cloudflare-stream
 License: GPL2
 Tags: video, videos, streaming, cloudflare, wpengine, stream, embed, movies, block-enabled, block
@@ -81,6 +81,23 @@ Stream lets you own and control the video viewing experience and is ideal for vi
 2. Browsing the Cloudflare Stream Library
 
 == Changelog ==
+
+= 1.0.8 =
+* Added build process for blocks.
+* Error cleanup.
+
+= 1.0.7 =
+* Added setting for signed URL/token duration.
+* Removed analytics related features.
+
+= 1.0.6 =
+* API Requests now using much more secure API token + zone instead.
+* Any existing API key / account email / account ID is deleted from the database when accessing the settings page.
+
+= 1.0.5 =
+* Analytics reporting opt-in/out clearer.
+* Shortcode method now always uses signed URL's / tokens.
+* Added additional shortcode options, controls, autoplay, loop, preload and muted.
 
 = 1.0.3 =
 * TUS uploader fix to support large files.

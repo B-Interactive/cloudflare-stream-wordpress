@@ -110,11 +110,6 @@ They can be used in this way:
 `[cloudflare_stream uid="`_some video id_`" controls="true" autoplay="false" loop="false" preload="false" muted="false"]`
 
 
-Acknowledgements
-----------------
-* Cloudflare and WP Engine for developing the original plugin this was forked from.
-
-
 Developers
 ------------
 Clone this repo, cd into the `cloudflare-stream-wordpress` directory and run
@@ -134,6 +129,10 @@ Build for production:
 ```bash
 $ npm run build
 ```
+
+Acknowledgements
+----------------
+* Cloudflare and WP Engine for developing the original plugin this was forked from.
 
 
 License
