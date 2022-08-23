@@ -1,0 +1,25 @@
+{
+  "name": "stream-wordpress",
+  "version": "1.0.0",
+  "description": "This is the development mirror for the [Cloudflare Stream Wordpress plugin](https://wordpress.org/plugins/cloudflare-stream).",
+  "main": "webpack.config.js",
+  "scripts": {
+    "build": "wp-scripts build",
+    "build:dev": "wp-scripts build  --env dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FiveMountains-co/stream-wordpress.git"
+  },
+  "author": "",
+  "license": "GPL-2.0-or-later",
+  "bugs": {
+    "url": "https://github.com/FiveMountains-co/stream-wordpress/issues"
+  },
+  "homepage": "https://github.com/FiveMountains-co/stream-wordpress#readme",
+  "dependencies": {
+    "@wordpress/scripts": "^23.7.0",
+    "tus-js-client": "^3.0.0"
+  }
+}

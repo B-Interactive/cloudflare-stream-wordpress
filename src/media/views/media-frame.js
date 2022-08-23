@@ -51,7 +51,7 @@ cloudflareStream.media.view.MediaFrame = Post.extend( /** @lends @lends cloudfla
 				// library:    wp.media.query( _.defaults( {
 				// 	type: 'video',
 				// }, options.library ) ),
-				library: new cloudflareStream.media.model.Query( _.defaults( null, {
+				library: new cloudflareStream.media.model.Query( null, _.defaults( null, {
 					type: 'video',
 				}, options.library ) ),
 				multiple: options.multiple ? 'reset' : false,

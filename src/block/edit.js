@@ -1,5 +1,5 @@
 /* Necessary to use TUS protocol for uploads */
-import tus from 'tus-js-client';
+import * as tus from 'tus-js-client';
 
 /* global ajaxurl */
 /* global cloudflareStream */
@@ -106,7 +106,6 @@ class CloudflareStreamEdit extends Component {
 		const { setAttributes } = this.props;
 		setAttributes( { uid: attachment.uid, thumbnail: attachment.thumb.src } );
 		this.setState( { editing: false, uploading: false, encoding: false } );
-		cloudflareStream.analytics.logEvent( 'Stream WP Plugin - Added to blog post' );
 		this.reload();
 	}
 
@@ -122,7 +121,6 @@ class CloudflareStreamEdit extends Component {
 			},
 			error: function( jqXHR, textStatus ) {
 				console.error( 'Error: ' + textStatus );
-				cloudflareStream.analytics.logEvent( 'Stream WP Plugin - Error' );
 			},
 		} );
 	}
@@ -142,7 +140,6 @@ class CloudflareStreamEdit extends Component {
 			},
 			error: function( jqXHR, textStatus ) {
 				console.error( 'Error: ' + textStatus );
-				cloudflareStream.analytics.logEvent( 'Stream WP Plugin - Error' );
 			},
 		} );
 	}
@@ -168,7 +165,6 @@ class CloudflareStreamEdit extends Component {
 
 		const baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + cloudflareStream.api.account + '/media';
 
-		cloudflareStream.analytics.logEvent( 'Stream WP Plugin - Started uploading a video' );
 		const upload = new tus.Upload( file, {
 			resume: block.state.resume,
 			removeFingerprintOnSuccess: true,
@@ -187,7 +183,6 @@ class CloudflareStreamEdit extends Component {
 				progressBar.hide();
 				jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( 'Upload Error: See the console for details.' );
 				jQuery( '.editor-media-placeholder__retry-button' ).show();
-				cloudflareStream.analytics.logEvent( 'Stream WP Plugin - Error' );
 			},
 			onProgress: function( bytesUploaded, bytesTotal ) {
 				const percentage = parseInt( bytesUploaded / bytesTotal * 100 );
@@ -200,7 +195,6 @@ class CloudflareStreamEdit extends Component {
 				const mediaId = urlArray[ urlArray.length - 1 ];
 
 				setAttributes( { uid: mediaId, fingerprint: upload.options.fingerprint( upload.file, upload.options ) } );
-				cloudflareStream.analytics.logEvent( 'Stream WP Plugin - Finished uploading a video' );
 				block.switchToEncoding();
 			},
 		} );
@@ -349,7 +343,6 @@ class CloudflareStreamEdit extends Component {
 						</div>
 						<Button
 							isSecondary
-							isLarge
 							icon="update"
 							label={ __( 'Retry' ) }
 							onClick={ switchToEditing }
@@ -376,7 +369,6 @@ class CloudflareStreamEdit extends Component {
 						</div>
 						<Button
 							isSecondary
-							isLarge
 							icon="update"
 							label={ __( 'Retry' ) }
 							onClick={ switchToEditing }
@@ -402,7 +394,6 @@ class CloudflareStreamEdit extends Component {
 							value={ this.props.attributes }
 							render={ () => (
 								<Button
-									isLarge
 									label={ __( 'Stream Library' ) }
 									onClick={ this.open }
 									className="editor-media-placeholder__browse-button"
@@ -413,7 +404,6 @@ class CloudflareStreamEdit extends Component {
 						/>
 						<Button
 							isSecondary
-							isLarge
 							icon="cancel"
 							label={ __( 'Cancel' ) }
 							onClick={ switchFromEditing }
@@ -433,7 +423,6 @@ class CloudflareStreamEdit extends Component {
 					instructions="Select a file from your library."
 				>
 					<FormFileUpload
-						isLarge
 						multiple
 						className="editor-media-placeholder__upload-button"
 						onChange={ switchToUploading }
@@ -447,7 +436,6 @@ class CloudflareStreamEdit extends Component {
 						value={ this.props.attributes }
 						render={ () => (
 							<Button
-								isLarge
 								label={ __( 'Stream Library' ) }
 								onClick={ this.open }
 								className="editor-media-placeholder__browse-button"
@@ -458,7 +446,6 @@ class CloudflareStreamEdit extends Component {
 					/>
 					<Button
 						isSecondary
-						isLarge
 						icon="cancel"
 						label={ __( 'Cancel' ) }
 						onClick={ switchFromEditing }

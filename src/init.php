@@ -25,11 +25,11 @@ function cloudflare_stream_block_assets() {
 	wp_enqueue_style(
 		'cloudflare-stream-block-style-css',
 		// Handle.
-		plugins_url( 'dist/blocks.style.build.css', dirname( __FILE__ ) ),
+		plugins_url( 'dist/style-blocks.css', dirname( __FILE__ ) ),
 		// Block style CSS.
 		array( 'wp-block-library' ),
 		// Dependency to include the CSS after it.
-		filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.style.build.css' )
+		filemtime( plugin_dir_path( __DIR__ ) . 'dist/style-blocks.css' )
 		// Version: filemtime — Gets file modification time.
 	);
 } // End function cloudflare_stream_block_assets().
@@ -97,11 +97,11 @@ function cloudflare_stream_block_editor_assets() {
 	wp_enqueue_style(
 		'cloudflare-stream-block-editor-css',
 		// Handle.
-		plugins_url( 'dist/blocks.editor.build.css', dirname( __FILE__ ) ),
+		plugins_url( 'dist/blocks.css', dirname( __FILE__ ) ),
 		// Block editor CSS.
 		array( 'wp-edit-blocks' ),
 		// Dependency to include the CSS after it.
-		filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.editor.build.css' )
+		filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.css' )
 		// Version: filemtime — Gets file modification time.
 	);
 	wp_enqueue_style(

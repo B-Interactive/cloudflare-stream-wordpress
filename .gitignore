@@ -22,3 +22,5 @@ node_modules/
 *.sql
 *.sqlite
 *.kate-swp
+
+/dist
