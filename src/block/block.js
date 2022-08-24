@@ -39,14 +39,14 @@ cloudflareStream.icon = wp.element.createElement( 'svg', { width: 20, height: 20
  *                             registered; otherwise `undefined`.
  */
 registerBlockType( 'cloudflare-stream/block-video', {
-	title: __( 'Cloudflare Stream Video' ),
+	title: __( 'Cloudflare Stream Video', 'cloudflare-stream-wordpress' ),
 	icon: cloudflareStream.icon,
 	render_callback: 'cloudflare_stream_render_block',
 	category: 'embed',
 	keywords: [
-		__( 'Cloudflare' ),
-		__( 'Stream' ),
-		__( 'video' ),
+		__( 'Cloudflare', 'cloudflare-stream-wordpress' ),
+		__( 'Stream', 'cloudflare-stream-wordpress' ),
+		__( 'video', 'cloudflare-stream-wordpress' ),
 	],
 	attributes: {
 		alignment: {

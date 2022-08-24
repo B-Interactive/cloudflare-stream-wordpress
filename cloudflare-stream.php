@@ -8,6 +8,7 @@
  * Version: 1.0.8
  * License: GPL2+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
+ * Text Domain: cloudflare-stream-wordpress
  *
  * @package cloudflare-stream
  */
