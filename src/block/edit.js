@@ -7,7 +7,7 @@ import * as tus from 'tus-js-client';
 /**
  * WordPress dependencies
  */
-const { __ } = wp.i18n; // Import __() from wp.i18n
+const { sprintf, __ } = wp.i18n; // Import __() from wp.i18n
 const {
 	Disabled,
 	Button,
@@ -181,7 +181,7 @@ class CloudflareStreamEdit extends Component {
 			onError: function( error ) {
 				console.error( 'Error: ' + error );
 				progressBar.hide();
-				jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( 'Upload Error: See the console for details.' );
+				jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Upload Error: See the console for details.', 'cloudflare-stream-wordpress' ) );
 				jQuery( '.editor-media-placeholder__retry-button' ).show();
 			},
 			onProgress: function( bytesUploaded, bytesTotal ) {
@@ -209,7 +209,7 @@ class CloudflareStreamEdit extends Component {
 			() => {
 				const progressBar = jQuery( '#progressbar-' + this.instanceId );
 				const progressLabel = jQuery( '.progress-label-' + this.instanceId );
-				jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( 'Upload Complete. Processing video.' );
+				jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Upload Complete. Processing video.', 'cloudflare-stream-wordpress' ) );
 
 				progressLabel.text( '' );
 				progressBar.progressbar( {
@@ -241,11 +241,11 @@ class CloudflareStreamEdit extends Component {
 						block.setState(
 							{ resume: false },
 						);
-						jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( 'Uploading your video.' );
+						jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Uploading your video.', 'cloudflare-stream-wordpress' ) );
 						block.uploadFromFiles( file );
 					} else {
 						progressBar.hide();
-						jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( 'Processing Error: ' + data.data );
+						jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( sprintf( __( 'Processing Error: %s', 'cloudflare-stream-wordpress' ), data.data ) );
 						jQuery( '.editor-media-placeholder__retry-button' ).show();
 					}
 				} else if ( typeof data.data !== 'undefined' ) {
@@ -307,7 +307,7 @@ class CloudflareStreamEdit extends Component {
 		const switchToUploading = () => {
 			let { setAttributes } = this.props;
 
-			jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( 'Processing your video' );
+			jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Processing your video', 'cloudflare-stream-wordpress' ) );
 
 			const file = jQuery( '.components-form-file-upload :input[type=\'file\']' )[ 0 ].files[ 0 ];
 			setAttributes( { file: file } );
@@ -334,8 +334,8 @@ class CloudflareStreamEdit extends Component {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }
-						label="Cloudflare Stream"
-						instructions="Uploading your video."
+						label={ __( "Cloudflare Stream", "cloudflare-stream-wordpress" ) }
+						instructions={ __( "Uploading your video.", 'cloudflare-stream-wordpress' ) }
 						className="editor-media-placeholder"
 					>
 						<div id={ 'progressbar-' + this.instanceId } style={ progressBarStyle }>
@@ -344,12 +344,12 @@ class CloudflareStreamEdit extends Component {
 						<Button
 							isSecondary
 							icon="update"
-							label={ __( 'Retry' ) }
+							label={ __( 'Retry', 'cloudflare-stream' ) }
 							onClick={ switchToEditing }
 							style={ { display: 'none' } }
 							className="editor-media-placeholder__retry-button"
 						>
-							{ __( 'Retry' ) }
+							{ __( 'Retry', 'cloudflare-stream-wordpress' ) }
 						</Button>
 					</Placeholder>
 				);
@@ -360,8 +360,8 @@ class CloudflareStreamEdit extends Component {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }
-						label="Cloudflare Stream"
-						instructions="Processing your video."
+						label={ __( "Cloudflare Stream", 'cloudflare-stream-wordpress' ) }
+						instructions={ __( "Processing your video.", 'cloudflare-stream-wordpress' ) }
 						className="editor-media-placeholder"
 					>
 						<div id={ 'progressbar-' + this.instanceId } style={ progressBarStyle }>
@@ -370,12 +370,12 @@ class CloudflareStreamEdit extends Component {
 						<Button
 							isSecondary
 							icon="update"
-							label={ __( 'Retry' ) }
+							label={ __( 'Retry', 'cloudflare-stream-wordpress' ) }
 							onClick={ switchToEditing }
 							style={ { display: 'none' } }
 							className="editor-media-placeholder__retry-button"
 						>
-							{ __( 'Retry' ) }
+							{ __( 'Retry', 'cloudflare-stream-wordpress' ) }
 						</Button>
 					</Placeholder>
 				);
@@ -385,8 +385,8 @@ class CloudflareStreamEdit extends Component {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }
-						label="Cloudflare Stream"
-						instructions="Select a file from your library."
+						label={ __( "Cloudflare Stream", 'cloudflare-stream-wordpress' ) }
+						instructions={ __( "Select a file from your library.", 'cloudflare-stream-wordpress' ) }
 					>
 						<MediaUpload
 							type="video"
@@ -394,11 +394,11 @@ class CloudflareStreamEdit extends Component {
 							value={ this.props.attributes }
 							render={ () => (
 								<Button
-									label={ __( 'Stream Library' ) }
+									label={ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
 									onClick={ this.open }
 									className="editor-media-placeholder__browse-button"
 								>
-									{ __( 'Stream Library' ) }
+									{ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
 								</Button>
 							) }
 						/>
@@ -410,7 +410,7 @@ class CloudflareStreamEdit extends Component {
 							style={ { display: 'none' } }
 							className="editor-media-placeholder__cancel-button"
 						>
-							{ __( 'Cancel' ) }
+							{ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
 						</Button>
 					</Placeholder>
 				);
@@ -428,7 +428,7 @@ class CloudflareStreamEdit extends Component {
 						onChange={ switchToUploading }
 						accept="video/*"
 					>
-						{ __( 'Upload' ) }
+						{ __( 'Upload', 'cloudflare-stream-wordpress' ) }
 					</FormFileUpload>
 					<MediaUpload
 						type="video"
@@ -436,23 +436,23 @@ class CloudflareStreamEdit extends Component {
 						value={ this.props.attributes }
 						render={ () => (
 							<Button
-								label={ __( 'Stream Library' ) }
+								label={ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
 								onClick={ this.open }
 								className="editor-media-placeholder__browse-button"
 							>
-								{ __( 'Stream Library' ) }
+								{ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
 							</Button>
 						) }
 					/>
 					<Button
 						isSecondary
 						icon="cancel"
-						label={ __( 'Cancel' ) }
+						label={ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
 						onClick={ switchFromEditing }
 						style={ { display: 'none' } }
 						className="editor-media-placeholder__cancel-button"
 					>
-						{ __( 'Cancel' ) }
+						{ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
 					</Button>
 				</Placeholder>
 			);
@@ -465,31 +465,31 @@ class CloudflareStreamEdit extends Component {
 					<Toolbar>
 						<Button
 							className="components-icon-button components-toolbar__control"
-							label={ __( 'Edit video' ) }
+							label={ __( 'Edit video', 'cloudflare-stream-wordpress' ) }
 							onClick={ switchToEditing }
 							icon="edit"
 						/>
 					</Toolbar>
 				</BlockControls>
 				<InspectorControls>
-					<PanelBody title={ __( 'Video Settings' ) }>
+					<PanelBody title={ __( 'Video Settings', 'cloudflare-stream-wordpress' ) }>
 						<ToggleControl
-							label={ __( 'Autoplay' ) }
+							label={ __( 'Autoplay', 'cloudflare-stream-wordpress' ) }
 							onChange={ this.toggleAttribute( 'autoplay' ) }
 							checked={ autoplay }
 						/>
 						<ToggleControl
-							label={ __( 'Loop' ) }
+							label={ __( 'Loop', 'cloudflare-stream-wordpress' ) }
 							onChange={ this.toggleAttribute( 'loop' ) }
 							checked={ loop }
 						/>
 						<ToggleControl
-							label={ __( 'Muted' ) }
+							label={ __( 'Muted', 'cloudflare-stream-wordpress' ) }
 							onChange={ this.toggleAttribute( 'muted' ) }
 							checked={ muted }
 						/>
 						<ToggleControl
-							label={ __( 'Playback Controls' ) }
+							label={ __( 'Playback Controls', 'cloudflare-stream-wordpress' ) }
 							onChange={ this.toggleAttribute( 'controls' ) }
 							checked={ controls }
 						/>
