@@ -163,7 +163,7 @@ class CloudflareStreamEdit extends Component {
 
 		progressBar.progressbar( 'value', val );
 
-		const baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + cloudflareStream.api.account + '/media';
+		const baseUrl = 'https://api.cloudflare.com/client/v4/zones/' + cloudflareStream.api.zone_id + '/media';
 
 		const upload = new tus.Upload( file, {
 			resume: block.state.resume,
@@ -171,8 +171,7 @@ class CloudflareStreamEdit extends Component {
 			endpoint: baseUrl,
 			retryDelays: [ 0, 1000, 3000, 5000 ],
 			headers: {
-				'X-Auth-Email': cloudflareStream.api.email,
-				'X-Auth-Key': cloudflareStream.api.key,
+				'Authorization': 'Bearer ' + cloudflareStream.api.token
 			},
 			metadata: {
 				name: file.name,
@@ -381,7 +380,7 @@ class CloudflareStreamEdit extends Component {
 				);
 			}
 
-			if ( ! cloudflareStream.api.key || '' === cloudflareStream.api.key ) {
+			if ( ! cloudflareStream.api.token || '' === cloudflareStream.api.token ) {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }

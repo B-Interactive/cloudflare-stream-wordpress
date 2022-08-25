@@ -47,7 +47,7 @@ add_action( 'enqueue_block_assets', 'cloudflare_stream_block_assets' );
  * @since 1.0.0
  */
 function cloudflare_stream_block_editor_assets() {
-	// Don't load the block assets if the API keys are not configured.
+	// Don't load the block assets if the API credentials are not configured.
 	if ( ! Cloudflare_Stream_Settings::is_configured() ) {
 		return;
 	}
