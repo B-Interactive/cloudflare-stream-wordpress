@@ -28,6 +28,13 @@ class Cloudflare_Stream_API {
 	private $api_zone_id = '';
 
 	/**
+	 * API Account ID
+	 *
+	 * @var string $api_email Cloudflare API account ID.
+	 */
+	private $api_account = '';
+
+	/**
 	 * Use signed URLs
 	 *
 	 * @var bool $signed_urls Use signed URLs.
@@ -107,6 +114,54 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function request( $endpoint, $args = array(), $return_headers = false ) {
+		$this->api_token   = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$this->api_account = get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT );
+
+		// Supports transition back to Accounts API by auto-fetching Account ID if already using Zones.
+		// Since 1.0.9
+		if ( empty( $this->api_account ) ) {
+			$this->api_account = $this->get_account_id( true );
+		}
+
+		if ( isset( $args['method'] ) ) {
+			$method = $args['method'];
+		} else {
+			$method = 'GET';
+		}
+
+		$base_url = 'https://api.cloudflare.com/client/v4/accounts/' . $this->api_account . '/';
+		$args['headers'] = array(
+			'Authorization' => 'Bearer ' . $this->api_token,
+			'Content-Type'  => 'application/json',
+		);
+
+		$query_string = isset( $args['query'] ) ? '?' . $args['query'] : '';
+		$endpoint    .= $query_string;
+		$route        = $base_url . $endpoint;
+
+		// Get remote HTML file.
+		$response = wp_remote_request( $route, $args );
+
+		// Check for error.
+		if ( is_wp_error( $response ) ) {
+			return $response->get_error_message();
+		} elseif ( 'headers' === $return_headers ) {
+			return wp_remote_retrieve_headers( $response );
+		}
+		return wp_remote_retrieve_body( $response );
+	}
+
+	/**
+	 * Make request to the Zones API.
+	 * This method is being deprecated and remains to support transition to the more applicable
+	 * Accounts API.
+	 *
+	 * @param string $endpoint API Endpoint.
+	 * @param array  $args Additional API arguments.
+	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @since 1.0.9
+	 */
+	public function zone_request( $endpoint, $args = array(), $return_headers = false ) {
 		$this->api_token   = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
 		$this->api_zone_id = get_option( Cloudflare_Stream_Settings::OPTION_API_ZONE_ID );
 
@@ -297,5 +352,25 @@ class Cloudflare_Stream_API {
 		$response_text = $this->delete( 'media/' . $uid, $args, $return_headers );
 		return json_decode( $response_text );
 	}
+
+	/**
+	 * Retrieve Cloudflare Account ID using the Zones API.
+	 *
+	 * @param bool   $save If true, saves retrieved Account ID to database, but only if the option does not already exist.
+	 * @since 1.0.9
+	 */
+	public function get_account_id( $save = false ) {
+        $response_text = json_decode( $this->zone_request( '', array(), false ) );
+		if ( $response_text->success )
+			$api_account = $response_text->result->account->id;
+			if ( strlen( $api_account ) == 32 ) {
+				if ( $save ) {
+					add_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT, $api_account );
+				}
+				return $api_account;
+		}
+		return false;
+	}
+
 }
 Cloudflare_Stream_API::instance();

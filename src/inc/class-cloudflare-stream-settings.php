@@ -73,7 +73,7 @@ class Cloudflare_Stream_Settings {
 
 		// Register Settings.
 		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
-		register_setting( self::SETTING_GROUP, self::OPTION_API_ZONE_ID );
+		register_setting( self::SETTING_GROUP, self::OPTION_API_ACCOUNT );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS_DURATION );
 
@@ -93,9 +93,9 @@ class Cloudflare_Stream_Settings {
 			);
 
 			add_settings_field(
-				self::OPTION_API_ZONE_ID,
-				esc_html__( 'API Zone ID', 'cloudflare-stream-wordpress' ),
-				array( $this, 'api_zone_id_cb' ),
+				self::OPTION_API_ACCOUNT,
+				esc_html__( 'API Account ID', 'cloudflare-stream-wordpress' ),
+				array( $this, 'api_account_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
@@ -131,12 +131,15 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Callback for rendering the API Zone ID settings field
+	 * Callback for rendering the API Account ID settings field
 	 */
-	public function api_zone_id_cb() {
-		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
-		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_zone_id" id="cloudflare_stream_api_zone_id" value="' . esc_attr( $api_zone_id ) . '" autocomplete="off"> ';
-		echo '<br><small class="form-text text-muted">' . esc_html__( 'Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Zone ID].', 'cloudflare-stream-wordpress' ) . '</small>';
+	public function api_account_cb() {
+		$api_account = get_option( self::OPTION_API_ACCOUNT );
+		if ( empty( $api_account ) ) {
+			$api_account = self::get_account_id();
+		}
+		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_account" id="cloudflare_stream_api_account" value="' . esc_attr( $api_account ) . '" autocomplete="on"> ';
+		echo '<br><small class="form-text text-muted">' . esc_html__( 'Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Account ID].', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
@@ -178,7 +181,6 @@ class Cloudflare_Stream_Settings {
 		if ( get_option( self::OPTION_API_KEY ) !== false ) {
 			delete_option( self::OPTION_API_EMAIL );
 			delete_option( self::OPTION_API_KEY );
-			delete_option( self::OPTION_API_ACCOUNT );
 		}
 
 		add_options_page( __( 'Cloudflare Stream', 'cloudflare-stream-wordpress' ), __( 'Cloudflare Stream', 'cloudflare-stream-wordpress' ), 'manage_options', 'cloudflare-stream', array( $this, 'settings_page' ) );
@@ -241,6 +243,22 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
+	 * Try to fetch and save the Cloudflare Account ID using Zone ID.
+	 *
+	 * @since 1.0.9
+	 */
+	public function get_account_id() {
+		$api_token   = get_option( self::OPTION_API_TOKEN );
+		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
+
+		if ( !empty ( $api_token ) && !empty ( $api_zone_id )  ) {
+			$api = Cloudflare_Stream_API::instance();
+			return $api->get_account_id( true );
+		}
+		return false;
+	}
+
+	/**
 	 * Make a test call to an endpoint to test the API keys.
 	 *
 	 * @since 1.0.0
@@ -294,9 +312,9 @@ class Cloudflare_Stream_Settings {
 	 */
 	public static function is_configured() {
 		$api_token   = get_option( self::OPTION_API_TOKEN );
-		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
+		$api_account = get_option( self::OPTION_API_ACCOUNT );
 
-		return ( $api_token && $api_zone_id );
+		return ( $api_token && $api_account );
 	}
 }
 Cloudflare_Stream_Settings::instance();

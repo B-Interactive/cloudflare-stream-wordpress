@@ -9,7 +9,7 @@ A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork
 
 The Gutenberg Block method of adding videos appears to be broken (in the original plugin also). I've only left code related to the Gutenberg Block in this fork, so as to not break existing content should you switch from the official plugin. Adding new block content will fail as the global API key it's expecting to use is no longer stored in this plugin.  Note the Gutenberg Block as it currently exists, does not support signed URL's / tokens.
 
-USE THE SHORTCODE METHOD INSTEAD.  [See Shortcode section below](https://github.com/B-Interactive/cloudflare-stream-wordpress#shortcode).
+USE THE SHORTCODE METHOD INSTEAD.  [See Shortcode section below](#shortcode).
 
 
 The original official plugin:
