@@ -209,7 +209,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_videos( $args = array(), $return_headers = 'false' ) {
-		$response_text = $this->request( 'media', $args, $return_headers );
+		$response_text = $this->request( 'stream', $args, $return_headers );
 		return json_decode( $response_text );
 	}
 
@@ -222,7 +222,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_details( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->request( 'media/' . $uid, $args, $return_headers );
+		$response_text = $this->request( 'stream/' . $uid, $args, $return_headers );
 		return json_decode( $response_text );
 	}
 
@@ -235,7 +235,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function update_video_details( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->post( 'media/' . $uid, $args, $return_headers );
+		$response_text = $this->post( 'stream/' . $uid, $args, $return_headers );
 		return json_decode( $response_text );
 	}
 
@@ -289,7 +289,7 @@ class Cloudflare_Stream_API {
 		}
 
 		$args['method'] = 'POST';
-        $response_text  = $this->request( 'media/' . $uid . '/token', $args, $return_headers );
+        $response_text  = $this->request( 'stream/' . $uid . '/token', $args, $return_headers );
 		return json_decode( $response_text );
 	}
 
@@ -302,7 +302,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_link( $uid, $args = array(), $return_headers = false ) {
-        $response_text = $this->request( 'media/' . $uid . '/preview', $args, $return_headers );
+        $response_text = $this->request( 'stream/' . $uid . '/preview', $args, $return_headers );
 		return $response_text;
 	}
 
@@ -314,7 +314,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function init_video( $args = array(), $return_headers = true ) {
-		$response_text = $this->post( 'media', $args, $return_headers );
+		$response_text = $this->post( 'stream', $args, $return_headers );
 		return $response_text;
 	}
 
@@ -327,7 +327,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function delete_video( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->delete( 'media/' . $uid, $args, $return_headers );
+		$response_text = $this->delete( 'stream/' . $uid, $args, $return_headers );
 		return json_decode( $response_text );
 	}
 
