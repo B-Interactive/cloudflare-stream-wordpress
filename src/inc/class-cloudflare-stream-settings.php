@@ -32,6 +32,7 @@ class Cloudflare_Stream_Settings {
 	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
 	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
 	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
+	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
 
 	/**
 	 * Singleton
@@ -76,6 +77,7 @@ class Cloudflare_Stream_Settings {
 		register_setting( self::SETTING_GROUP, self::OPTION_API_ACCOUNT );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS_DURATION );
+		register_setting( self::SETTING_GROUP, self::OPTION_MEDIA_DOMAIN );
 
 		add_settings_section(
 			self::SETTING_SECTION_GENERAL,
@@ -112,6 +114,14 @@ class Cloudflare_Stream_Settings {
 				self::OPTION_SIGNED_URLS_DURATION,
 				esc_html__( 'Signed URL Expiration', 'cloudflare-stream-wordpress' ),
 				array( $this, 'api_signed_urls_duration_cb' ),
+				self::SETTING_PAGE,
+				self::SETTING_SECTION_GENERAL
+			);
+
+			add_settings_field(
+				self::OPTION_MEDIA_DOMAIN,
+				esc_html__( 'Preferred Media Domain', 'cloudflare-stream-wordpress' ),
+				array( $this, 'media_domain_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
@@ -162,6 +172,20 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
+	 * Callback for rendering the preferred media domain field
+	 */
+	public function media_domain_cb() {
+		$media_domain = get_option( self::OPTION_MEDIA_DOMAIN );
+		$html = '<input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_0" value="cloudflarestream.com" ' . checked( "cloudflarestream.com", $media_domain, false ) . ' > ';
+		$html .= '<label for="cloudflare_stream_media_domain_0">cloudflarestream.com (default)</label>';
+		$html .= '<br><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_1" value="videodelivery.net" ' . checked( "videodelivery.net", $media_domain, false ) . ' > ';
+		$html .= '<label for="cloudflare_stream_media_domain_">videodelivery.net</label>';
+
+		$html .= '<br><small class="form-text text-muted">' . esc_html__( 'Set which Cloudflare domain is used by your users, to access video content. Changing this may require an update to your sites Content Security Policy.', 'cloudflare-stream-wordpress' ) . '</small>';
+		echo $html;
+	}
+
+	/**
 	 * Setup Admin Menu Options & Settings.
 	 *
 	 * @uses is_super_admin, add_submenu_page
@@ -176,6 +200,7 @@ class Cloudflare_Stream_Settings {
 		// Defaults
 		add_option( self::OPTION_SIGNED_URLS, true );
 		add_option( self::OPTION_SIGNED_URLS_DURATION, 60 );
+		add_option( self::OPTION_MEDIA_DOMAIN, 'cloudflarestream.com' );
 
 		// Completely remove old less secure API credentials if they exist.
 		if ( get_option( self::OPTION_API_KEY ) !== false ) {

@@ -24,7 +24,7 @@ Changes from Official
 * Removed analytics.
 * Added additional shortcode options: controls, autoplay, loop, preload and muted.
 * Uses API Token based API access, for MUCH more secure Cloudflare account access.
-* Any existing API Key, API account email and API account ID stored in the database are deleted when the settings page is accessed.
+* Any existing API Key and API account email stored in the database are deleted when the settings page is accessed.
 * If updating from version older than 1.0.6, you'll need to enter your Cloudflare API Token and Cloudflare Account ID in the configuration page.
 * Added admin setting for signed URL/token duration (default is otherwise 1 hour).
 * Added admin toggle for whether or not to use signed URLs/tokens.
@@ -51,7 +51,7 @@ Installation
 
 Admin Settings
 ------------
-The admin area has been completely revised from the official plugin.  Instead of using the all-controlling global API key, this now makes use of a much more secure API token, which only permits the plugin limited access to a Cloudflare account.  When the admin settings are accessed, any existing API key, email and account ID stored in the database, are deleted from the database as these are no longer needed and their presence is a security risks.
+The admin area has been completely revised from the official plugin.  Instead of using the all-controlling global API key, this now makes use of a much more secure API token, which only permits the plugin limited access to a Cloudflare account.  When the admin settings are accessed, any existing API key and email stored in the database, are deleted from the database as these are no longer needed and their presence is a security risks.
 
 ![admin-settings](https://user-images.githubusercontent.com/16984998/166196073-0cd8c58e-9c95-49ef-937a-2798802e3769.png)
 

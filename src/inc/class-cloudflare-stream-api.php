@@ -248,12 +248,13 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_embed( $uid, $args = array(), $return_headers = false ) {
-		$signed_urls = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+		$media_domain = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
+		$signed_urls  = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
 		if ( $signed_urls ) {
 			$uid = $this->get_signed_video_token($uid)->result->token;
 		}
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
-			. ' src="https://iframe.videodelivery.net/' . $uid . '?'
+			. ' src="https://iframe.' . $media_domain . '/' . $uid . '?'
 			. 'muted='    . $args['muted'] . '&'
 			. 'preload='  . $args['preload'] . '&'
 			. 'loop='     . $args['loop'] . '&'
