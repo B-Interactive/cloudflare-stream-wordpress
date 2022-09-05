@@ -340,16 +340,16 @@ class Cloudflare_Stream_API {
 	 */
 	public function get_account_id( $save = false ) {
         $response_text = json_decode( $this->zone_request( '', array(), false ) );
-		if ( $response_text->success )
+		if ( $response_text->success ) {
 			$api_id = $response_text->result->account->id;
 			if ( strlen( $api_id ) == 32 ) {
 				if ( $save ) {
 					add_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT, $api_id );
 				}
 				return $api_id;
+			}
 		}
 		return false;
 	}
-
 }
 Cloudflare_Stream_API::instance();
