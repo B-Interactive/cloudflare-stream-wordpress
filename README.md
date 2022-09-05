@@ -28,6 +28,7 @@ Changes from Official
 * If updating from version older than 1.0.6, you'll need to enter your Cloudflare API Token and Cloudflare Account ID in the configuration page.
 * Added admin setting for signed URL/token duration (default is otherwise 1 hour).
 * Added admin toggle for whether or not to use signed URLs/tokens.
+* Can select Cloudflare media domain, including new account specific sub-domain.
 
 
 To-Do
@@ -69,6 +70,9 @@ When this is checked [x], videos are accessed using a temporary time-limited tok
 
 ### Signed URL Expiration ###
 When **Use Signed URLs** is checked [x], this setting controls how long any particular token / signed ULR is valid for **in minutes**. The Cloudflare default, is 60 minutes. Generally, you'd want to make sure this is larger than your longest video.
+
+### Preferred Media Domain ###
+This option allows you to select from a small list of different Cloudflare media domains. This domain is used when delivering content to your users. The 3rd option is a unique subdomain specific to your Cloudflare account. This option will only be presented if you have at least one video already uploaded to your Cloudflare Stream account.
 
 
 Securing Video Access

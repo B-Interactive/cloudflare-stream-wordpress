@@ -177,8 +177,15 @@ class Cloudflare_Stream_Settings {
 	public function media_domain_cb() {
 		$media_domain = get_option( self::OPTION_MEDIA_DOMAIN );
 		echo '<label for="cloudflare_stream_media_domain_0"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_0" value="cloudflarestream.com" ' . checked( "cloudflarestream.com", $media_domain, false ) . ' >cloudflarestream.com (default)</label>'
-		   . '<label for="cloudflare_stream_media_domain_"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_1" value="videodelivery.net" ' . checked( "videodelivery.net", $media_domain, false ) . ' >videodelivery.net</label>'
-		   . '<small class="form-text text-muted">' . esc_html__( 'Set which Cloudflare domain is used by your users, to access video content. Changing this may require an update to your sites Content Security Policy.', 'cloudflare-stream-wordpress' ) . '</small>';
+		   . '<label for="cloudflare_stream_media_domain_"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_1" value="videodelivery.net" ' . checked( "videodelivery.net", $media_domain, false ) . ' >videodelivery.net</label>';
+
+		// The account subdomain option is only presented if it was able to be retrieved from the API.
+		$account_subdomain = self::get_account_subdomain();
+		if ( $account_subdomain ) {
+			echo '<label for="cloudflare_stream_media_domain_"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_2" value="' . $account_subdomain . '" ' . checked( $account_subdomain, $media_domain, false ) . ' >' . $account_subdomain . ' (<a href="https://community.cloudflare.com/t/upcoming-domain-change-to-ensure-delivery-of-your-video-content/405842" target="_blank">more information</a>)</label>';
+		}
+
+		echo '<small class="form-text text-muted">' . esc_html__( 'Set which Cloudflare domain is used by your users, to access video content. Changing this may require an update to your sites Content Security Policy.', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
@@ -261,6 +268,16 @@ class Cloudflare_Stream_Settings {
 			</div>
 			<?php
 		}
+	}
+
+	/**
+	 * Try to fetch and save the Cloudflare Account ID using Zone ID.
+	 *
+	 * @since 1.0.9
+	 */
+	public function get_account_subdomain() {
+		$api = Cloudflare_Stream_API::instance();
+		return $api->get_account_subdomain();
 	}
 
 	/**

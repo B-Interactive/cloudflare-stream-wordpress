@@ -250,16 +250,21 @@ class Cloudflare_Stream_API {
 	public function get_video_embed( $uid, $args = array(), $return_headers = false ) {
 		$media_domain = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
 		$signed_urls  = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
-		if ( $signed_urls ) {
-			$uid = $this->get_signed_video_token($uid)->result->token;
-		}
+		$uid = ( $signed_urls ) ? $this->get_signed_video_token($uid)->result->token : $uid;
+
+		$standard_uri =          ' src="https://iframe.' . $media_domain . '/' . $uid . '?';
+		$account_subdomain_uri = ' src="https://' . $media_domain . '/' . $uid . '/iframe?';
+
+		$src_uri = ( $media_domain == "cloudflarestream.com" || $media_domain == "videodelivery.net" ) ? $standard_uri : $account_subdomain_uri;
+
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
-			. ' src="https://iframe.' . $media_domain . '/' . $uid . '?'
-			. 'muted='    . $args['muted'] . '&'
-			. 'preload='  . $args['preload'] . '&'
-			. 'loop='     . $args['loop'] . '&'
-			. 'autoplay=' . $args['autoplay'] . '&'
-			. 'controls=' . $args['controls'] . '" '
+			. $src_uri
+			. 'muted='          . $args['muted']    . '&'
+			. 'preload='        . $args['preload']  . '&'
+			. 'loop='           . $args['loop']     . '&'
+			. 'autoplay='       . $args['autoplay'] . '&'
+			. 'controls='       . $args['controls'] . '&'
+			. 'poster=https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg" '
 			. 'style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
 			. 'allowfullscreen="true" '
@@ -333,13 +338,29 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Retrieve unique Cloudflare account subdomain.
+	 *
+	 * @param array $args Additional API arguments.
+	 * @param bool  $return_headers Return the response headers intead of the response body.
+	 * @since 1.0.9
+	 */
+	public function get_account_subdomain( $args = array(), $return_headers = false ) {
+        $response_text = json_decode( $this->request( 'stream/', $args, $return_headers ) );
+		if ( count($response_text->result) > 0 ) {
+			$text_array = explode( "/", $response_text->result[0]->thumbnail );
+			return $text_array[2];
+		}
+		return false;
+	}
+
+	/**
 	 * Retrieve Cloudflare Account ID using the Zones API.
 	 *
 	 * @param bool $save If true, saves retrieved Account ID to database, but only if the option does not already exist.
 	 * @since 1.0.9
 	 */
 	public function get_account_id( $save = false ) {
-        $response_text = json_decode( $this->zone_request( '', array(), false ) );
+        $response_text = json_decode( $this->request( '', array(), false ) );
 		if ( $response_text->success ) {
 			$api_id = $response_text->result->account->id;
 			if ( strlen( $api_id ) == 32 ) {
