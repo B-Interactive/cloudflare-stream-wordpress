@@ -132,6 +132,16 @@ function cloudflare_stream_admin_enqueue_scripts() {
 add_action( 'admin_enqueue_scripts', 'cloudflare_stream_admin_enqueue_scripts' );
 
 /**
+* Register stylesheets for admin area.
+*
+* @since 1.0.9
+*/
+function cloudflare_stream_admin_enqueue_styles():void {
+	wp_enqueue_style( 'cloudflare-stream', plugin_dir_url( __FILE__ ) . 'css/cloudflare-stream-admin.css');
+}
+add_action( 'admin_enqueue_scripts', 'cloudflare_stream_admin_enqueue_styles' );
+
+/**
  * Adds 'upload-php' class to the <body> tag.
  *
  * @param array $classes Array of CSS classes.
