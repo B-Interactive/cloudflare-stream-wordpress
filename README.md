@@ -54,7 +54,7 @@ Admin Settings
 ------------
 The admin area has been completely revised from the official plugin.  Instead of using the all-controlling global API key, this now makes use of a much more secure API token, which only permits the plugin limited access to a Cloudflare account.  When the admin settings are accessed, any existing API key and email stored in the database, are deleted from the database as these are no longer needed and their presence is a security risks.
 
-![admin-settings](https://user-images.githubusercontent.com/16984998/166196073-0cd8c58e-9c95-49ef-937a-2798802e3769.png)
+![admin-settings](https://user-images.githubusercontent.com/16984998/188538819-ac0b9905-7d62-4118-81ff-d92a78ba7ea7.png)
 
 
 ### API Token ###
