@@ -346,9 +346,11 @@ class Cloudflare_Stream_API {
 	 */
 	public function get_account_subdomain( $args = array(), $return_headers = false ) {
         $response_text = json_decode( $this->request( 'stream/', $args, $return_headers ) );
-		if ( count($response_text->result) > 0 ) {
-			$text_array = explode( "/", $response_text->result[0]->thumbnail );
-			return $text_array[2];
+		if ( $response_text->success ) {
+			if ( count($response_text->result) > 0 ) {
+				$text_array = explode( "/", $response_text->result[0]->thumbnail );
+				return $text_array[2];
+			}
 		}
 		return false;
 	}
