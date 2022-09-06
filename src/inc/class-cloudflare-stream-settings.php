@@ -33,6 +33,7 @@ class Cloudflare_Stream_Settings {
 	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
 	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
 	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
+	const STANDARD_MEDIA_DOMAINS      = [ 'cloudflarestream.com', 'videodelivery.net' ];
 
 	/**
 	 * Singleton
@@ -176,8 +177,11 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function media_domain_cb() {
 		$media_domain = get_option( self::OPTION_MEDIA_DOMAIN );
-		echo '<label for="cloudflare_stream_media_domain_0"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_0" value="cloudflarestream.com" ' . checked( "cloudflarestream.com", $media_domain, false ) . ' >cloudflarestream.com (default)</label>'
-		   . '<label for="cloudflare_stream_media_domain_"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_1" value="videodelivery.net" ' . checked( "videodelivery.net", $media_domain, false ) . ' >videodelivery.net</label>';
+
+		for ( $i = 0; $i < count( self::STANDARD_MEDIA_DOMAINS ); $i++ ) {
+			$default =  !$i  ? ' (default)' : '';
+			echo '<label for="cloudflare_stream_media_domain_' . $i . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . $i . '" value="' . self::STANDARD_MEDIA_DOMAINS[$i] . '" ' . checked( self::STANDARD_MEDIA_DOMAINS[$i], $media_domain, false ) . ' >' . self::STANDARD_MEDIA_DOMAINS[$i] . $default . '</label>';
+		}
 
 		// The account subdomain option is only presented if it was able to be retrieved from the API.
 		$account_subdomain = self::get_account_subdomain();

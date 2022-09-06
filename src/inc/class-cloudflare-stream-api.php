@@ -255,7 +255,7 @@ class Cloudflare_Stream_API {
 		$standard_uri =          ' src="https://iframe.' . $media_domain . '/' . $uid . '?';
 		$account_subdomain_uri = ' src="https://' . $media_domain . '/' . $uid . '/iframe?';
 
-		$src_uri = ( $media_domain == "cloudflarestream.com" || $media_domain == "videodelivery.net" ) ? $standard_uri : $account_subdomain_uri;
+		$src_uri = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS ) ) ? $standard_uri : $account_subdomain_uri;
 
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
 			. $src_uri

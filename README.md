@@ -5,6 +5,7 @@ A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork
 * Take full advantage of Cloudflare Stream's security features.
 * Uses signed URL's / tokens, so video access can be strictly controlled and limited.
 * Uses a limited access API token for API access, eliminating the use of the global API key which presents a huge security risk.
+* Incorporate additional features and new features as they're made available.
 
 The Gutenberg Block method of adding videos appears to be broken (in the original plugin also). I've only left code related to the Gutenberg Block in this fork, so as to not break existing content should you switch from the official plugin. Adding new block content will fail as the global API key it's expecting to use is no longer stored in this plugin.  Note the Gutenberg Block as it currently exists, does not support signed URL's / tokens.
 
@@ -57,16 +58,16 @@ The admin area has been completely revised from the official plugin.  Instead of
 ![admin-settings](https://user-images.githubusercontent.com/16984998/188538819-ac0b9905-7d62-4118-81ff-d92a78ba7ea7.png)
 
 
+### API Account ID ###
+* **Cloudflare** > [domain] > **Overview** > [scroll down to API section on the right and copy the Account ID].
+
 ### API Token ###
 An API token must be created in your Cloudflare dashboard, for this plugin. For security sake, the token should only be used for this plugin and provide only the permissions necesarry for the plugin to work.  I'd recommend setting up Client IP Address Filtering when creating the token too.  Where feasible, restrict access to only the IP addresses that need it (eg: your webserver's IP where WordPress is installed).
 * **Cloudflare** > **My Profile** > **API Tokens** > **API Tokens** > [Create Token]
 Must have permission for: **Account - Stream:Edit**
 
-### API Account ID ###
-* **Cloudflare** > [domain] > **Overview** > [scroll down to API section on the right and copy the Account ID].
-
 ### Use Signed URLs ###
-When this is checked [x], videos are accessed using a temporary time-limited token, aka signed URL.  This alone does not secure your content however.  Please see **Securing Video Access** below for further details on how to do that.
+When this is checked [x], videos are accessed using a temporary time-limited token, aka signed URL.  This alone does not secure your content however.  Please see **[Securing Video Access](#securing-video-access)** below for further details on how to do that.
 
 ### Signed URL Expiration ###
 When **Use Signed URLs** is checked [x], this setting controls how long any particular token / signed ULR is valid for **in minutes**. The Cloudflare default, is 60 minutes. Generally, you'd want to make sure this is larger than your longest video.
