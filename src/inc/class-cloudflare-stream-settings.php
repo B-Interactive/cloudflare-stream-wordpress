@@ -73,8 +73,8 @@ class Cloudflare_Stream_Settings {
 	public function action_admin_init() {
 
 		// Register Settings.
-		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_API_ACCOUNT );
+		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS_DURATION );
 		register_setting( self::SETTING_GROUP, self::OPTION_MEDIA_DOMAIN );
@@ -87,17 +87,17 @@ class Cloudflare_Stream_Settings {
 		);
 
 			add_settings_field(
-				self::OPTION_API_TOKEN,
-				esc_html__( 'API Token', 'cloudflare-stream-wordpress' ),
-				array( $this, 'api_token_cb' ),
+				self::OPTION_API_ACCOUNT,
+				esc_html__( 'API Account ID', 'cloudflare-stream-wordpress' ),
+				array( $this, 'api_account_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
 
 			add_settings_field(
-				self::OPTION_API_ACCOUNT,
-				esc_html__( 'API Account ID', 'cloudflare-stream-wordpress' ),
-				array( $this, 'api_account_cb' ),
+				self::OPTION_API_TOKEN,
+				esc_html__( 'API Token', 'cloudflare-stream-wordpress' ),
+				array( $this, 'api_token_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
@@ -131,17 +131,6 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Callback for rendering the API Token settings field
-	 */
-	public function api_token_cb() {
-		$api_token = get_option( self::OPTION_API_TOKEN );
-		echo '<input type="password" class="regular-text" name="cloudflare_stream_api_token" id="cloudflare_stream_api_token" value="' . esc_attr( $api_token ) . '" autocomplete="off">'
-		   . '<small class="form-text text-muted">'
-		   . esc_html__( 'Cloudflare > My Profile > API Tokens > API Tokens > [Create Token]', 'cloudflare-stream-wordpress' ) . '</small>'
-		   . '<small class="form-text text-muted">' . esc_html__( 'Must have permission for: Account - Stream:Edit', 'cloudflare-stream-wordpress' ) . '</small>';
-	}
-
-	/**
 	 * Callback for rendering the API Account ID settings field
 	 */
 	public function api_account_cb() {
@@ -151,6 +140,17 @@ class Cloudflare_Stream_Settings {
 		}
 		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_account" id="cloudflare_stream_api_account" value="' . esc_attr( $api_account ) . '" autocomplete="on"> '
 		   . '<small class="form-text text-muted">' . esc_html__( 'Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Account ID].', 'cloudflare-stream-wordpress' ) . '</small>';
+	}
+
+	/**
+	 * Callback for rendering the API Token settings field
+	 */
+	public function api_token_cb() {
+		$api_token = get_option( self::OPTION_API_TOKEN );
+		echo '<input type="password" class="regular-text" name="cloudflare_stream_api_token" id="cloudflare_stream_api_token" value="' . esc_attr( $api_token ) . '" autocomplete="off">'
+		   . '<small class="form-text text-muted">'
+		   . esc_html__( 'Cloudflare > My Profile > API Tokens > API Tokens > [Create Token]', 'cloudflare-stream-wordpress' ) . '</small>'
+		   . '<small class="form-text text-muted">' . esc_html__( 'Must have permission for: Account - Stream:Edit', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
