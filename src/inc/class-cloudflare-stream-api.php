@@ -360,7 +360,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.9
 	 */
 	public function get_account_id( $save = false ) {
-        $response_text = json_decode( $this->request( '', array(), false ) );
+        $response_text = json_decode( $this->request( '', array(), false, self::ZONES_API ) );
 		if ( $response_text->success ) {
 			$api_id = $response_text->result->account->id;
 			if ( strlen( $api_id ) == 32 ) {
