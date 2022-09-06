@@ -129,7 +129,51 @@ function cloudflare_stream_admin_enqueue_scripts() {
 		)
 	);
 }
-add_action( 'admin_enqueue_scripts', 'cloudflare_stream_admin_enqueue_scripts' );
+add_action( 'init', 'cloudflare_stream_admin_enqueue_scripts' );
+
+
+/**
+ * Render the video block
+ * 
+ * @since 1.0.9
+ */
+function cloudflare_stream_render_block( $block_attributes, $content ) {
+
+	// only proceed if we have a UID
+	if ( !isset( $block_attributes['uid']) || empty( $block_attributes['uid'] ) ) {
+		return $content;
+	}
+
+	// apply default attributes
+	$defaults = array(
+		'controls' => true,
+		'autoplay' => false,
+		'loop'     => false,
+		'preload'  => false,
+		'muted'    => false,
+	);
+
+	$attributes = wp_parse_args( $block_attributes, $defaults );
+
+	// autoplay should be removed altogether, not set to false, to disable
+	if ( !$attributes['autoplay'] ) {
+		unset( $attributes['autoplay'] );
+	}
+
+	// set true/false string values that Cloudflare_Stream_API::get_video_embed is expecting
+	foreach ( $attributes as $attribute => $value ) {
+
+		if ($value === true || $value === false ) {
+			$attributes[$attribute] = $value ? 'true' : 'false';
+		}
+
+	}
+
+	$api  = Cloudflare_Stream_API::instance();
+	$embed = $api->get_video_embed($attributes['uid'], $attributes );
+	
+	return $embed;
+}
 
 /**
  * Adds 'upload-php' class to the <body> tag.
