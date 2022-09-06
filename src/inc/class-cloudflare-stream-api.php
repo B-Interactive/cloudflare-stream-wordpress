@@ -259,10 +259,10 @@ class Cloudflare_Stream_API {
 
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
 			. $src_uri
-			. 'muted='          . $args['muted']    . '&'
+			. ( !empty( $args['muted'] ) && boolval( $args['muted'] ) && $args['muted'] != 'false' ? 'muted=' . $args['muted'] . '&' : '' )
+			. ( !empty( $args['loop'] ) && boolval( $args['loop'] ) && $args['loop'] != 'false' ? 'loop=' . $args['loop'] . '&' : '' )
+			. ( !empty( $args['autoplay'] ) && boolval( $args['autoplay'] ) && $args['autoplay'] != 'false' ? 'autoplay=' . $args['autoplay'] . '&' : '' )
 			. 'preload='        . $args['preload']  . '&'
-			. 'loop='           . $args['loop']     . '&'
-			. 'autoplay='       . $args['autoplay'] . '&'
 			. 'controls='       . $args['controls'] . '&'
 			. 'poster=https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg" '
 			. 'style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
