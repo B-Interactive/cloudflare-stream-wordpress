@@ -1,6 +1,9 @@
 /* Necessary to use TUS protocol for uploads */
 import * as tus from 'tus-js-client';
 
+/* Common logic to generate stream URL */
+import { streamIframeSource } from './lib';
+
 /* global ajaxurl */
 /* global cloudflareStream */
 
@@ -496,14 +499,9 @@ class CloudflareStreamEdit extends Component {
 				</InspectorControls>
 				<figure className={ className }>
 					<Disabled>
-						{ <stream
-							src={ uid }
-							controls={ controls }
-							autoPlay={ autoplay }
-							loop={ loop }
-							muted={ muted }
-							ref={ this.streamPlayer }
-						></stream> }
+						{ <iframe
+							src={ streamIframeSource( this.props.attributes ) }
+						></iframe> }
 						{ /*<img src={ thumbnail } alt="Cloudflare Stream Video" /> */ }
 					</Disabled>
 				</figure>
