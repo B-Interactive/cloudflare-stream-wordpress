@@ -44,3 +44,19 @@ label[data-setting="description"] {
   display: none;
   visibility: hidden;
 }
+
+// iframe player layout in block editor 
+.wp-block-cloudflare-stream-block-video {
+  position: relative;
+  padding-top: 56.25%;
+
+  .player-edit-wrapper,
+  .player-edit-wrapper iframe 
+  {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+  }
+}

@@ -498,7 +498,7 @@ class CloudflareStreamEdit extends Component {
 					</PanelBody>
 				</InspectorControls>
 				<figure className={ className }>
-					<Disabled>
+					<Disabled className="player-edit-wrapper">
 						{ <iframe
 							src={ streamIframeSource( this.props.attributes ) }
 						></iframe> }

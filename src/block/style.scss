@@ -24,4 +24,18 @@
 	&.aligncenter {
 		text-align: center;
 	}
+
+	// player layout
+	.player-wrapper {
+		position: relative;
+		padding-top: 56.25%;
+	}
+	
+	iframe.player-frame {
+		border: none;
+		position: absolute;
+		top: 0;
+		height: 100%;
+		width: 100%;
+	}
 }
