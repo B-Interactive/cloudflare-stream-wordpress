@@ -177,16 +177,17 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function media_domain_cb() {
 		$media_domain = get_option( self::OPTION_MEDIA_DOMAIN );
+		$num_domains = count( self::STANDARD_MEDIA_DOMAINS );
 
-		for ( $i = 0; $i < count( self::STANDARD_MEDIA_DOMAINS ); $i++ ) {
-			$default =  !$i  ? ' (default)' : '';
+		for ( $i = 0; $i < $num_domains; $i++ ) {
+			$default =  !$i  ? ' (' . esc_html__( 'default', 'cloudflare-stream-wordpress' ) . ')' : '';
 			echo '<label for="cloudflare_stream_media_domain_' . $i . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . $i . '" value="' . self::STANDARD_MEDIA_DOMAINS[$i] . '" ' . checked( self::STANDARD_MEDIA_DOMAINS[$i], $media_domain, false ) . ' >' . self::STANDARD_MEDIA_DOMAINS[$i] . $default . '</label>';
 		}
 
 		// The account subdomain option is only presented if it was able to be retrieved from the API.
 		$account_subdomain = self::get_account_subdomain();
 		if ( $account_subdomain ) {
-			echo '<label for="cloudflare_stream_media_domain_"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_2" value="' . $account_subdomain . '" ' . checked( $account_subdomain, $media_domain, false ) . ' >' . $account_subdomain . ' (<a href="https://community.cloudflare.com/t/upcoming-domain-change-to-ensure-delivery-of-your-video-content/405842" target="_blank">more information</a>)</label>';
+			echo '<label for="cloudflare_stream_media_domain_' . $num_domains . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . $num_domains . '" value="' . $account_subdomain . '" ' . checked( $account_subdomain, $media_domain, false ) . ' >' . $account_subdomain . ' (<a href="https://community.cloudflare.com/t/upcoming-domain-change-to-ensure-delivery-of-your-video-content/405842" target="_blank">' . esc_html__( 'more information', 'cloudflare-stream-wordpress' ) . '</a>)</label>';
 		}
 
 		echo '<small class="form-text text-muted">' . esc_html__( 'Set which Cloudflare domain is used by your users, to access video content. Changing this may require an update to your sites Content Security Policy.', 'cloudflare-stream-wordpress' ) . '</small>';
@@ -207,7 +208,7 @@ class Cloudflare_Stream_Settings {
 		// Defaults
 		add_option( self::OPTION_SIGNED_URLS, true );
 		add_option( self::OPTION_SIGNED_URLS_DURATION, 60 );
-		add_option( self::OPTION_MEDIA_DOMAIN, 'cloudflarestream.com' );
+		add_option( self::OPTION_MEDIA_DOMAIN, self::STANDARD_MEDIA_DOMAINS[0] );
 
 		// Completely remove old less secure API credentials if they exist.
 		if ( get_option( self::OPTION_API_KEY ) !== false ) {
