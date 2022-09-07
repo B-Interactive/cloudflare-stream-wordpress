@@ -121,18 +121,9 @@ class Cloudflare_Stream_API {
 		$this->api_token = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
 		$this->api_id    = $this->get_api_id( $api_type );
 
-		$base_url = 'https://api.cloudflare.com/client/v4/'. $api_type . '/' . $this->api_id . '/';
-		$args['headers'] = array(
-			'Authorization' => 'Bearer ' . $this->api_token,
-			'Content-Type'  => 'application/json',
-		);
-
-		$query_string = isset( $args['query'] ) ? '?' . $args['query'] : '';
-		$endpoint    .= $query_string;
-		$route        = $base_url . $endpoint;
-
 		// Get remote HTML file.
-		$response = wp_remote_request( $route, $args );
+		$request = $this->assemble_request( $endpoint, $args, $api_type );
+		$response = wp_remote_request( $request['url'], $request['args'] );
 
 		// Check for error.
 		if ( is_wp_error( $response ) ) {
@@ -144,11 +135,35 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Assemble a request object.
+	 *
+	 * @param string $endpoint API Endpoint.
+	 * @param array  $args Additional API arguments.
+	 * @param string $api_type Which API to make the request to.
+	 * @since 1.1.0
+	 */
+	public function assemble_request( $endpoint, $args, $api_type ) {
+		$args['headers'] = array(
+			'Authorization' => 'Bearer ' . $this->api_token,
+			'Content-Type'  => 'application/json',
+		);
+		$args['data'] = $args['body'];
+		$args['type'] = isset( $args['method'] ) ? $args['method'] : null;
+		$request = array(
+			'url'     => ('https://api.cloudflare.com/client/v4/'. $api_type . '/' . $this->api_id . '/' . $endpoint . (isset( $args['query'] ) ? '?' . $args['query'] : '')),
+			'args'    => $args,
+		);
+
+		return $request;
+	}
+
+	/**
 	 * Get API ID based on API type.
 	 *
-	 * @param string $api_type The API type, defaulting to 'accounts'.
-	 * @return string API ID.
-	 * @since 1.0.9
+	 * @deprecated The zones API is no longer used by this plugin.
+	 * @param      string  $api_type The API type, defaulting to 'accounts'.
+	 * @return     string API ID.
+	 * @since      1.0.9
 	 */
 	public function get_api_id( $api_type = null ) {
 		$api_id = '';
@@ -202,7 +217,7 @@ class Cloudflare_Stream_API {
 	 * @param bool  $return_headers Return the response headers intead of the response body.
 	 * @since 1.0.0
 	 */
-	public function get_videos( $args = array(), $return_headers = 'false' ) {
+	public function get_videos( $args = array(), $return_headers = false ) {
 		$response_text = $this->request( 'stream', $args, $return_headers );
 		return json_decode( $response_text );
 	}
