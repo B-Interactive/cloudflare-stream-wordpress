@@ -26,7 +26,7 @@ class Cloudflare_Stream_Settings {
 	const SETTING_SECTION_GENERAL     = 'cloudflare_stream_settings_general';
 	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
 	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
-	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id';
+	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id'; // Deprecated
 	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
 	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
 	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
@@ -242,9 +242,9 @@ class Cloudflare_Stream_Settings {
 			if ( 'settings_page_cloudflare-stream' === $screen->id && false === self::test_api_keys() ) {
 				?>
 				<div class="notice notice-error is-dismissible">
-					<p><?php 
-						echo sprintf( 
-							wp_kses( 
+					<p><?php
+						echo sprintf(
+							wp_kses(
 								__( 'Cloudflare Stream API details are incorrect. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream-wordpress' ),
 								array(  'a' => array( 'href' => array() ) )
 							),
@@ -261,9 +261,9 @@ class Cloudflare_Stream_Settings {
 		} elseif ( 'settings_page_cloudflare-stream' !== $screen->id ) {
 			?>
 			<div class="notice notice-warning is-dismissible">
-				<p><?php 
-						echo sprintf( 
-							wp_kses( 
+				<p><?php
+						echo sprintf(
+							wp_kses(
 								__( 'Cloudflare Stream is not configured. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream-wordpress' ),
 								array(  'a' => array( 'href' => array() ) )
 							),
@@ -276,7 +276,7 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Try to fetch and save the Cloudflare Account ID using Zone ID.
+	 * Try to fetch the account subdomain.
 	 *
 	 * @since 1.0.9
 	 */
@@ -288,7 +288,8 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Try to fetch and save the Cloudflare Account ID using Zone ID.
 	 *
-	 * @since 1.0.9
+	 * @deprecated The zones API is no longer used by the plugin.
+	 * @since      1.0.9
 	 */
 	public function get_account_id() {
 		$api_token   = get_option( self::OPTION_API_TOKEN );
@@ -340,8 +341,8 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function settings_section_api_keys() {
 		echo '<p>';
-		echo sprintf( 
-			wp_kses( 
+		echo sprintf(
+			wp_kses(
 				__( 'To use the Cloudflare Stream for WordPress plugin, enter your Cloudflare account information below. If you need help getting started, <a target="_blank" href="%s" title="Cloudflare Stream for WordPress README">click here.</a>', 'cloudflare-stream-wordpress' ),
 				array(  'a' => array( 'href' => array(), 'target' => array( '_blank' ) ) )
 			),

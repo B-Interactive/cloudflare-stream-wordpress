@@ -121,12 +121,6 @@ class Cloudflare_Stream_API {
 		$this->api_token = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
 		$this->api_id    = $this->get_api_id( $api_type );
 
-		if ( isset( $args['method'] ) ) {
-			$method = $args['method'];
-		} else {
-			$method = 'GET';
-		}
-
 		$base_url = 'https://api.cloudflare.com/client/v4/'. $api_type . '/' . $this->api_id . '/';
 		$args['headers'] = array(
 			'Authorization' => 'Bearer ' . $this->api_token,
@@ -290,12 +284,11 @@ class Cloudflare_Stream_API {
 			$body = [
 				'exp' => ( time() + ( intval($signed_urls_duration) * 60 ) ),
 			];
-			$body           = wp_json_encode( $body );
+			$body         = wp_json_encode( $body );
 			$args['body'] = $body;
 		}
 
-		$args['method'] = 'POST';
-        $response_text  = $this->request( 'stream/' . $uid . '/token', $args, $return_headers );
+        $response_text  = $this->post( 'stream/' . $uid . '/token', $args, $return_headers );
 		return json_decode( $response_text );
 	}
 
@@ -358,6 +351,7 @@ class Cloudflare_Stream_API {
 	/**
 	 * Retrieve Cloudflare Account ID using the Zones API.
 	 *
+	 * @deprecated The zones API is no longer used by the plugin.
 	 * @param bool $save If true, saves retrieved Account ID to database, but only if the option does not already exist.
 	 * @since 1.0.9
 	 */
