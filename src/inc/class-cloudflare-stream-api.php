@@ -62,6 +62,7 @@ class Cloudflare_Stream_API {
 
 	/**
 	 * The zones API.
+	 * @deprecated
 	 */
 	const ZONES_API = 'zones';
 
@@ -146,6 +147,7 @@ class Cloudflare_Stream_API {
 	/**
 	 * Get API ID based on API type.
 	 *
+	 * @deprecated The zones API is no longer used by the plugin.
 	 * @param string $api_type The API type, defaulting to 'accounts'.
 	 * @return string API ID.
 	 * @since 1.0.9
