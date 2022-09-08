@@ -1,6 +1,11 @@
 name: WPCS check
 
-on: pull_request
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
 
 jobs:
   phpcs:
@@ -8,7 +13,7 @@ jobs:
       runs-on: ubuntu-latest
       steps:
         - uses: actions/checkout@v2
-        - name: VIPCS check
+        - name: WPCS check
           uses: 10up/wpcs-action@stable
           with:
             standard: 'WordPress'
