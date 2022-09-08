@@ -9,6 +9,17 @@
  */
 
 /**
+* Register stylesheets for admin area.
+*
+* @since 1.0.9
+*/
+function cloudflare_stream_admin_enqueue_styles( $hook ):void {
+	if ( $hook != 'settings_page_cloudflare-stream' ) return;
+	wp_enqueue_style( 'cloudflare-stream', plugin_dir_url( __DIR__ ) . 'css/cloudflare-stream-admin.css');
+}
+add_action( 'admin_enqueue_scripts', 'cloudflare_stream_admin_enqueue_styles' );
+
+/**
  * Cloudflare_Stream_Settings
  */
 class Cloudflare_Stream_Settings {
