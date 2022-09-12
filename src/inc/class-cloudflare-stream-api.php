@@ -62,6 +62,7 @@ class Cloudflare_Stream_API {
 
 	/**
 	 * The zones API.
+	 *
 	 * @deprecated
 	 */
 	const ZONES_API = 'zones';
@@ -122,7 +123,7 @@ class Cloudflare_Stream_API {
 		$this->api_token = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
 		$this->api_id    = $this->get_api_id( $api_type );
 
-		$base_url = 'https://api.cloudflare.com/client/v4/'. $api_type . '/' . $this->api_id . '/';
+		$base_url        = 'https://api.cloudflare.com/client/v4/' . $api_type . '/' . $this->api_id . '/';
 		$args['headers'] = array(
 			'Authorization' => 'Bearer ' . $this->api_token,
 			'Content-Type'  => 'application/json',
@@ -154,7 +155,7 @@ class Cloudflare_Stream_API {
 	 */
 	public function get_api_id( $api_type = null ) {
 		$api_id = '';
-		if ( $api_type == self::ZONES_API ) {
+		if ( self::ZONES_API === $api_type ) {
 			$api_id = get_option( Cloudflare_Stream_Settings::OPTION_API_ZONE_ID );
 		} else {
 			$api_id = get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT );
@@ -246,22 +247,22 @@ class Cloudflare_Stream_API {
 	public function get_video_embed( $uid, $args = array(), $return_headers = false ) {
 		$media_domain = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
 		$signed_urls  = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
-		$uid = ( $signed_urls ) ? $this->get_signed_video_token($uid)->result->token : $uid;
+		$uid          = ( $signed_urls ) ? $this->get_signed_video_token( $uid )->result->token : $uid;
 
-		$standard_uri =          ' src="https://iframe.' . $media_domain . '/' . $uid . '?';
-		$account_subdomain_uri = ' src="https://' . $media_domain . '/' . $uid . '/iframe?';
+		$standard_uri          = 'https://iframe.' . $media_domain . '/' . $uid . '?';
+		$account_subdomain_uri = 'https://' . $media_domain . '/' . $uid . '/iframe?';
 
-		$src_uri = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS ) ) ? $standard_uri : $account_subdomain_uri;
+		$src_uri = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true ) ) ? $standard_uri : $account_subdomain_uri;
 
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
-			. $src_uri
-			. 'muted='          . $args['muted']    . '&'
-			. 'preload='        . $args['preload']  . '&'
-			. 'loop='           . $args['loop']     . '&'
-			. 'autoplay='       . $args['autoplay'] . '&'
-			. 'controls='       . $args['controls'] . '&'
-			. 'poster=https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg" '
-			. 'style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
+			. ' src="' . esc_url( $src_uri )
+			. 'muted=' . $args['muted'] . '&'
+			. 'preload=' . $args['preload'] . '&'
+			. 'loop=' . $args['loop'] . '&'
+			. 'autoplay=' . $args['autoplay'] . '&'
+			. 'controls=' . $args['controls'] . '&'
+			. 'poster=' . esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg' ) . '"'
+			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
 			. 'allowfullscreen="true" '
 			. 'id="stream-player"'
@@ -271,26 +272,26 @@ class Cloudflare_Stream_API {
 	}
 
 		/**
-	 * Get a specific video's signed id.
-	 *
-	 * @param string $uid Unique Video ID.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
-	 * @since 1.0.5
-	 */
+		 * Get a specific video's signed id.
+		 *
+		 * @param string $uid Unique Video ID.
+		 * @param array  $args Additional API arguments.
+		 * @param bool   $return_headers Return the response headers intead of the response body.
+		 * @since 1.0.5
+		 */
 	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
 		$signed_urls_duration = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION );
 
 		// Determine token expiration time if custom signed urls duration is set.
-		if ( $signed_urls_duration != false ) {
-			$body = [
-				'exp' => ( time() + ( intval($signed_urls_duration) * 60 ) ),
-			];
+		if ( false !== $signed_urls_duration ) {
+			$body         = array(
+				'exp' => ( time() + ( intval( $signed_urls_duration ) * 60 ) ),
+			);
 			$body         = wp_json_encode( $body );
 			$args['body'] = $body;
 		}
 
-        $response_text  = $this->post( 'stream/' . $uid . '/token', $args, $return_headers );
+		$response_text = $this->post( 'stream/' . $uid . '/token', $args, $return_headers );
 		return json_decode( $response_text );
 	}
 
@@ -303,7 +304,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_link( $uid, $args = array(), $return_headers = false ) {
-        $response_text = $this->request( 'stream/' . $uid . '/preview', $args, $return_headers );
+		$response_text = $this->request( 'stream/' . $uid . '/preview', $args, $return_headers );
 		return $response_text;
 	}
 
@@ -340,10 +341,10 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.9
 	 */
 	public function get_account_subdomain( $args = array(), $return_headers = false ) {
-        $response_text = json_decode( $this->request( 'stream/', $args, $return_headers ) );
+		$response_text = json_decode( $this->request( 'stream/', $args, $return_headers ) );
 		if ( $response_text->success ) {
-			if ( count($response_text->result) > 0 ) {
-				$text_array = explode( "/", $response_text->result[0]->thumbnail );
+			if ( count( $response_text->result ) > 0 ) {
+				$text_array = explode( '/', $response_text->result[0]->thumbnail );
 				return $text_array[2];
 			}
 		}
@@ -358,10 +359,10 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.9
 	 */
 	public function get_account_id( $save = false ) {
-        $response_text = json_decode( $this->request( '', array(), false, self::ZONES_API ) );
+		$response_text = json_decode( $this->request( '', array(), false, self::ZONES_API ) );
 		if ( $response_text->success ) {
 			$api_id = $response_text->result->account->id;
-			if ( strlen( $api_id ) == 32 ) {
+			if ( strlen( $api_id ) === 32 ) {
 				if ( $save ) {
 					add_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT, $api_id );
 				}

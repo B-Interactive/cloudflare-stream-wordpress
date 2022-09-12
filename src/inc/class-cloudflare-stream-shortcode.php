@@ -63,26 +63,27 @@ class Cloudflare_Stream_Shortcode {
 	 * @param array $atts Video attributes.
 	 * @since 1.0.0
 	 */
-    public function video_shortcode_handler( $atts ) {
+	public function video_shortcode_handler( $atts ) {
 		$attributes = shortcode_atts(
 			array(
 				'uid'      => '',
-                'controls' => 'true',
-                'autoplay' => 'false',
-                'loop'     => 'false',
-                'preload'  => 'false',
-                'muted'    => 'false',
+				'controls' => 'true',
+				'autoplay' => 'false',
+				'loop'     => 'false',
+				'preload'  => 'false',
+				'muted'    => 'false',
 			),
 			$atts
 		);
 
-        foreach ( $attributes as $attr ) {
-            if ( $attr == $attributes['uid'] ) { continue; } // Do nothing more with the UID.
-            $attr = ( filter_var( $attr, FILTER_VALIDATE_BOOLEAN ) ) ? 'true' : 'false'; // Filter to string based boolean.
-        }
+		foreach ( $attributes as $attr ) {
+			if ( $attr === $attributes['uid'] ) {
+				continue; } // Do nothing more with the UID.
+			$attr = ( filter_var( $attr, FILTER_VALIDATE_BOOLEAN ) ) ? 'true' : 'false'; // Filter to string based boolean.
+		}
 
-		$stream_api = Cloudflare_Stream_API::instance();
-        $response_text = $stream_api->get_video_embed( $attributes['uid'], $attributes );
+		$stream_api    = Cloudflare_Stream_API::instance();
+		$response_text = $stream_api->get_video_embed( $attributes['uid'], $attributes );
 
 		return $response_text;
 	}

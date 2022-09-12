@@ -9,13 +9,16 @@
  */
 
 /**
-* Register stylesheets for admin area.
-*
-* @since 1.0.9
-*/
+ * Register stylesheets for admin area.
+ *
+ * @param array $hook Additional API arguments.
+ * @since 1.0.9
+ */
 function cloudflare_stream_admin_enqueue_styles( $hook ):void {
-	if ( $hook != 'settings_page_cloudflare-stream' ) return;
-	wp_enqueue_style( 'cloudflare-stream', plugin_dir_url( __DIR__ ) . 'css/cloudflare-stream-admin.css');
+	if ( 'settings_page_cloudflare-stream' !== $hook ) {
+		return;
+	}
+	wp_enqueue_style( 'cloudflare-stream', plugin_dir_url( __DIR__ ) . 'css/cloudflare-stream-admin.css', array(), '1.0.9' );
 }
 add_action( 'admin_enqueue_scripts', 'cloudflare_stream_admin_enqueue_styles' );
 
@@ -37,14 +40,14 @@ class Cloudflare_Stream_Settings {
 	const SETTING_SECTION_GENERAL     = 'cloudflare_stream_settings_general';
 	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
 	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
-	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id'; // Deprecated
+	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id'; // Deprecated.
 	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
 	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
 	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
 	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
 	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
 	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
-	const STANDARD_MEDIA_DOMAINS      = [ 'cloudflarestream.com', 'videodelivery.net' ];
+	const STANDARD_MEDIA_DOMAINS      = array( 'cloudflarestream.com', 'videodelivery.net' );
 
 	/**
 	 * Singleton
@@ -151,7 +154,7 @@ class Cloudflare_Stream_Settings {
 			$api_account = self::get_account_id();
 		}
 		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_account" id="cloudflare_stream_api_account" value="' . esc_attr( $api_account ) . '" autocomplete="on"> '
-		   . '<small class="form-text text-muted">' . esc_html__( 'Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Account ID].', 'cloudflare-stream-wordpress' ) . '</small>';
+		. '<small class="form-text text-muted">' . esc_html__( 'Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Account ID].', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
@@ -160,9 +163,9 @@ class Cloudflare_Stream_Settings {
 	public function api_token_cb() {
 		$api_token = get_option( self::OPTION_API_TOKEN );
 		echo '<input type="password" class="regular-text" name="cloudflare_stream_api_token" id="cloudflare_stream_api_token" value="' . esc_attr( $api_token ) . '" autocomplete="off">'
-		   . '<small class="form-text text-muted">'
-		   . esc_html__( 'Cloudflare > My Profile > API Tokens > API Tokens > [Create Token]', 'cloudflare-stream-wordpress' ) . '</small>'
-		   . '<small class="form-text text-muted">' . esc_html__( 'Must have permission for: Account - Stream:Edit', 'cloudflare-stream-wordpress' ) . '</small>';
+		. '<small class="form-text text-muted">'
+		. esc_html__( 'Cloudflare > My Profile > API Tokens > API Tokens > [Create Token]', 'cloudflare-stream-wordpress' ) . '</small>'
+		. '<small class="form-text text-muted">' . esc_html__( 'Must have permission for: Account - Stream:Edit', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
@@ -171,7 +174,7 @@ class Cloudflare_Stream_Settings {
 	public function api_signed_urls_cb() {
 		$signed_urls = get_option( self::OPTION_SIGNED_URLS );
 		echo '<label><input type="checkbox" class="regular-text" name="cloudflare_stream_signed_urls" id="cloudflare_stream_signed_urls" value="1"' . checked( $signed_urls, true, false ) . '>' . esc_html__( 'Protects video links from being copied, by creating a unique temporary URL.', 'cloudflare-stream-wordpress' ) . '</label>'
-		   . '<small class="form-text text-muted">' . esc_html__( 'For best protection, also set each video to only be accessible via signed URLs in your Cloudflare Stream dashboard.', 'cloudflare-stream-wordpress' ) . '</small>';
+		. '<small class="form-text text-muted">' . esc_html__( 'For best protection, also set each video to only be accessible via signed URLs in your Cloudflare Stream dashboard.', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
@@ -179,8 +182,8 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function api_signed_urls_duration_cb() {
 		$signed_urls_duration = get_option( self::OPTION_SIGNED_URLS_DURATION );
-		echo '<input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" value="' . esc_attr( intval($signed_urls_duration) ) . '" autocomplete="off"> '
-		   . '<small class="form-text text-muted">' . esc_html__( 'Sets how long the unique signed URL/token remains accessible for, in minutes.', 'cloudflare-stream-wordpress' ) . '</small>';
+		echo '<input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" value="' . esc_attr( intval( $signed_urls_duration ) ) . '" autocomplete="off"> '
+		. '<small class="form-text text-muted">' . esc_html__( 'Sets how long the unique signed URL/token remains accessible for, in minutes.', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
@@ -188,17 +191,19 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function media_domain_cb() {
 		$media_domain = get_option( self::OPTION_MEDIA_DOMAIN );
-		$num_domains = count( self::STANDARD_MEDIA_DOMAINS );
+		$num_domains  = count( self::STANDARD_MEDIA_DOMAINS );
 
 		for ( $i = 0; $i < $num_domains; $i++ ) {
-			$default =  !$i  ? ' (' . esc_html__( 'default', 'cloudflare-stream-wordpress' ) . ')' : '';
-			echo '<label for="cloudflare_stream_media_domain_' . $i . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . $i . '" value="' . self::STANDARD_MEDIA_DOMAINS[$i] . '" ' . checked( self::STANDARD_MEDIA_DOMAINS[$i], $media_domain, false ) . ' >' . self::STANDARD_MEDIA_DOMAINS[$i] . $default . '</label>';
+			$default_text = 0 === $i ? esc_html__( ' (default)', 'cloudflare-stream-wordpress' ) : '';
+			echo '<label for="cloudflare_stream_media_domain_' . esc_attr( $i ) . '">'
+			. '<input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $i ) . '" value="' . esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . '" ' . checked( self::STANDARD_MEDIA_DOMAINS[ $i ], $media_domain, false ) . ' >'
+			. esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . esc_html( $default_text ) . '</label>';
 		}
 
 		// The account subdomain option is only presented if it was able to be retrieved from the API.
 		$account_subdomain = self::get_account_subdomain();
 		if ( $account_subdomain ) {
-			echo '<label for="cloudflare_stream_media_domain_' . $num_domains . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . $num_domains . '" value="' . $account_subdomain . '" ' . checked( $account_subdomain, $media_domain, false ) . ' >' . $account_subdomain . ' (<a href="https://community.cloudflare.com/t/upcoming-domain-change-to-ensure-delivery-of-your-video-content/405842" target="_blank">' . esc_html__( 'more information', 'cloudflare-stream-wordpress' ) . '</a>)</label>';
+			echo '<label for="cloudflare_stream_media_domain_' . esc_attr( $num_domains ) . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $num_domains ) . '" value="' . esc_html( $account_subdomain ) . '" ' . checked( $account_subdomain, $media_domain, false ) . ' >' . esc_html( $account_subdomain ) . ' (<a href="' . esc_url( 'https://community.cloudflare.com/t/upcoming-domain-change-to-ensure-delivery-of-your-video-content/405842' ) . '" target="_blank">' . esc_html__( 'more information', 'cloudflare-stream-wordpress' ) . '</a>)</label>';
 		}
 
 		echo '<small class="form-text text-muted">' . esc_html__( 'Set which Cloudflare domain is used by your users, to access video content. Changing this may require an update to your sites Content Security Policy.', 'cloudflare-stream-wordpress' ) . '</small>';
@@ -216,7 +221,7 @@ class Cloudflare_Stream_Settings {
 			return false;
 		}
 
-		// Defaults
+		// Defaults.
 		add_option( self::OPTION_SIGNED_URLS, true );
 		add_option( self::OPTION_SIGNED_URLS_DURATION, 60 );
 		add_option( self::OPTION_MEDIA_DOMAIN, self::STANDARD_MEDIA_DOMAINS[0] );
@@ -253,15 +258,18 @@ class Cloudflare_Stream_Settings {
 			if ( 'settings_page_cloudflare-stream' === $screen->id && false === self::test_api_keys() ) {
 				?>
 				<div class="notice notice-error is-dismissible">
-					<p><?php
+					<p>
+					<?php
 						echo sprintf(
 							wp_kses(
+								/* translators: %s: search term */
 								__( 'Cloudflare Stream API details are incorrect. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream-wordpress' ),
-								array(  'a' => array( 'href' => array() ) )
+								array( 'a' => array( 'href' => array() ) )
 							),
 							esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) )
 						);
-					?></p>
+					?>
+					</p>
 				</div>
 				<?php
 				return;
@@ -272,15 +280,18 @@ class Cloudflare_Stream_Settings {
 		} elseif ( 'settings_page_cloudflare-stream' !== $screen->id ) {
 			?>
 			<div class="notice notice-warning is-dismissible">
-				<p><?php
-						echo sprintf(
-							wp_kses(
-								__( 'Cloudflare Stream is not configured. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream-wordpress' ),
-								array(  'a' => array( 'href' => array() ) )
-							),
-							esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) )
-						);
-				?></p>
+				<p>
+				<?php
+					echo sprintf(
+						wp_kses(
+							/* translators: %s: search term */
+							__( 'Cloudflare Stream is not configured. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream-wordpress' ),
+							array( 'a' => array( 'href' => array() ) )
+						),
+						esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) )
+					);
+				?>
+				</p>
 			</div>
 			<?php
 		}
@@ -306,7 +317,7 @@ class Cloudflare_Stream_Settings {
 		$api_token   = get_option( self::OPTION_API_TOKEN );
 		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
 
-		if ( !empty ( $api_token ) && !empty ( $api_zone_id )  ) {
+		if ( ! empty( $api_token ) && ! empty( $api_zone_id ) ) {
 			$api = Cloudflare_Stream_API::instance();
 			return $api->get_account_id( true );
 		}
@@ -354,8 +365,14 @@ class Cloudflare_Stream_Settings {
 		echo '<p>';
 		echo sprintf(
 			wp_kses(
+				/* translators: %s: search term */
 				__( 'To use the Cloudflare Stream for WordPress plugin, enter your Cloudflare account information below. If you need help getting started, <a target="_blank" href="%s" title="Cloudflare Stream for WordPress README">click here.</a>', 'cloudflare-stream-wordpress' ),
-				array(  'a' => array( 'href' => array(), 'target' => array( '_blank' ) ) )
+				array(
+					'a' => array(
+						'href'   => array(),
+						'target' => array( '_blank' ),
+					),
+				)
 			),
 			esc_url( 'https://github.com/B-Interactive/cloudflare-stream-wordpress#readme' )
 		);

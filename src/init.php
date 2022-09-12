@@ -70,20 +70,20 @@ function cloudflare_stream_block_editor_assets() {
 
 	// Don't load the API Credentials if the user cannot edit the post.
 	$api_key = current_user_can( 'administrator' ) ? get_option( Cloudflare_Stream_Settings::OPTION_API_KEY ) : '';
-	$api = Cloudflare_Stream_API::instance();
+	$api     = Cloudflare_Stream_API::instance();
 	wp_localize_script(
 		'cloudflare-stream-block-js',
 		'cloudflareStream',
 		array(
-			'nonce'   => wp_create_nonce( Cloudflare_Stream_Settings::NONCE ),
-			'api'     => array(
+			'nonce' => wp_create_nonce( Cloudflare_Stream_Settings::NONCE ),
+			'api'   => array(
 				'email'          => get_option( Cloudflare_Stream_Settings::OPTION_API_EMAIL ),
 				'key'            => $api_key,
 				'account'        => get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT ),
 				'posts_per_page' => $api->api_limit,
 				'uid'            => md5( $current_user->user_login ),
 			),
-			'media'   => array(
+			'media' => array(
 				'view'  => array(),
 				'model' => array(),
 			),
