@@ -1,5 +1,8 @@
 # Cloudflare Stream for WordPress
 
+<a href="https://github.com/B-Interactive/cloudflare-stream-wordpress/releases/latest"><img src="https://badgen.net//github/release/B-Interactive/cloudflare-stream-wordpress" /></a>
+<a href="https://github.com/B-Interactive/cloudflare-stream-wordpress/blob/main/LICENSE"><img src="https://badgen.net//github/license/B-Interactive/cloudflare-stream-wordpress" /></a>
+
 A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork looks to achieve these key features:
 
 * Take full advantage of Cloudflare Stream's security features.
