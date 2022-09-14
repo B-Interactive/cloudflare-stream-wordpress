@@ -5,7 +5,7 @@
  * Description: Cloudflare Stream Video is an easy-to-use, affordable, on-demand video streaming platform. Stream seamlessly integrates video storage, encoding, and a customizable player with Cloudflare’s fast, secure, and reliable global network, so that you can spend less time managing video delivery and more time building and promoting your product.
  * Author: Cloudflare, B-Interactive, davidpurdy
  * Author URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
- * Version: 1.0.9.2
+ * Version: 1.0.9.3
  * License: GPL2+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain: cloudflare-stream-wordpress
