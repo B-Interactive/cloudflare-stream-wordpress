@@ -154,20 +154,6 @@ function cloudflare_stream_render_block( $block_attributes, $content ) {
 
 	$attributes = wp_parse_args( $block_attributes, $defaults );
 
-	// autoplay should be removed altogether, not set to false, to disable
-	if ( !$attributes['autoplay'] ) {
-		unset( $attributes['autoplay'] );
-	}
-
-	// set true/false string values that Cloudflare_Stream_API::get_video_embed is expecting
-	foreach ( $attributes as $attribute => $value ) {
-
-		if ($value === true || $value === false ) {
-			$attributes[$attribute] = $value ? 'true' : 'false';
-		}
-
-	}
-
 	$api  = Cloudflare_Stream_API::instance();
 	$embed = $api->get_video_embed($attributes['uid'], $attributes );
 	
