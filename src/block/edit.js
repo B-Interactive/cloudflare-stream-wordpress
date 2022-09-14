@@ -194,7 +194,7 @@ class CloudflareStreamEdit extends Component {
 			},
 			onSuccess: function() {
 				const urlArray = upload.url.split( '/' );
-				const mediaId = urlArray[ urlArray.length - 1 ];
+				const mediaId = urlArray[ urlArray.length - 1 ].split('?')[0];
 
 				setAttributes( { uid: mediaId, fingerprint: upload.options.fingerprint( upload.file, upload.options ) } );
 				block.switchToEncoding();
