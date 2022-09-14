@@ -14,6 +14,12 @@ import './editor.scss';
  */
 import edit from './edit';
 
+/* Common logic for stream iframe URL */
+import { streamIframeSource } from './lib';
+
+/* Deprecated version of block */
+import { deprecated_108  } from './deprecated_108';
+
 const { __ } = wp.i18n; // Import __() from wp.i18n
 const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks;
 
@@ -48,6 +54,11 @@ registerBlockType( 'cloudflare-stream/block-video', {
 		__( 'Stream', 'cloudflare-stream-wordpress' ),
 		__( 'video', 'cloudflare-stream-wordpress' ),
 	],
+
+	deprecated: [
+		deprecated_108
+	],
+
 	attributes: {
 		alignment: {
 			type: 'string',
@@ -66,37 +77,22 @@ registerBlockType( 'cloudflare-stream/block-video', {
 		},
 		autoplay: {
 			type: 'boolean',
-			source: 'attribute',
-			selector: 'stream',
-			attribute: 'autoplay',
 			default: false,
 		},
 		loop: {
 			type: 'boolean',
-			source: 'attribute',
-			selector: 'stream',
-			attribute: 'loop',
 			default: false,
 		},
 		muted: {
 			type: 'boolean',
-			source: 'attribute',
-			selector: 'stream',
-			attribute: 'muted',
 			default: false,
 		},
 		controls: {
 			type: 'boolean',
-			source: 'attribute',
-			selector: 'stream',
-			attribute: 'controls',
 			default: true,
 		},
 		transform: {
 			type: 'boolean',
-			source: 'attribute',
-			selector: 'stream',
-			attribute: 'transform',
 			default: false,
 		},
 	},
@@ -137,29 +133,21 @@ registerBlockType( 'cloudflare-stream/block-video', {
 				},
 				[
 					wp.element.createElement(
-						'stream',
-						{
-							src: uid,
-							controls: controls,
-							autoplay: autoplay,
-							loop: loop,
-							muted: muted,
-						},
-					),
-					wp.element.createElement(
 						'div',
 						{
-							className: 'target',
-						}
-					),
-					wp.element.createElement(
-						'script',
-						{
-							'data-cfasync': false,
-							defer: true,
-							type: 'text/javascript',
-							src: 'https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' + uid,
+							className: 'player-wrapper'
 						},
+						[
+							wp.element.createElement(
+								'iframe',
+								{
+									className: 'player-frame',
+									src: streamIframeSource( props.attributes ),
+									allow: "accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;",
+									allowfullscreen: "true"
+								}
+							)
+						]
 					),
 				]
 			);

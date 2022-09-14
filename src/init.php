@@ -47,7 +47,7 @@ add_action( 'enqueue_block_assets', 'cloudflare_stream_block_assets' );
  * @since 1.0.0
  */
 function cloudflare_stream_block_editor_assets() {
-	// Don't load the block assets if the API keys are not configured.
+	// Don't load the block assets if the API credentials are not configured.
 	if ( ! Cloudflare_Stream_Settings::is_configured() ) {
 		return;
 	}
@@ -69,7 +69,7 @@ function cloudflare_stream_block_editor_assets() {
 	);
 
 	// Don't load the API Credentials if the user cannot edit the post.
-	$api_key = current_user_can( 'administrator' ) ? get_option( Cloudflare_Stream_Settings::OPTION_API_KEY ) : '';
+	$api_token = current_user_can( 'administrator' ) ? get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) : '';
 	$api     = Cloudflare_Stream_API::instance();
 	wp_localize_script(
 		'cloudflare-stream-block-js',
@@ -77,8 +77,7 @@ function cloudflare_stream_block_editor_assets() {
 		array(
 			'nonce' => wp_create_nonce( Cloudflare_Stream_Settings::NONCE ),
 			'api'   => array(
-				'email'          => get_option( Cloudflare_Stream_Settings::OPTION_API_EMAIL ),
-				'key'            => $api_key,
+				'token'          => $api_token,
 				'account'        => get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT ),
 				'posts_per_page' => $api->api_limit,
 				'uid'            => md5( $current_user->user_login ),
@@ -129,7 +128,39 @@ function cloudflare_stream_admin_enqueue_scripts() {
 		)
 	);
 }
-add_action( 'admin_enqueue_scripts', 'cloudflare_stream_admin_enqueue_scripts' );
+add_action( 'init', 'cloudflare_stream_admin_enqueue_scripts' );
+
+
+/**
+ * Render the video block.
+ *
+ * @param array  $block_attributes  The attributes stored in the block.
+ * @param string $content          The static markup of the block.
+ * @since 1.0.9
+ */
+function cloudflare_stream_render_block( $block_attributes, $content ) {
+
+	// Only proceed if we have a UID.
+	if ( ! isset( $block_attributes['uid'] ) || empty( $block_attributes['uid'] ) ) {
+		return $content;
+	}
+
+	// Apply default attributes.
+	$defaults = array(
+		'controls' => true,
+		'autoplay' => false,
+		'loop'     => false,
+		'preload'  => false,
+		'muted'    => false,
+	);
+
+	$attributes = wp_parse_args( $block_attributes, $defaults );
+
+	$api  = Cloudflare_Stream_API::instance();
+	$embed = $api->get_video_embed( $attributes['uid'], $attributes );
+
+	return '<figure class="wp-block-cloudflare-stream-block-video">' . $embed . '</figure>';
+}
 
 /**
  * Adds 'upload-php' class to the <body> tag.

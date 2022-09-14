@@ -1,6 +1,9 @@
 /* Necessary to use TUS protocol for uploads */
 import * as tus from 'tus-js-client';
 
+/* Common logic to generate stream URL */
+import { streamIframeSource } from './lib';
+
 /* global ajaxurl */
 /* global cloudflareStream */
 
@@ -171,8 +174,7 @@ class CloudflareStreamEdit extends Component {
 			endpoint: baseUrl,
 			retryDelays: [ 0, 1000, 3000, 5000 ],
 			headers: {
-				'X-Auth-Email': cloudflareStream.api.email,
-				'X-Auth-Key': cloudflareStream.api.key,
+				'Authorization': 'Bearer ' + cloudflareStream.api.token
 			},
 			metadata: {
 				name: file.name,
@@ -192,7 +194,7 @@ class CloudflareStreamEdit extends Component {
 			},
 			onSuccess: function() {
 				const urlArray = upload.url.split( '/' );
-				const mediaId = urlArray[ urlArray.length - 1 ];
+				const mediaId = urlArray[ urlArray.length - 1 ].split('?')[0];
 
 				setAttributes( { uid: mediaId, fingerprint: upload.options.fingerprint( upload.file, upload.options ) } );
 				block.switchToEncoding();
@@ -381,7 +383,7 @@ class CloudflareStreamEdit extends Component {
 				);
 			}
 
-			if ( ! cloudflareStream.api.key || '' === cloudflareStream.api.key ) {
+			if ( ! cloudflareStream.api.token || '' === cloudflareStream.api.token ) {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }
@@ -496,15 +498,10 @@ class CloudflareStreamEdit extends Component {
 					</PanelBody>
 				</InspectorControls>
 				<figure className={ className }>
-					<Disabled>
-						{ <stream
-							src={ uid }
-							controls={ controls }
-							autoPlay={ autoplay }
-							loop={ loop }
-							muted={ muted }
-							ref={ this.streamPlayer }
-						></stream> }
+					<Disabled className="player-edit-wrapper">
+						{ <iframe
+							src={ streamIframeSource( this.props.attributes ) }
+						></iframe> }
 						{ /*<img src={ thumbnail } alt="Cloudflare Stream Video" /> */ }
 					</Disabled>
 				</figure>
