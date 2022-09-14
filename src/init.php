@@ -134,14 +134,14 @@ add_action( 'init', 'cloudflare_stream_admin_enqueue_scripts' );
 /**
  * Render the video block.
  *
- * @param array $block_attributes	The attributes stored in the block
- * @param string $content			The static markup of the block
+ * @param array  $block_attributes  The attributes stored in the block.
+ * @param string  $content          The static markup of the block.
  * @since 1.0.9
  */
 function cloudflare_stream_render_block( $block_attributes, $content ) {
 
 	// Only proceed if we have a UID.
-	if ( !isset( $block_attributes['uid'] ) || empty( $block_attributes['uid'] ) ) {
+	if ( ! isset( $block_attributes['uid'] ) || empty( $block_attributes['uid'] ) ) {
 		return $content;
 	}
 
