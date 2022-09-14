@@ -36,7 +36,7 @@ https://github.com/cloudflare/stream-wordpress
 
 ## To-Do
 
-- Block: Fix browsing and adding videos from the Cloudflare Stream Library possible.
+- Block: Fix browsing and adding content from the Cloudflare Stream Library.
 
 ## Issues
 
