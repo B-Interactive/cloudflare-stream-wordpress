@@ -22,5 +22,8 @@ node_modules/
 *.sql
 *.sqlite
 *.kate-swp
+*.zip
 
 /dist
+/cloudflare-stream
+/node_modules
