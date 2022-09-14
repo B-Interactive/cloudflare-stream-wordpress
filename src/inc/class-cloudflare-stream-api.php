@@ -256,11 +256,11 @@ class Cloudflare_Stream_API {
 
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
-			. 'muted=' . $args['muted'] . '&'
-			. 'preload=' . $args['preload'] . '&'
-			. 'loop=' . $args['loop'] . '&'
-			. 'autoplay=' . $args['autoplay'] . '&'
-			. 'controls=' . $args['controls'] . '&'
+			. ( filter_var( $args['muted'], FILTER_VALIDATE_BOOLEAN ) ? 'muted=true%26' : '' )
+			. ( filter_var( $args['loop'], FILTER_VALIDATE_BOOLEAN ) ? 'loop=true%26' : '' )
+			. ( filter_var( $args['autoplay'], FILTER_VALIDATE_BOOLEAN ) ? 'autoplay=true%26' : '' )
+			. ( filter_var( $args['preload'], FILTER_VALIDATE_BOOLEAN ) ? 'preload=auto%26' : '' )
+			. ( filter_var( $args['controls'], FILTER_VALIDATE_BOOLEAN ) || ! isset( $args['controls'] ) || strlen( trim( $args['controls'] ) ) === 0 ? '' : 'controls=false%26' )
 			. 'poster=' . esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg' ) . '"'
 			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
