@@ -172,7 +172,7 @@ function cloudflare_stream_render_block( $block_attributes, $content ) {
 	$api  = Cloudflare_Stream_API::instance();
 	$embed = $api->get_video_embed($attributes['uid'], $attributes );
 	
-	return $embed;
+	return '<figure class="wp-block-cloudflare-stream-block-video">' . $embed . '</figure>';
 }
 
 /**
