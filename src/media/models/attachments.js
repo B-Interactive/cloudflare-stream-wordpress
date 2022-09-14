@@ -11,12 +11,15 @@
  *
  */
 cloudflareStream.media.model.Attachments = wp.media.model.Attachments.extend( {
-	initialize: function() {
+	initialize() {
 		// _.defaults( this.options, {
 		// 	orderby: 'date',
 		// 	query: true,
 		// });
-		wp.media.model.Attachments.prototype.initialize.apply( this, arguments );
+		wp.media.model.Attachments.prototype.initialize.apply(
+			this,
+			arguments
+		);
 	},
 
 	/**x
@@ -25,12 +28,14 @@ cloudflareStream.media.model.Attachments = wp.media.model.Attachments.extend( {
 	 * @access private
 	 * @param {bool} refresh Whether or not we should refresh the results.
 	 */
-	_requery: function( refresh ) {
+	_requery( refresh ) {
 		let props;
 		if ( this.props.get( 'query' ) ) {
 			props = this.props.toJSON();
-			props.cache = ( true !== refresh );
-			this.mirror( cloudflareStream.media.model.Query.get( this.props.toJSON() ) );
+			props.cache = true !== refresh;
+			this.mirror(
+				cloudflareStream.media.model.Query.get( this.props.toJSON() )
+			);
 		}
 	},
 } );

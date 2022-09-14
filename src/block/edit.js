@@ -21,13 +21,8 @@ const {
 	Placeholder,
 	FormFileUpload,
 } = wp.components;
-const {
-	BlockControls,
-	InspectorControls,
-} = wp.editor;
-const {
-    MediaUpload,
-} = wp.blockEditor;
+const { BlockControls, InspectorControls } = wp.editor;
+const { MediaUpload } = wp.blockEditor;
 const { Fragment, Component, createRef } = wp.element;
 
 class CloudflareStreamEdit extends Component {
@@ -37,7 +32,8 @@ class CloudflareStreamEdit extends Component {
 		this.state = {
 			editing: ! this.props.attributes.uid,
 			uploading: false,
-			encoding: this.props.attributes.uid && ! this.props.attributes.thumbnail,
+			encoding:
+				this.props.attributes.uid && ! this.props.attributes.thumbnail,
 			resume: true,
 		};
 
@@ -47,7 +43,9 @@ class CloudflareStreamEdit extends Component {
 		this.toggleAttribute = this.toggleAttribute.bind( this );
 		this.open = this.open.bind( this );
 		this.select = this.select.bind( this );
-		this.mediaFrame = new cloudflareStream.media.view.MediaFrame( this.select );
+		this.mediaFrame = new cloudflareStream.media.view.MediaFrame(
+			this.select
+		);
 		this.encodingPoller = false;
 	}
 
@@ -72,7 +70,10 @@ class CloudflareStreamEdit extends Component {
 			streamPlayer.loop = attributes.loop;
 			streamPlayer.controls = attributes.controls;
 
-			if ( attributes.autoplay && typeof streamPlayer.play === 'function' ) {
+			if (
+				attributes.autoplay &&
+				typeof streamPlayer.play === 'function'
+			) {
 				streamPlayer.play();
 			} else if ( typeof streamPlayer.pause === 'function' ) {
 				streamPlayer.pause();
@@ -80,7 +81,11 @@ class CloudflareStreamEdit extends Component {
 		}
 
 		if ( false !== attributes.uid ) {
-			jQuery( '#block-' + this.instanceId + ' .editor-media-placeholder__cancel-button' ).show();
+			jQuery(
+				'#block-' +
+					this.instanceId +
+					' .editor-media-placeholder__cancel-button'
+			).show();
 			this.reload();
 		}
 	}
@@ -97,17 +102,20 @@ class CloudflareStreamEdit extends Component {
 
 		this.mediaFrame.open();
 
-		this.mediaFrame.on( 'delete', function( attachment ) {
+		this.mediaFrame.on( 'delete', function ( attachment ) {
 			block.delete( attachment );
 		} );
-		this.mediaFrame.on( 'select', function() {
+		this.mediaFrame.on( 'select', function () {
 			block.select();
 		} );
 	}
 
 	select( attachment ) {
 		const { setAttributes } = this.props;
-		setAttributes( { uid: attachment.uid, thumbnail: attachment.thumb.src } );
+		setAttributes( {
+			uid: attachment.uid,
+			thumbnail: attachment.thumb.src,
+		} );
 		this.setState( { editing: false, uploading: false, encoding: false } );
 		this.reload();
 	}
@@ -119,17 +127,20 @@ class CloudflareStreamEdit extends Component {
 				nonce: cloudflareStream.nonce,
 				uid: attachment.uid,
 			},
-			success: function() {
+			success() {
 				jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
 			},
-			error: function( jqXHR, textStatus ) {
+			error( jqXHR, textStatus ) {
 				console.error( 'Error: ' + textStatus );
 			},
 		} );
 	}
 
 	update( attachment ) {
-		jQuery( '.settings-save-status .media-frame .spinner' ).css( 'visibility', 'visible' );
+		jQuery( '.settings-save-status .media-frame .spinner' ).css(
+			'visibility',
+			'visible'
+		);
 		jQuery.ajax( {
 			url: ajaxurl + '?action=cloudflare-stream-update',
 			method: 'POST',
@@ -138,10 +149,10 @@ class CloudflareStreamEdit extends Component {
 				uid: attachment.uid,
 				title: attachment.title,
 			},
-			success: function() {
+			success() {
 				jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
 			},
-			error: function( jqXHR, textStatus ) {
+			error( jqXHR, textStatus ) {
 				console.error( 'Error: ' + textStatus );
 			},
 		} );
@@ -149,9 +160,11 @@ class CloudflareStreamEdit extends Component {
 
 	reload() {
 		const { attributes } = this.props;
-		const link = 'https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' + attributes.uid;
+		const link =
+			'https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' +
+			attributes.uid;
 
-		jQuery.getScript( link ).fail( function( jqxhr, settings, exception ) {
+		jQuery.getScript( link ).fail( function ( jqxhr, settings, exception ) {
 			console.error( 'Exception:' + exception );
 		} );
 	}
@@ -166,7 +179,10 @@ class CloudflareStreamEdit extends Component {
 
 		progressBar.progressbar( 'value', val );
 
-		const baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + cloudflareStream.api.account + '/media';
+		const baseUrl =
+			'https://api.cloudflare.com/client/v4/accounts/' +
+			cloudflareStream.api.account +
+			'/media';
 
 		const upload = new tus.Upload( file, {
 			resume: block.state.resume,
@@ -174,29 +190,45 @@ class CloudflareStreamEdit extends Component {
 			endpoint: baseUrl,
 			retryDelays: [ 0, 1000, 3000, 5000 ],
 			headers: {
-				'Authorization': 'Bearer ' + cloudflareStream.api.token
+				Authorization: 'Bearer ' + cloudflareStream.api.token,
 			},
 			metadata: {
 				name: file.name,
 				type: file.type,
 			},
-			onError: function( error ) {
+			onError( error ) {
 				console.error( 'Error: ' + error );
 				progressBar.hide();
-				jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Upload Error: See the console for details.', 'cloudflare-stream-wordpress' ) );
+				jQuery(
+					'.editor-media-placeholder .components-placeholder__instructions'
+				).html(
+					__(
+						'Upload Error: See the console for details.',
+						'cloudflare-stream-wordpress'
+					)
+				);
 				jQuery( '.editor-media-placeholder__retry-button' ).show();
 			},
-			onProgress: function( bytesUploaded, bytesTotal ) {
-				const percentage = parseInt( bytesUploaded / bytesTotal * 100 );
+			onProgress( bytesUploaded, bytesTotal ) {
+				const percentage = parseInt(
+					( bytesUploaded / bytesTotal ) * 100
+				);
 
 				progressLabel.text( percentage + '%' );
 				progressBar.progressbar( 'option', 'value', percentage );
 			},
-			onSuccess: function() {
+			onSuccess() {
 				const urlArray = upload.url.split( '/' );
-				const mediaId = urlArray[ urlArray.length - 1 ].split('?')[0];
+				const mediaId =
+					urlArray[ urlArray.length - 1 ].split( '?' )[ 0 ];
 
-				setAttributes( { uid: mediaId, fingerprint: upload.options.fingerprint( upload.file, upload.options ) } );
+				setAttributes( {
+					uid: mediaId,
+					fingerprint: upload.options.fingerprint(
+						upload.file,
+						upload.options
+					),
+				} );
 				block.switchToEncoding();
 			},
 		} );
@@ -210,8 +242,17 @@ class CloudflareStreamEdit extends Component {
 			{ editing: true, uploading: false, encoding: true },
 			() => {
 				const progressBar = jQuery( '#progressbar-' + this.instanceId );
-				const progressLabel = jQuery( '.progress-label-' + this.instanceId );
-				jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Upload Complete. Processing video.', 'cloudflare-stream-wordpress' ) );
+				const progressLabel = jQuery(
+					'.progress-label-' + this.instanceId
+				);
+				jQuery(
+					'.editor-media-placeholder .components-placeholder__instructions'
+				).html(
+					__(
+						'Upload Complete. Processing video.',
+						'cloudflare-stream-wordpress'
+					)
+				);
 
 				progressLabel.text( '' );
 				progressBar.progressbar( {
@@ -236,28 +277,52 @@ class CloudflareStreamEdit extends Component {
 				nonce: cloudflareStream.nonce,
 				uid: attributes.uid,
 			},
-			success: function( data ) {
+			success( data ) {
 				if ( ! data.success ) {
 					console.error( 'Error: ' + data.data );
 					if ( block.state.resume === true ) {
-						block.setState(
-							{ resume: false },
+						block.setState( { resume: false } );
+						jQuery(
+							'.editor-media-placeholder .components-placeholder__instructions'
+						).html(
+							__(
+								'Uploading your video.',
+								'cloudflare-stream-wordpress'
+							)
 						);
-						jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Uploading your video.', 'cloudflare-stream-wordpress' ) );
 						block.uploadFromFiles( file );
 					} else {
 						progressBar.hide();
-						jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( sprintf( __( 'Processing Error: %s', 'cloudflare-stream-wordpress' ), data.data ) );
-						jQuery( '.editor-media-placeholder__retry-button' ).show();
+						jQuery(
+							'.editor-media-placeholder .components-placeholder__instructions'
+						).html(
+							sprintf(
+								__(
+									'Processing Error: %s',
+									'cloudflare-stream-wordpress'
+								),
+								data.data
+							)
+						);
+						jQuery(
+							'.editor-media-placeholder__retry-button'
+						).show();
 					}
 				} else if ( typeof data.data !== 'undefined' ) {
-					if ( data.data.readyToStream === true && typeof data.data.thumbnail !== 'undefined' ) {
+					if (
+						data.data.readyToStream === true &&
+						typeof data.data.thumbnail !== 'undefined'
+					) {
 						clearTimeout( block.encodingPoller );
 						setAttributes( { thumbnail: data.data.thumbnail } );
-						block.setState( { editing: false, uploading: false, encoding: false } );
+						block.setState( {
+							editing: false,
+							uploading: false,
+							encoding: false,
+						} );
 					} else {
 						// Poll at a 5 second interval
-						block.encodingPoller = setTimeout( function() {
+						block.encodingPoller = setTimeout( function () {
 							block.encode();
 						}, 5000 );
 					}
@@ -267,7 +332,9 @@ class CloudflareStreamEdit extends Component {
 							value: false,
 						} );
 					} else if ( data.data.status.state === 'inprogress' ) {
-						const progress = Math.round( data.data.status.pctComplete );
+						const progress = Math.round(
+							data.data.status.pctComplete
+						);
 						progressLabel.text( progress + '%' );
 
 						progressBar.progressbar( {
@@ -277,20 +344,14 @@ class CloudflareStreamEdit extends Component {
 					block.reload();
 				}
 			},
-			error: function( jqXHR, textStatus ) {
+			error( jqXHR, textStatus ) {
 				console.error( 'Error: ' + textStatus );
 			},
 		} );
 	}
 
 	render() {
-		const {
-			uid,
-			autoplay,
-			controls,
-			loop,
-			muted,
-		} = this.props.attributes;
+		const { uid, autoplay, controls, loop, muted } = this.props.attributes;
 		const { className } = this.props;
 		const { editing, uploading, encoding } = this.state;
 
@@ -307,18 +368,26 @@ class CloudflareStreamEdit extends Component {
 		};
 
 		const switchToUploading = () => {
-			let { setAttributes } = this.props;
+			const { setAttributes } = this.props;
 
-			jQuery( '.editor-media-placeholder .components-placeholder__instructions' ).html( __( 'Processing your video', 'cloudflare-stream-wordpress' ) );
+			jQuery(
+				'.editor-media-placeholder .components-placeholder__instructions'
+			).html(
+				__( 'Processing your video', 'cloudflare-stream-wordpress' )
+			);
 
-			const file = jQuery( '.components-form-file-upload :input[type=\'file\']' )[ 0 ].files[ 0 ];
-			setAttributes( { file: file } );
+			const file = jQuery(
+				".components-form-file-upload :input[type='file']"
+			)[ 0 ].files[ 0 ];
+			setAttributes( { file } );
 
 			const block = this;
 			block.setState(
 				{ editing: true, uploading: true, encoding: false },
 				() => {
-					const progressBar = jQuery( '#progressbar-' + this.instanceId );
+					const progressBar = jQuery(
+						'#progressbar-' + this.instanceId
+					);
 
 					progressBar.progressbar( {
 						value: false,
@@ -336,12 +405,28 @@ class CloudflareStreamEdit extends Component {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }
-						label={ __( "Cloudflare Stream", "cloudflare-stream-wordpress" ) }
-						instructions={ __( "Uploading your video.", 'cloudflare-stream-wordpress' ) }
+						label={ __(
+							'Cloudflare Stream',
+							'cloudflare-stream-wordpress'
+						) }
+						instructions={ __(
+							'Uploading your video.',
+							'cloudflare-stream-wordpress'
+						) }
 						className="editor-media-placeholder"
 					>
-						<div id={ 'progressbar-' + this.instanceId } style={ progressBarStyle }>
-							<div className={ 'progress-label progress-label-' + this.instanceId }>Connecting...</div>
+						<div
+							id={ 'progressbar-' + this.instanceId }
+							style={ progressBarStyle }
+						>
+							<div
+								className={
+									'progress-label progress-label-' +
+									this.instanceId
+								}
+							>
+								Connecting...
+							</div>
 						</div>
 						<Button
 							isSecondary
@@ -362,17 +447,36 @@ class CloudflareStreamEdit extends Component {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }
-						label={ __( "Cloudflare Stream", 'cloudflare-stream-wordpress' ) }
-						instructions={ __( "Processing your video.", 'cloudflare-stream-wordpress' ) }
+						label={ __(
+							'Cloudflare Stream',
+							'cloudflare-stream-wordpress'
+						) }
+						instructions={ __(
+							'Processing your video.',
+							'cloudflare-stream-wordpress'
+						) }
 						className="editor-media-placeholder"
 					>
-						<div id={ 'progressbar-' + this.instanceId } style={ progressBarStyle }>
-							<div className={ 'progress-label progress-label-' + this.instanceId }>Connecting...</div>
+						<div
+							id={ 'progressbar-' + this.instanceId }
+							style={ progressBarStyle }
+						>
+							<div
+								className={
+									'progress-label progress-label-' +
+									this.instanceId
+								}
+							>
+								Connecting...
+							</div>
 						</div>
 						<Button
 							isSecondary
 							icon="update"
-							label={ __( 'Retry', 'cloudflare-stream-wordpress' ) }
+							label={ __(
+								'Retry',
+								'cloudflare-stream-wordpress'
+							) }
 							onClick={ switchToEditing }
 							style={ { display: 'none' } }
 							className="editor-media-placeholder__retry-button"
@@ -383,12 +487,21 @@ class CloudflareStreamEdit extends Component {
 				);
 			}
 
-			if ( ! cloudflareStream.api.token || '' === cloudflareStream.api.token ) {
+			if (
+				! cloudflareStream.api.token ||
+				'' === cloudflareStream.api.token
+			) {
 				return (
 					<Placeholder
 						icon={ cloudflareStream.icon }
-						label={ __( "Cloudflare Stream", 'cloudflare-stream-wordpress' ) }
-						instructions={ __( "Select a file from your library.", 'cloudflare-stream-wordpress' ) }
+						label={ __(
+							'Cloudflare Stream',
+							'cloudflare-stream-wordpress'
+						) }
+						instructions={ __(
+							'Select a file from your library.',
+							'cloudflare-stream-wordpress'
+						) }
 					>
 						<MediaUpload
 							type="video"
@@ -396,11 +509,17 @@ class CloudflareStreamEdit extends Component {
 							value={ this.props.attributes }
 							render={ () => (
 								<Button
-									label={ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
+									label={ __(
+										'Stream Library',
+										'cloudflare-stream-wordpress'
+									) }
 									onClick={ this.open }
 									className="editor-media-placeholder__browse-button"
 								>
-									{ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
+									{ __(
+										'Stream Library',
+										'cloudflare-stream-wordpress'
+									) }
 								</Button>
 							) }
 						/>
@@ -438,11 +557,17 @@ class CloudflareStreamEdit extends Component {
 						value={ this.props.attributes }
 						render={ () => (
 							<Button
-								label={ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
+								label={ __(
+									'Stream Library',
+									'cloudflare-stream-wordpress'
+								) }
 								onClick={ this.open }
 								className="editor-media-placeholder__browse-button"
 							>
-								{ __( 'Stream Library', 'cloudflare-stream-wordpress' ) }
+								{ __(
+									'Stream Library',
+									'cloudflare-stream-wordpress'
+								) }
 							</Button>
 						) }
 					/>
@@ -467,31 +592,51 @@ class CloudflareStreamEdit extends Component {
 					<Toolbar>
 						<Button
 							className="components-icon-button components-toolbar__control"
-							label={ __( 'Edit video', 'cloudflare-stream-wordpress' ) }
+							label={ __(
+								'Edit video',
+								'cloudflare-stream-wordpress'
+							) }
 							onClick={ switchToEditing }
 							icon="edit"
 						/>
 					</Toolbar>
 				</BlockControls>
 				<InspectorControls>
-					<PanelBody title={ __( 'Video Settings', 'cloudflare-stream-wordpress' ) }>
+					<PanelBody
+						title={ __(
+							'Video Settings',
+							'cloudflare-stream-wordpress'
+						) }
+					>
 						<ToggleControl
-							label={ __( 'Autoplay', 'cloudflare-stream-wordpress' ) }
+							label={ __(
+								'Autoplay',
+								'cloudflare-stream-wordpress'
+							) }
 							onChange={ this.toggleAttribute( 'autoplay' ) }
 							checked={ autoplay }
 						/>
 						<ToggleControl
-							label={ __( 'Loop', 'cloudflare-stream-wordpress' ) }
+							label={ __(
+								'Loop',
+								'cloudflare-stream-wordpress'
+							) }
 							onChange={ this.toggleAttribute( 'loop' ) }
 							checked={ loop }
 						/>
 						<ToggleControl
-							label={ __( 'Muted', 'cloudflare-stream-wordpress' ) }
+							label={ __(
+								'Muted',
+								'cloudflare-stream-wordpress'
+							) }
 							onChange={ this.toggleAttribute( 'muted' ) }
 							checked={ muted }
 						/>
 						<ToggleControl
-							label={ __( 'Playback Controls', 'cloudflare-stream-wordpress' ) }
+							label={ __(
+								'Playback Controls',
+								'cloudflare-stream-wordpress'
+							) }
 							onChange={ this.toggleAttribute( 'controls' ) }
 							checked={ controls }
 						/>
@@ -499,9 +644,13 @@ class CloudflareStreamEdit extends Component {
 				</InspectorControls>
 				<figure className={ className }>
 					<Disabled className="player-edit-wrapper">
-						{ <iframe
-							src={ streamIframeSource( this.props.attributes ) }
-						></iframe> }
+						{
+							<iframe
+								src={ streamIframeSource(
+									this.props.attributes
+								) }
+							></iframe>
+						}
 						{ /*<img src={ thumbnail } alt="Cloudflare Stream Video" /> */ }
 					</Disabled>
 				</figure>

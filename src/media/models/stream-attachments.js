@@ -9,8 +9,11 @@
  *
  */
 wp.media.model.StreamAttachments = wp.media.model.Attachments.extend( {
-	initialize: function() {
-		wp.media.model.Attachments.prototype.initialize.apply( this, arguments );
+	initialize() {
+		wp.media.model.Attachments.prototype.initialize.apply(
+			this,
+			arguments
+		);
 	},
 
 	/**
@@ -19,12 +22,14 @@ wp.media.model.StreamAttachments = wp.media.model.Attachments.extend( {
 	 * @access private
 	 * @param {bool} refresh Whether or not we should refresh the results.
 	 */
-	_requery: function( refresh ) {
+	_requery( refresh ) {
 		let props;
 		if ( this.props.get( 'query' ) ) {
 			props = this.props.toJSON();
-			props.cache = ( true !== refresh );
-			this.mirror( wp.media.model.StreamQuery.get( this.props.toJSON() ) );
+			props.cache = true !== refresh;
+			this.mirror(
+				wp.media.model.StreamQuery.get( this.props.toJSON() )
+			);
 		}
 	},
 } );
