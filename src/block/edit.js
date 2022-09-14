@@ -166,7 +166,7 @@ class CloudflareStreamEdit extends Component {
 
 		progressBar.progressbar( 'value', val );
 
-		const baseUrl = 'https://api.cloudflare.com/client/v4/zones/' + cloudflareStream.api.zone_id + '/media';
+		const baseUrl = 'https://api.cloudflare.com/client/v4/accounts/' + cloudflareStream.api.account + '/media';
 
 		const upload = new tus.Upload( file, {
 			resume: block.state.resume,
