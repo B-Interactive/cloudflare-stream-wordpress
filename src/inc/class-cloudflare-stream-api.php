@@ -254,6 +254,9 @@ class Cloudflare_Stream_API {
 	/**
 	 * Get the video embed with placeholder UID
 	 *
+	 * @param string $uid Unique Video ID.
+	 * @param array  $args Additional API arguments.
+	 *
 	 * @since 1.0.9.4
 	 */
 	public function get_video_embed_template( $uid = 'UID', $args ) {
