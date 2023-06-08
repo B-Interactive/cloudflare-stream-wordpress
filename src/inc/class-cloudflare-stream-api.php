@@ -241,18 +241,29 @@ class Cloudflare_Stream_API {
 	 *
 	 * @param string $uid Unique Video ID.
 	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
 	 * @since 1.0.0
 	 */
-	public function get_video_embed( $uid, $args = array(), $return_headers = false ) {
-		$media_domain = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
-		$signed_urls  = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
-		$uid          = ( $signed_urls ) ? $this->get_signed_video_token( $uid )->result->token : $uid;
+	public function get_video_embed( $uid, $args = array() ) {
+		$signed_urls = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+		$uid         = ( $signed_urls ) ? $this->get_signed_video_token( $uid )->result->token : $uid;
+		$video_embed = $this->get_video_embed_template( $uid, $args );
 
-		$standard_uri          = 'https://iframe.' . $media_domain . '/' . $uid . '?';
-		$account_subdomain_uri = 'https://' . $media_domain . '/' . $uid . '/iframe?';
+		return $video_embed;
+	}
 
-		$src_uri = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true ) ) ? $standard_uri : $account_subdomain_uri;
+	/**
+	 * Get the video embed with placeholder UID
+	 *
+	 * @param string $uid Unique Video ID.
+	 * @param array  $args Additional API arguments.
+	 *
+	 * @since 1.0.9.4
+	 */
+	public function get_video_embed_template( $uid = 'UID', $args ) {
+		$media_domain      = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
+		$standard_domain   = 'https://iframe.' . $media_domain . '/' . $uid . '?';
+		$account_subdomain = 'https://' . $media_domain . '/' . $uid . '/iframe?';
+		$src_uri           = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true ) ) ? $standard_domain : $account_subdomain;
 
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
@@ -261,7 +272,7 @@ class Cloudflare_Stream_API {
 			. ( filter_var( $args['autoplay'], FILTER_VALIDATE_BOOLEAN ) ? 'autoplay=true&' : '' )
 			. ( filter_var( $args['preload'], FILTER_VALIDATE_BOOLEAN ) ? 'preload=auto&' : '' )
 			. ( filter_var( $args['controls'], FILTER_VALIDATE_BOOLEAN ) || ! isset( $args['controls'] ) || strlen( trim( $args['controls'] ) ) === 0 ? '' : 'controls=false&' )
-			. 'poster=' . esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg' ) . '"'
+			. 'poster=' . esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=2s&height=600' ) . '"'
 			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
 			. 'allowfullscreen="true" '
@@ -271,14 +282,14 @@ class Cloudflare_Stream_API {
 		return $video_embed;
 	}
 
-		/**
-		 * Get a specific video's signed id.
-		 *
-		 * @param string $uid Unique Video ID.
-		 * @param array  $args Additional API arguments.
-		 * @param bool   $return_headers Return the response headers intead of the response body.
-		 * @since 1.0.5
-		 */
+	/**
+	 * Get a specific video's signed id.
+	 *
+	 * @param string $uid Unique Video ID.
+	 * @param array  $args Additional API arguments.
+	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @since 1.0.5
+	 */
 	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
 		$signed_urls_duration = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION );
 
