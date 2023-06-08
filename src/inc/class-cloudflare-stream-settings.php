@@ -197,8 +197,8 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	* Callback for rendering the poster time field
-	*/
+	 * Callback for rendering the poster time field
+	 */
 	public function poster_time_cb() {
 		$poster_time = get_option( self::OPTION_POSTER_TIME );
 		echo '<input type="number" class="regular-text" name="cloudflare_stream_poster_time" id="cloudflare_stream_poster_time" value="' . esc_attr( intval( $poster_time ) ) . '" autocomplete="off"> '
