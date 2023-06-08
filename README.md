@@ -17,9 +17,10 @@ A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork
 The Block method of adding videos is currently limited to upload only. Browsing and selecting content from your Cloudflare Stream Library is not yet fixed. Legacy Block content is supported in a deprecated form, but will not take advantage of new features such as signed URLs.
 For now, using the shortcode method is still the most appropriate way to insert content already in your Stream Library. [See Shortcode section below](#shortcode).
 
-The original official plugin:
+Original plugin on WordPress:
 https://wordpress.org/plugins/cloudflare-stream/
-Official plugin GitHub page:
+
+Original plugin on GitHub:
 https://github.com/cloudflare/stream-wordpress
 
 ## Changes from Official
