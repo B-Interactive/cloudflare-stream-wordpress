@@ -66,19 +66,25 @@ class Cloudflare_Stream_Shortcode {
 	public function video_shortcode_handler( $atts ) {
 		$attributes = shortcode_atts(
 			array(
-				'uid'      => '',
-				'controls' => 'true',
-				'autoplay' => 'false',
-				'loop'     => 'false',
-				'preload'  => 'false',
-				'muted'    => 'false',
+				'uid'        => '',
+				'controls'   => 'true',
+				'autoplay'   => 'false',
+				'loop'       => 'false',
+				'preload'    => 'false',
+				'muted'      => 'false',
+				'postertime' => '0s',
+				'posterurl'  => '',
 			),
 			$atts
 		);
 
 		foreach ( $attributes as $attr ) {
-			if ( $attr === $attributes['uid'] ) {
-				continue; } // Do nothing more with the UID.
+			if ( $attr === $attributes['uid'] || $attr === $attributes['postertime'] ) {
+				$attr = sanitize_text_field( $attr );
+				continue; } // Do nothing more with non Bool values.
+			if ( $attr === $attributes['posterurl'] && '' !== $attr ) {
+				$attr = esc_url_raw( $attr );
+				continue; }
 			$attr = ( filter_var( $attr, FILTER_VALIDATE_BOOLEAN ) ) ? 'true' : 'false'; // Filter to string based boolean.
 		}
 

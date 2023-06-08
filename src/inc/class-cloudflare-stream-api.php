@@ -264,6 +264,7 @@ class Cloudflare_Stream_API {
 		$standard_domain   = 'https://iframe.' . $media_domain . '/' . $uid . '?';
 		$account_subdomain = 'https://' . $media_domain . '/' . $uid . '/iframe?';
 		$src_uri           = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true ) ) ? $standard_domain : $account_subdomain;
+		$poster_url        = ( '' === $args['posterurl'] ) ? esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=' . $args['postertime'] ) : $args['posterurl'];
 
 		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
@@ -272,7 +273,7 @@ class Cloudflare_Stream_API {
 			. ( filter_var( $args['autoplay'], FILTER_VALIDATE_BOOLEAN ) ? 'autoplay=true&' : '' )
 			. ( filter_var( $args['preload'], FILTER_VALIDATE_BOOLEAN ) ? 'preload=auto&' : '' )
 			. ( filter_var( $args['controls'], FILTER_VALIDATE_BOOLEAN ) || ! isset( $args['controls'] ) || strlen( trim( $args['controls'] ) ) === 0 ? '' : 'controls=false&' )
-			. 'poster=' . esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=2s&height=600' ) . '"'
+			. 'poster=' . $poster_url . '"'
 			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
 			. 'allowfullscreen="true" '
