@@ -82,10 +82,11 @@ Stream lets you own and control the video viewing experience and is ideal for vi
 
 == Changelog ==
 = 1.0.9.4 =
+* Added poster time adjustment capability to shortcode.
+* Added poster URL option to shortcode.
+* Added global thumbnail time to admin settings which acts as default.
 * Merged separate method for embed template.
 * Bumped package.json dependency versions.
-* Added poster adjustment capabilities to shortcodes.
-* Added global thumbnail time to admin settings.
 
 = 1.0.9.3 =
 * Big update to the Block, making it once again possible to upload and use new content.
