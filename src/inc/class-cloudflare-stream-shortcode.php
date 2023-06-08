@@ -72,7 +72,7 @@ class Cloudflare_Stream_Shortcode {
 				'loop'       => 'false',
 				'preload'    => 'false',
 				'muted'      => 'false',
-				'postertime' => '0s',
+				'postertime' => '',
 				'posterurl'  => '',
 			),
 			$atts

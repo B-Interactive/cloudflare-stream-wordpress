@@ -46,6 +46,7 @@ class Cloudflare_Stream_Settings {
 	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
 	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
 	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
+	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
 	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
 	const STANDARD_MEDIA_DOMAINS      = array( 'cloudflarestream.com', 'videodelivery.net' );
 
@@ -92,6 +93,7 @@ class Cloudflare_Stream_Settings {
 		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS_DURATION );
+		register_setting( self::SETTING_GROUP, self::OPTION_POSTER_TIME );
 		register_setting( self::SETTING_GROUP, self::OPTION_MEDIA_DOMAIN );
 
 		add_settings_section(
@@ -129,6 +131,14 @@ class Cloudflare_Stream_Settings {
 				self::OPTION_SIGNED_URLS_DURATION,
 				esc_html__( 'Signed URL Expiration', 'cloudflare-stream-wordpress' ),
 				array( $this, 'api_signed_urls_duration_cb' ),
+				self::SETTING_PAGE,
+				self::SETTING_SECTION_GENERAL
+			);
+
+			add_settings_field(
+				self::OPTION_POSTER_TIME,
+				esc_html__( 'Thumbnail Time', 'cloudflare-stream-wordpress' ),
+				array( $this, 'poster_time_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
@@ -187,6 +197,15 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
+	* Callback for rendering the poster time field
+	*/
+	public function poster_time_cb() {
+		$poster_time = get_option( self::OPTION_POSTER_TIME );
+		echo '<input type="number" class="regular-text" name="cloudflare_stream_poster_time" id="cloudflare_stream_poster_time" value="' . esc_attr( intval( $poster_time ) ) . '" autocomplete="off"> '
+		. '<small class="form-text text-muted">' . esc_html__( 'A default time in seconds, of where to reference the video thumbnail from in any given video. Can be overridden by shortcode argument postertime.  eg: postertime="10s".', 'cloudflare-stream-wordpress' ) . '</small>';
+	}
+
+	/**
 	 * Callback for rendering the preferred media domain field
 	 */
 	public function media_domain_cb() {
@@ -225,6 +244,7 @@ class Cloudflare_Stream_Settings {
 		add_option( self::OPTION_SIGNED_URLS, true );
 		add_option( self::OPTION_SIGNED_URLS_DURATION, 60 );
 		add_option( self::OPTION_MEDIA_DOMAIN, self::STANDARD_MEDIA_DOMAINS[0] );
+		add_option( self::OPTION_POSTER_TIME, 0 );
 
 		// Completely remove old less secure API credentials if they exist.
 		if ( get_option( self::OPTION_API_KEY ) !== false ) {
