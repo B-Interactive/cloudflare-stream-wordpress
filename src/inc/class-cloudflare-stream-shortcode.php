@@ -78,10 +78,14 @@ class Cloudflare_Stream_Shortcode {
 			$atts
 		);
 
+		// Validate and sanitize inputs.
 		foreach ( $attributes as $attr ) {
-			if ( $attr === $attributes['uid'] || $attr === $attributes['postertime'] ) {
+			if ( $attr === $attributes['uid'] ) {
 				$attr = sanitize_text_field( $attr );
-				continue; } // Do nothing more with non Bool values.
+				continue; }
+			if ( $attr === $attributes['postertime'] && '' !== $attr ) {
+				$attr = absint( $attr );
+				continue; }
 			if ( $attr === $attributes['posterurl'] && '' !== $attr ) {
 				$attr = esc_url_raw( $attr );
 				continue; }
