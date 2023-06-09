@@ -38,6 +38,7 @@ class Cloudflare_Stream_Settings {
 	const SETTING_PAGE                = 'cloudflare-stream';
 	const SETTING_GROUP               = 'cloudflare_stream';
 	const SETTING_SECTION_GENERAL     = 'cloudflare_stream_settings_general';
+	const SETTING_SECTION_PLAYER      = 'cloudflare_stream_settings_player';
 	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
 	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
 	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id'; // Deprecated.
@@ -136,14 +137,6 @@ class Cloudflare_Stream_Settings {
 			);
 
 			add_settings_field(
-				self::OPTION_POSTER_TIME,
-				esc_html__( 'Thumbnail Time', 'cloudflare-stream-wordpress' ),
-				array( $this, 'poster_time_cb' ),
-				self::SETTING_PAGE,
-				self::SETTING_SECTION_GENERAL
-			);
-
-			add_settings_field(
 				self::OPTION_MEDIA_DOMAIN,
 				esc_html__( 'Preferred Media Domain', 'cloudflare-stream-wordpress' ),
 				array( $this, 'media_domain_cb' ),
@@ -151,9 +144,26 @@ class Cloudflare_Stream_Settings {
 				self::SETTING_SECTION_GENERAL
 			);
 
+		add_settings_section(
+			self::SETTING_SECTION_PLAYER,
+			esc_html__( 'Player Settings', 'cloudflare-stream-wordpress' ),
+			array( $this, 'settings_section_api_keys' ),
+			self::SETTING_PAGE
+		);
+
+			add_settings_field(
+				self::OPTION_POSTER_TIME,
+				esc_html__( 'Thumbnail Time', 'cloudflare-stream-wordpress' ),
+				array( $this, 'poster_time_cb' ),
+				self::SETTING_PAGE,
+				self::SETTING_SECTION_PLAYER
+			);
+
 		add_action( 'admin_notices', array( $this, 'settings_errors_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'onboarding_admin_notices' ) );
 	}
+
+	/** API CONFIGURATION CALLBACKS **/
 
 	/**
 	 * Callback for rendering the API Account ID settings field
@@ -192,17 +202,8 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function api_signed_urls_duration_cb() {
 		$signed_urls_duration = get_option( self::OPTION_SIGNED_URLS_DURATION );
-		echo '<input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" value="' . esc_attr( intval( $signed_urls_duration ) ) . '" autocomplete="off"> '
+		echo '<label for="cloudflare_stream_signed_urls_duration"><input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" value="' . esc_attr( intval( $signed_urls_duration ) ) . '" autocomplete="off"> minutes</label>'
 		. '<small class="form-text text-muted">' . esc_html__( 'Sets how long the unique signed URL/token remains accessible for, in minutes.', 'cloudflare-stream-wordpress' ) . '</small>';
-	}
-
-	/**
-	 * Callback for rendering the poster time field
-	 */
-	public function poster_time_cb() {
-		$poster_time = get_option( self::OPTION_POSTER_TIME );
-		echo '<input type="number" class="regular-text" name="cloudflare_stream_poster_time" id="cloudflare_stream_poster_time" value="' . esc_attr( intval( $poster_time ) ) . '" autocomplete="off"> '
-		. '<small class="form-text text-muted">' . esc_html__( 'A default time in seconds, of where to reference the video thumbnail from in any given video. Can be overridden by shortcode argument postertime.  eg: postertime="10s".', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
@@ -226,6 +227,17 @@ class Cloudflare_Stream_Settings {
 		}
 
 		echo '<small class="form-text text-muted">' . esc_html__( 'Set which Cloudflare domain is used by your users, to access video content. Changing this may require an update to your sites Content Security Policy.', 'cloudflare-stream-wordpress' ) . '</small>';
+	}
+
+	/** PLAYER SETTINGS CALLBACKS **/
+
+	/**
+	* Callback for rendering the poster time field
+	*/
+	public function poster_time_cb() {
+		$poster_time = get_option( self::OPTION_POSTER_TIME );
+		echo '<label for="cloudflare_stream_poster_time"><input type="number" class="regular-text" name="cloudflare_stream_poster_time" id="cloudflare_stream_poster_time" value="' . esc_attr( intval( $poster_time ) ) . '" autocomplete="off"> seconds</label>'
+		. '<small class="form-text text-muted">' . esc_html__( 'A default time in seconds, of where to reference the video thumbnail from in any given video. Can be overridden by shortcode argument postertime.  eg: postertime="10s".', 'cloudflare-stream-wordpress' ) . '</small>';
 	}
 
 	/**
