@@ -147,7 +147,7 @@ class Cloudflare_Stream_Settings {
 		add_settings_section(
 			self::SETTING_SECTION_PLAYER,
 			esc_html__( 'Player Settings', 'cloudflare-stream-wordpress' ),
-			array( $this, 'settings_section_api_keys' ),
+			array( $this, 'settings_section_player' ),
 			self::SETTING_PAGE
 		);
 
@@ -232,8 +232,8 @@ class Cloudflare_Stream_Settings {
 	/** PLAYER SETTINGS CALLBACKS **/
 
 	/**
-	* Callback for rendering the poster time field
-	*/
+	 * Callback for rendering the poster time field
+	 */
 	public function poster_time_cb() {
 		$poster_time = get_option( self::OPTION_POSTER_TIME );
 		echo '<label for="cloudflare_stream_poster_time"><input type="number" class="regular-text" name="cloudflare_stream_poster_time" id="cloudflare_stream_poster_time" value="' . esc_attr( intval( $poster_time ) ) . '" autocomplete="off"> seconds</label>'
@@ -408,6 +408,17 @@ class Cloudflare_Stream_Settings {
 			),
 			esc_url( 'https://github.com/B-Interactive/cloudflare-stream-wordpress#readme' )
 		);
+		echo '</p>';
+	}
+
+	/**
+	 * Render Player Settings Section
+	 *
+	 * @since 1.9.4
+	 */
+	public function settings_section_player() {
+		echo '<p>';
+		echo esc_html__( 'Global settings for the player.  Some of these can be overridden on a per video basis with shortcode arguments.', 'cloudflare-stream-wordpress' );
 		echo '</p>';
 	}
 
