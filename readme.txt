@@ -87,6 +87,8 @@ Stream lets you own and control the video viewing experience and is ideal for vi
 * Added global thumbnail time to admin settings which acts as default.
 * Merged separate method for embed template.
 * Bumped package.json dependency versions.
+* Added Player Settings section in admin configuration.
+* Added class to div wrapping player for easier styling.
 
 = 1.0.9.3 =
 * Big update to the Block, making it once again possible to upload and use new content.
