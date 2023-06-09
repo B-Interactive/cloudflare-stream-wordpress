@@ -268,7 +268,7 @@ class Cloudflare_Stream_API {
 		$poster_time       = $poster_time . 's';
 		$poster_url        = ( '' === $args['posterurl'] ) ? esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=' . $poster_time ) : $args['posterurl'];
 
-		$video_embed = '<div style="position: relative; padding-top: 56.25%"><iframe'
+		$video_embed = '<div class="cloudflare-stream" style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
 			. ( filter_var( $args['muted'], FILTER_VALIDATE_BOOLEAN ) ? 'muted=true&' : '' )
 			. ( filter_var( $args['loop'], FILTER_VALIDATE_BOOLEAN ) ? 'loop=true&' : '' )

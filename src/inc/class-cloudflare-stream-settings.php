@@ -47,8 +47,8 @@ class Cloudflare_Stream_Settings {
 	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
 	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
 	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
-	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
 	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
+	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
 	const STANDARD_MEDIA_DOMAINS      = array( 'cloudflarestream.com', 'videodelivery.net' );
 
 	/**
@@ -94,8 +94,8 @@ class Cloudflare_Stream_Settings {
 		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS_DURATION );
-		register_setting( self::SETTING_GROUP, self::OPTION_POSTER_TIME );
 		register_setting( self::SETTING_GROUP, self::OPTION_MEDIA_DOMAIN );
+		register_setting( self::SETTING_GROUP, self::OPTION_POSTER_TIME );
 
 		add_settings_section(
 			self::SETTING_SECTION_GENERAL,
