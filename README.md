@@ -34,6 +34,8 @@ https://github.com/cloudflare/stream-wordpress
 - Added admin setting for signed URL/token duration (default is otherwise 1 hour).
 - Added admin toggle for whether or not to use signed URLs/tokens.
 - Can select Cloudflare media domain, including new account specific sub-domain.
+- Can set poster/thumbnail location globally, and per-video.
+- Can specify a poster/thumbnail URL per-video.
 
 ## To-Do
 
@@ -54,7 +56,7 @@ https://github.com/cloudflare/stream-wordpress
 
 The admin area has been completely revised from the official plugin. Instead of using the all-controlling global API key, this now makes use of a much more secure API token, which only permits the plugin limited access to a Cloudflare account. When the admin settings are accessed, any existing API key and email stored in the database, are deleted from the database as these are no longer needed and their presence is a security risks.
 
-![admin-settings](https://user-images.githubusercontent.com/16984998/188538819-ac0b9905-7d62-4118-81ff-d92a78ba7ea7.png)
+![admin-settings](https://github.com/B-Interactive/cloudflare-stream-wordpress/assets/16984998/8b41a360-23d0-4230-99f0-7754ffc93c0f)
 
 ### API Account ID
 
@@ -78,6 +80,11 @@ When **Use Signed URLs** is checked [x], this setting controls how long any part
 ### Preferred Media Domain
 
 This option allows you to select from a small list of different Cloudflare media domains. This domain is used when delivering content to your users. The 3rd option is a unique subdomain specific to your Cloudflare account. This option will only be presented if you have at least one video already uploaded to your Cloudflare Stream account.
+
+### Thumbnail Time
+
+Thumbnails for videos will be auto-generated, taken from a location (in seconds) within each video.  By default, this is the first frame of the video (0 seconds), but you can change the site-wide default here.  This settings can be overridden on a per-video basis, by specifying the `postertime` shortcode attribute (see [Shortcode](#shortcode) below).
+
 
 ## Securing Video Access
 
@@ -106,10 +113,14 @@ These are optional shortcode flags (with defaults shown here). These are all "tr
 - loop="false"
 - preload="false"
 - muted="false"
+- postertime=""
+- posterurl=""
 
 They can be used in this way:
 
-`[cloudflare_stream uid="`_some video id_`" controls="true" autoplay="false" loop="false" preload="false" muted="false"]`
+`[cloudflare_stream uid="`_some video id_`" controls="true" autoplay="false" loop="false" preload="false" muted="false" postertime="60"]`
+
+Optionally, `posterurl` is used to point to a URL of an image that will be used as a poster.  This will override `postertime`.
 
 ## Developers
 
