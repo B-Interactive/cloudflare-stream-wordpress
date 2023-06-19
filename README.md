@@ -106,15 +106,15 @@ Thumbnails for videos will be auto-generated, taken from a location (in seconds)
 
 Replace _some video id_ with an actual Cloudflare Stream video ID.
 
-These are optional shortcode flags (with defaults shown here). These are all "true" or "false" options:
+These are optional shortcode flags (with defaults shown here):
 
-- controls="true"
-- autoplay="false"
-- loop="false"
-- preload="false"
-- muted="false"
-- postertime=""
-- posterurl=""
+- controls="true" | Expects: `true` or `false`
+- autoplay="false" | Expects: `true` or `false`
+- loop="false" | Expects: `true` or `false`
+- preload="false" | Expects: `true` or `false`
+- muted="false" | Expects: `true` or `false`
+- postertime="" | Expects a number (eg: "60") representing seconds. 
+- posterurl="" | Expects a URL (eg: "https://example.com/image.jpg") pointing to an image.
 
 They can be used in this way:
 
