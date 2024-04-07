@@ -264,9 +264,9 @@ class Cloudflare_Stream_API {
 		$standard_domain   = 'https://iframe.' . $media_domain . '/' . $uid . '?';
 		$account_subdomain = 'https://' . $media_domain . '/' . $uid . '/iframe?';
 		$src_uri           = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true ) ) ? $standard_domain : $account_subdomain;
-		$poster_time       = ( '' === $args['postertime'] ) ? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) : $args['postertime'];
+		$poster_time       = empty( $args['postertime'] ) ? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) : $args['postertime'];
 		$poster_time       = $poster_time . 's';
-		$poster_url        = ( '' === $args['posterurl'] ) ? esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=' . $poster_time ) : $args['posterurl'];
+		$poster_url        = empty( $args['posterurl'] ) ? esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=' . $poster_time ) : $args['posterurl'];
 
 		$video_embed = '<div class="cloudflare-stream" style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
