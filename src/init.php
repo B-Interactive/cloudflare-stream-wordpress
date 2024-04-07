@@ -222,6 +222,8 @@ function action_wp_ajax_query_cloudflare_stream_attachments() {
 				'width'  => 64,
 				'height' => 48,
 			),
+			'fileLength'              => gmdate( 'H:i:s', round( $video->duration ) ),
+			'fileLengthHumanReadable' => human_readable_duration( gmdate( 'H:i:s', round( $video->duration ) ) ),
 			'thumb'                 => array(
 				'src'    => $video->thumbnail,
 				'width'  => 64,

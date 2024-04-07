@@ -27,3 +27,4 @@ node_modules/
 /dist
 /cloudflare-stream
 /node_modules
+.DS_Store
