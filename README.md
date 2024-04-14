@@ -64,7 +64,7 @@ The admin area has been completely revised from the official plugin. Instead of 
 
 ### API Token
 
-An API token must be created in your Cloudflare dashboard, for this plugin. For security sake, the token should only be used for this plugin and provide only the permissions necesarry for the plugin to work. I'd https://www.gnu.org/licenses/old-licenses/gpl-2.0.htmlrecommend setting up Client IP Address Filtering when creating the token too. Where feasible, restrict access to only the IP addresses that need it (eg: your webserver's IP where WordPress is installed).
+An API token must be created in your Cloudflare dashboard, for this plugin. For security sake, the token should only be used for this plugin and provide only the permissions necesarry for the plugin to work. I'd recommend setting up Client IP Address Filtering when creating the token too. Where feasible, restrict access to only the IP addresses that need it (eg: your webserver's IP where WordPress is installed).
 
 - **Cloudflare** > **My Profile** > **API Tokens** > **API Tokens** > [Create Token]
   Must have permission for: **Account - Stream:Edit**
