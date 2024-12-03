@@ -1,8 +1,24 @@
 {
   "name": "stream-wordpress",
-  "version": "1.0.0",
-  "description": "This is the development mirror for the [Cloudflare Stream Wordpress plugin](https://wordpress.org/plugins/cloudflare-stream).",
+  "version": "1.1.0",
+  "description": "A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress.",
+  "author": "B-Interactive",
+  "license": "GPL-2.0-or-later",
+  "keywords": [ "cloudflare", "stream", "wordpress" ],
+  "homepage": "https://github.com/B-Interactive/cloudflare-stream-wordpress/#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/B-Interactive/cloudflare-stream-wordpress.git"
+  },
+  "bugs": {
+    "url": "https://github.com/B-Interactive/cloudflare-stream-wordpress/issues"
+  },
+  "files": [ "dist", "src", "LICENSE", "cloudflare-stream.php"],
   "main": "webpack.config.js",
+  "dependencies": {
+    "@wordpress/scripts": "^30.6.0",
+    "tus-js-client": "^4.2.3"
+  },
   "scripts": {
     "build": "wp-scripts build",
     "build:dev": "wp-scripts build  --env dev",
@@ -12,20 +28,8 @@
     "lint:js-fix": "wp-scripts lint-js ./src --fix",
     "lint:md:docs": "wp-scripts lint-md-docs",
     "lint:pkg-json": "wp-scripts lint-pkg-json",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/B-Interactive/cloudflare-stream-wordpress.git"
-  },
-  "author": "",
-  "license": "GPL-2.0-or-later",
-  "bugs": {
-    "url": "https://github.com/B-Interactive/cloudflare-stream-wordpress/issues"
-  },
-  "homepage": "https://github.com/B-Interactive/cloudflare-stream-wordpress/#readme",
-  "dependencies": {
-    "@wordpress/scripts": "^30.6.0",
-    "tus-js-client": "^4.2.3"
+    "packages-update": "wp-scripts packages-update",
+    "zip": "wp-scripts plugin-zip --no-root-folder",
+    "package" : "wp-scripts build && wp-scripts plugin-zip --no-root-folder"
   }
 }

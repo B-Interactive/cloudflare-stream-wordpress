@@ -143,6 +143,12 @@ Build for production:
 npm run build
 ```
 
+Package plugin for WordPress:
+
+```bash
+npm run package
+```
+
 ## Acknowledgements
 
 - Cloudflare and WP Engine for developing the original plugin this was forked from.
