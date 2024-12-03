@@ -17,11 +17,8 @@ A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork
 The Block method of adding videos is currently limited to upload only. Browsing and selecting content from your Cloudflare Stream Library is not yet fixed. Legacy Block content is supported in a deprecated form, but will not take advantage of new features such as signed URLs.
 For now, using the shortcode method is still the most appropriate way to insert content already in your Stream Library. [See Shortcode section below](#shortcode).
 
-Original plugin on WordPress:
-https://wordpress.org/plugins/cloudflare-stream/
-
-Original plugin on GitHub:
-https://github.com/cloudflare/stream-wordpress
+- Original plugin [on WordPress](https://wordpress.org/plugins/cloudflare-stream/).
+- Original plugin [on GitHub](https://github.com/cloudflare/stream-wordpress).
 
 ## Changes from Official
 
@@ -92,16 +89,17 @@ Thumbnails for videos will be auto-generated, taken from a location (in seconds)
 ## Securing Video Access
 
 1. Make sure **Use Signed URLs** is checked [x], in the admin settings. **This feature alone does not secure your videos.** The original ID of your videos is still accessible and could be used to access them.
-
-![use-signed-urls](https://user-images.githubusercontent.com/16984998/166195570-6e2ecfd4-72af-4f11-a52c-f615df470a36.png)
-
+    
+    ![use-signed-urls](https://user-images.githubusercontent.com/16984998/166195570-6e2ecfd4-72af-4f11-a52c-f615df470a36.png)
+    
 2. Your videos **must** be set to **Require Signed URLs** on a per-video basis, in your Cloudflare Stream dashboard. This will make the original video ID worthless to would-be thieves, because a signed URL/token can only be created in conjunction with your (secure) API key or API token.
-
-![require-signed-url](https://user-images.githubusercontent.com/16984998/166195689-f52c48c6-86f4-40c5-8e96-b9f6ae5790d0.png)
-
+    
+    ![require-signed-url](https://user-images.githubusercontent.com/16984998/166195689-f52c48c6-86f4-40c5-8e96-b9f6ae5790d0.png)
+    
 3. To further restrict which domains can embed your videos, specify **Allowed Origins** on a per-video basis in your Cloudflare Stream dashboard.
-
-![allowed-origins](https://user-images.githubusercontent.com/16984998/166195828-80c23260-fc02-47bb-89b1-ceb8a4217638.png)
+    
+    ![allowed-origins](https://user-images.githubusercontent.com/16984998/166195828-80c23260-fc02-47bb-89b1-ceb8a4217638.png)
+    
 
 ## Shortcode
 
