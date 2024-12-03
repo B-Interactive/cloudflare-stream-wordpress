@@ -16,6 +16,7 @@
 	}
 
 	@supports (position: sticky) {
+
 		[poster] {
 			object-fit: cover;
 		}
@@ -30,8 +31,9 @@
 		position: relative;
 		padding-top: 56.25%;
 	}
-	
-	iframe.player-frame, iframe#stream-player {
+
+	iframe.player-frame,
+	iframe#stream-player {
 		border: none;
 		position: absolute;
 		top: 0;

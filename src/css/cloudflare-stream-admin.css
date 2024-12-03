@@ -1,4 +1,5 @@
-.settings_page_cloudflare-stream small, .settings_page_cloudflare-stream label  {
-    display: block;
-    margin: 5px 0 0;
+.settings_page_cloudflare-stream small,
+.settings_page_cloudflare-stream label {
+	display: block;
+	margin: 5px 0 0;
 }

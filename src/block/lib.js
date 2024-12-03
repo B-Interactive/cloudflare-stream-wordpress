@@ -5,17 +5,21 @@ export const streamIframeSource = function ( attributes ) {
 	const queryElements = [];
 
 	// get any querystring params included in the UID (not clear why this sometimes happens)
-	if ( uid.split( '?' )[ 1 ] ) queryElements.push( uid.split( '?' )[ 1 ] );
+	if ( uid.split( '?' )[ 1 ] ) {
+		queryElements.push( uid.split( '?' )[ 1 ] );
+	}
 
 	// add the thumbnail if it exists
-	if ( thumbnail )
+	if ( thumbnail ) {
 		queryElements.push( 'poster=' + encodeURIComponent( thumbnail ) );
+	}
 
 	// add other boolean parameters if they are set
 	const params = { controls, autoplay, loop, muted };
 	for ( const param in params ) {
-		if ( typeof params[ param ] !== 'undefined' && params[ param ] )
+		if ( typeof params[ param ] !== 'undefined' && params[ param ] ) {
 			queryElements.push( param + '=true' );
+		}
 	}
 
 	const queryString = '?' + queryElements.join( '&' );
