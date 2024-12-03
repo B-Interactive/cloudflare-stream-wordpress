@@ -34,14 +34,6 @@ For now, using the shortcode method is still the most appropriate way to insert 
 - Can set poster/thumbnail location globally, and per-video.
 - Can specify a poster/thumbnail URL per-video.
 
-## To-Do
-
-- Block: Fix browsing and adding content from the Cloudflare Stream Library.
-
-## Issues
-
-- When using the Block, browsing and selecting content from your Cloudflare Stream Library is not yet resolved.
-
 ## Installation
 
 - Download the full plugin ZIP file from the [latest release of this plugin](https://github.com/B-Interactive/cloudflare-stream-wordpress/releases/latest)
