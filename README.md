@@ -23,7 +23,7 @@ For now, using the shortcode method is still the most appropriate way to insert 
 ## Changes from Official
 
 - Optionally use signed URL's / tokens.
-- Removed analytics.
+- Removed deprecated analytics.
 - Added additional shortcode options: controls, autoplay, loop, preload and muted.
 - Uses API Token based API access, for MUCH more secure Cloudflare account access.
 - Any existing API Key and API account email stored in the database are deleted when the settings page is accessed.
