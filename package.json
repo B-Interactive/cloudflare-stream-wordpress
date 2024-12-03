@@ -6,26 +6,26 @@
   "scripts": {
     "build": "wp-scripts build",
     "build:dev": "wp-scripts build  --env dev",
-    "lint:css": "wp-scripts lint-style",
-    "lint:js": "wp-scripts lint-js",
-    "lint:js:src": "wp-scripts lint-js ./src",
-    "lint:js:src-fix": "wp-scripts lint-js ./src --fix",
+    "lint:css": "wp-scripts lint-style 'src/**/*.css'",
+    "lint:css-fix": "wp-scripts lint-style 'src/**/*.css' --fix",
+    "lint:js": "wp-scripts lint-js ./src",
+    "lint:js-fix": "wp-scripts lint-js ./src --fix",
     "lint:md:docs": "wp-scripts lint-md-docs",
     "lint:pkg-json": "wp-scripts lint-pkg-json",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/FiveMountains-co/stream-wordpress.git"
+    "url": "git+https://github.com/B-Interactive/cloudflare-stream-wordpress.git"
   },
   "author": "",
   "license": "GPL-2.0-or-later",
   "bugs": {
-    "url": "https://github.com/FiveMountains-co/stream-wordpress/issues"
+    "url": "https://github.com/B-Interactive/cloudflare-stream-wordpress/issues"
   },
-  "homepage": "https://github.com/FiveMountains-co/stream-wordpress#readme",
+  "homepage": "https://github.com/B-Interactive/cloudflare-stream-wordpress/#readme",
   "dependencies": {
-    "@wordpress/scripts": "^30.5.1",
-    "tus-js-client": "^3.1.0"
+    "@wordpress/scripts": "^30.6.0",
+    "tus-js-client": "^4.2.3"
   }
 }
