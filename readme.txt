@@ -9,7 +9,7 @@ Contributors: cloudflare, stevenkword, B-Interactive, davidpurdy
 Text Domain: cloudflare-stream
 License: GPL2
 Tags: video, videos, streaming, cloudflare, wpengine, stream, embed, movies, block-enabled, block
-Requires PHP: 5.6
+Requires PHP: 7.1
 Requires at least: 5.0
 Tested up to: 6.7.1
 Stable tag: trunk
