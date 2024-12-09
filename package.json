@@ -1,10 +1,14 @@
 {
-  "name": "stream-wordpress",
+  "name": "cloudflare-stream",
   "version": "1.1.0",
   "description": "A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress.",
   "author": "B-Interactive",
   "license": "GPL-2.0-or-later",
-  "keywords": [ "cloudflare", "stream", "wordpress" ],
+  "keywords": [
+    "cloudflare",
+    "stream",
+    "wordpress"
+  ],
   "homepage": "https://github.com/B-Interactive/cloudflare-stream-wordpress/#readme",
   "repository": {
     "type": "git",
@@ -13,7 +17,12 @@
   "bugs": {
     "url": "https://github.com/B-Interactive/cloudflare-stream-wordpress/issues"
   },
-  "files": [ "dist", "src", "LICENSE", "cloudflare-stream.php"],
+  "files": [
+    "dist",
+    "src",
+    "LICENSE",
+    "cloudflare-stream.php"
+  ],
   "main": "webpack.config.js",
   "dependencies": {
     "@wordpress/scripts": "^30.6.0",
@@ -30,6 +39,6 @@
     "lint:pkg-json": "wp-scripts lint-pkg-json",
     "packages-update": "wp-scripts packages-update",
     "zip": "wp-scripts plugin-zip --no-root-folder",
-    "package" : "wp-scripts build && wp-scripts plugin-zip --no-root-folder"
+    "package": "wp-scripts build && wp-scripts plugin-zip --no-root-folder"
   }
 }
