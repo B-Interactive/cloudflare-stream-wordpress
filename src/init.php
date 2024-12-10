@@ -25,7 +25,7 @@ function cloudflare_stream_block_assets() {
 	wp_enqueue_style(
 		'cloudflare-stream-block-style-css',
 		// Handle.
-		plugins_url( 'dist/style-blocks.css', dirname( __FILE__ ) ),
+		plugins_url( 'dist/style-blocks.css', __DIR__ ),
 		// Block style CSS.
 		array( 'wp-block-library' ),
 		// Dependency to include the CSS after it.
@@ -58,7 +58,7 @@ function cloudflare_stream_block_editor_assets() {
 	wp_enqueue_script(
 		'cloudflare-stream-block-js',
 		// Handle.
-		plugins_url( '/dist/blocks.build.js', dirname( __FILE__ ) ),
+		plugins_url( '/dist/blocks.build.js', __DIR__ ),
 		// Block.build.js: We register the block here. Built with Webpack.
 		array( 'wp-blocks', 'wp-i18n', 'wp-element' ),
 		// Dependencies, defined above.
@@ -69,8 +69,8 @@ function cloudflare_stream_block_editor_assets() {
 	);
 
 	// Don't load the API Credentials if the user cannot edit the post.
-	$api_token = current_user_can( 'administrator' ) ? get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) : '';
-	$api     = Cloudflare_Stream_API::instance();
+	$api_token = current_user_can( 'manage_options' ) ? get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) : '';
+	$api       = Cloudflare_Stream_API::instance();
 	wp_localize_script(
 		'cloudflare-stream-block-js',
 		'cloudflareStream',
@@ -96,7 +96,7 @@ function cloudflare_stream_block_editor_assets() {
 	wp_enqueue_style(
 		'cloudflare-stream-block-editor-css',
 		// Handle.
-		plugins_url( 'dist/blocks.css', dirname( __FILE__ ) ),
+		plugins_url( 'dist/blocks.css', __DIR__ ),
 		// Block editor CSS.
 		array( 'wp-edit-blocks' ),
 		// Dependency to include the CSS after it.
@@ -156,7 +156,7 @@ function cloudflare_stream_render_block( $block_attributes, $content ) {
 
 	$attributes = wp_parse_args( $block_attributes, $defaults );
 
-	$api  = Cloudflare_Stream_API::instance();
+	$api   = Cloudflare_Stream_API::instance();
 	$embed = $api->get_video_embed( $attributes['uid'], $attributes );
 
 	return '<figure class="wp-block-cloudflare-stream-block-video">' . $embed . '</figure>';
@@ -193,47 +193,47 @@ function action_wp_ajax_query_cloudflare_stream_attachments() {
 		$embedcode = '<stream src="' . $video->uid . '" controls></stream><script data-cfasync="false" defer type="text/javascript" src="https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' . $video->uid . '"></script>';
 		$shortcode = '[cloudflare_stream uid="' . $video->uid . '"]';
 		$data[]    = array(
-			'uid'                   => $video->uid,
-			'id'                    => $video->uid,
-			'title'                 => $video->meta->name,
-			'filename'              => $video->meta->name,
-			'url'                   => 'https://watch.cloudflarestream.com/' . $video->uid,
-			'link'                  => 'https://watch.cloudflarestream.com/' . $video->uid,
-			'description'           => $embedcode,
-			'caption'               => $shortcode,
-			'status'                => 'inherit',
-			'uploadedTo'            => 0,
-			'date'                  => $video->created,
-			'modified'              => $video->created,
-			'menuOrder'             => 0,
-			'mime'                  => 'video/mp4',
-			'type'                  => 'video',
-			'subtype'               => 'mp4',
-			'icon'                  => $video->thumbnail,
-			'dateFormatted'         => $datetime->format( 'F j, Y' ),
-			'nonces'                =>
+			'uid'                     => $video->uid,
+			'id'                      => $video->uid,
+			'title'                   => $video->meta->name,
+			'filename'                => $video->meta->name,
+			'url'                     => 'https://watch.cloudflarestream.com/' . $video->uid,
+			'link'                    => 'https://watch.cloudflarestream.com/' . $video->uid,
+			'description'             => $embedcode,
+			'caption'                 => $shortcode,
+			'status'                  => 'inherit',
+			'uploadedTo'              => 0,
+			'date'                    => $video->created,
+			'modified'                => $video->created,
+			'menuOrder'               => 0,
+			'mime'                    => 'video/mp4',
+			'type'                    => 'video',
+			'subtype'                 => 'mp4',
+			'icon'                    => $video->thumbnail,
+			'dateFormatted'           => $datetime->format( 'F j, Y' ),
+			'nonces'                  =>
 			array(
 				'delete' => Cloudflare_Stream_Settings::NONCE,
 			),
-			'filesizeInBytes'       => $video->size,
-			'filesizeHumanReadable' => size_format( $video->size ),
-			'image'                 => array(
+			'filesizeInBytes'         => $video->size,
+			'filesizeHumanReadable'   => size_format( $video->size ),
+			'image'                   => array(
 				'src'    => $video->thumbnail,
 				'width'  => 64,
 				'height' => 48,
 			),
 			'fileLength'              => gmdate( 'H:i:s', round( $video->duration ) ),
 			'fileLengthHumanReadable' => human_readable_duration( gmdate( 'H:i:s', round( $video->duration ) ) ),
-			'thumb'                 => array(
+			'thumb'                   => array(
 				'src'    => $video->thumbnail,
 				'width'  => 64,
 				'height' => 48,
 			),
-			'compat'                => array(
+			'compat'                  => array(
 				'item' => '',
 				'meta' => '',
 			),
-			'cloudflare'            => $video,
+			'cloudflare'              => $video,
 		);
 	}//end foreach
 
@@ -243,7 +243,7 @@ function action_wp_ajax_query_cloudflare_stream_attachments() {
 		$response['args']    = $args;
 		$response['data']    = $data;
 		$response['success'] = true;
-	};
+	}
 	wp_send_json( $response, 200 );
 }
 add_action( 'wp_ajax_query-cloudflare-stream-attachments', 'action_wp_ajax_query_cloudflare_stream_attachments' );

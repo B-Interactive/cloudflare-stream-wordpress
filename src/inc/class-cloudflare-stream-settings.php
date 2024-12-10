@@ -9,20 +9,6 @@
  */
 
 /**
- * Register stylesheets for admin area.
- *
- * @param array $hook Additional API arguments.
- * @since 1.0.9
- */
-function cloudflare_stream_admin_enqueue_styles( $hook ):void {
-	if ( 'settings_page_cloudflare-stream' !== $hook ) {
-		return;
-	}
-	wp_enqueue_style( 'cloudflare-stream', plugin_dir_url( __DIR__ ) . 'css/cloudflare-stream-admin.css', array(), '1.0.9' );
-}
-add_action( 'admin_enqueue_scripts', 'cloudflare_stream_admin_enqueue_styles' );
-
-/**
  * Cloudflare_Stream_Settings
  */
 class Cloudflare_Stream_Settings {
@@ -72,6 +58,19 @@ class Cloudflare_Stream_Settings {
 	private function __construct() { }
 
 	/**
+	 * Register stylesheets for admin area.
+	 *
+	 * @param array $hook Additional API arguments.
+	 * @since 1.0.9
+	 */
+	public function cloudflare_stream_admin_enqueue_styles( $hook ): void {
+		if ( 'settings_page_cloudflare-stream' !== $hook ) {
+			return;
+		}
+		wp_enqueue_style( 'cloudflare-stream', plugin_dir_url( __DIR__ ) . 'css/cloudflare-stream-admin.css', array(), '1.0.9' );
+	}
+
+	/**
 	 * Setup Hooks
 	 *
 	 * @since 1.0.0
@@ -79,6 +78,7 @@ class Cloudflare_Stream_Settings {
 	public function setup() {
 		add_action( is_multisite() ? 'network_admin_menu' : 'admin_menu', array( $this, 'action_admin_menu' ), 11 );
 		add_action( 'admin_init', array( $this, 'action_admin_init' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'cloudflare_stream_admin_enqueue_styles' ) );
 	}
 
 	/**
@@ -292,7 +292,7 @@ class Cloudflare_Stream_Settings {
 				<div class="notice notice-error is-dismissible">
 					<p>
 					<?php
-						echo sprintf(
+						printf(
 							wp_kses(
 								/* translators: %s: search term */
 								__( 'Cloudflare Stream API details are incorrect. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream-wordpress' ),
@@ -314,7 +314,7 @@ class Cloudflare_Stream_Settings {
 			<div class="notice notice-warning is-dismissible">
 				<p>
 				<?php
-					echo sprintf(
+					printf(
 						wp_kses(
 							/* translators: %s: search term */
 							__( 'Cloudflare Stream is not configured. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream-wordpress' ),
@@ -395,7 +395,7 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function settings_section_api_keys() {
 		echo '<p>';
-		echo sprintf(
+		printf(
 			wp_kses(
 				/* translators: %s: search term */
 				__( 'To use the Cloudflare Stream for WordPress plugin, enter your Cloudflare account information below. If you need help getting started, <a target="_blank" href="%s" title="Cloudflare Stream for WordPress README">click here.</a>', 'cloudflare-stream-wordpress' ),
