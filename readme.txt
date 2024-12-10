@@ -1,20 +1,20 @@
-=== Cloudflare Stream Video ===
-Plugin Name: Cloudflare Stream Video
+=== Cloudflare Stream ===
+Plugin Name: Cloudflare Stream
 Plugin URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
-Description: Cloudflare Stream is an easy-to-use, affordable, on-demand video streaming platform. The Stream video plugin for WordPress lets you upload videos to Cloudflare where they are securely stored and encoded for native streaming directly from the WordPress editor.
+Description: Securely embeds videos hosted with Cloudflare Stream, in your WordPress website via shortcodes or the block editor.
 Version: 1.1.0.0
-Author: Cloudflare
-Author URI: https://www.cloudflare.com/products/stream-delivery/
-Contributors: cloudflare, stevenkword, B-Interactive, davidpurdy
+Author: B-Interactive
+Author URI: https://b-interactive.com.au/
+Contributors: cloudflare, stevenkword, davidpurdy
 Text Domain: cloudflare-stream
 License: GPL2
-Tags: video, videos, streaming, cloudflare, wpengine, stream, embed, movies, block-enabled, block
+Tags: video, streaming, cloudflare, stream, block
 Requires PHP: 7.1
 Requires at least: 5.0
 Tested up to: 6.7.1
 Stable tag: trunk
 
-Cloudflare Stream is an easy-to-use, affordable, on-demand video streaming platform. The Stream video plugin for WordPress lets you upload videos to Cloudflare where they are securely stored and encoded for native streaming directly from the WordPress editor.
+Description: Securely embeds videos hosted with Cloudflare Stream, in your WordPress website via shortcodes or the block editor.
 
 == Description ==
 
