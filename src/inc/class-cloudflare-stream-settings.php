@@ -210,18 +210,29 @@ class Cloudflare_Stream_Settings {
 	 * Callback for rendering the preferred media domain field
 	 */
 	public function media_domain_cb() {
-		$media_domain = get_option( self::OPTION_MEDIA_DOMAIN );
-		$num_domains  = count( self::STANDARD_MEDIA_DOMAINS );
+		$media_domain           = get_option( self::OPTION_MEDIA_DOMAIN );
+		$num_domains            = count( self::STANDARD_MEDIA_DOMAINS );
+		$existing_custom_domain = true; // Placeholder value, but will be confirmed below.
 
 		for ( $i = 0; $i < $num_domains; $i++ ) {
 			$default_text = 0 === $i ? esc_html__( ' (default)', 'cloudflare-stream-wordpress' ) : '';
 			echo '<label for="cloudflare_stream_media_domain_' . esc_attr( $i ) . '">'
 			. '<input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $i ) . '" value="' . esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . '" ' . checked( self::STANDARD_MEDIA_DOMAINS[ $i ], $media_domain, false ) . ' >'
 			. esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . esc_html( $default_text ) . '</label>';
+
+			if ( $media_domain === self::STANDARD_MEDIA_DOMAINS[ $i ] ) {
+				$existing_custom_domain = false;
+			}
 		}
 
 		// The account subdomain option is only presented if it was able to be retrieved from the API.
 		$account_subdomain = self::get_account_subdomain();
+
+		// In the event custom domain is in use, but API details are misconfigured, this retains that setting as default.
+		if ( empty( $account_subdomain ) && ( $existing_custom_domain && !self::test_api_keys() ) ) {
+			$account_subdomain = $media_domain;
+		}
+
 		if ( $account_subdomain ) {
 			echo '<label for="cloudflare_stream_media_domain_' . esc_attr( $num_domains ) . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $num_domains ) . '" value="' . esc_html( $account_subdomain ) . '" ' . checked( $account_subdomain, $media_domain, false ) . ' >' . esc_html( $account_subdomain ) . ' (<a href="' . esc_url( 'https://community.cloudflare.com/t/upcoming-domain-change-to-ensure-delivery-of-your-video-content/405842' ) . '" target="_blank">' . esc_html__( 'more information', 'cloudflare-stream-wordpress' ) . '</a>)</label>';
 		}
