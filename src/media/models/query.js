@@ -1,10 +1,11 @@
-/* global cloudflareStream */
+/**
+ * Query
+ *
+ * @package
+ */
 
 /**
- * cloudflareStream.media.model.Query
- *
  * A collection of Stream Attachments that match the supplied query arguments.
- *
  */
 cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 	{
@@ -59,7 +60,7 @@ cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 				options.data.query = 'asc=false' + timestampOffset;
 				return wp.media.ajax( options );
 
-				// Otherwise, fall back to Backbone.sync()
+				// Otherwise, fall back to Backbone.sync().
 			}
 			const fallback = wp.media.model.Attachments.prototype.sync
 				? wp.media.model.Attachments.prototype
@@ -68,9 +69,10 @@ cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 		},
 	},
 	{
-		// Caches query objects so queries can be easily reused.
 		get: ( function () {
 			/**
+			 * Caches query objects so queries can be easily reused.
+			 *
 			 * @static
 			 * @type Array
 			 */

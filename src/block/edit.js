@@ -1,3 +1,9 @@
+/**
+ * Edit
+ *
+ * @package
+ */
+
 /* Necessary to use TUS protocol for uploads */
 import * as tus from 'tus-js-client';
 
@@ -10,7 +16,7 @@ import { streamIframeSource } from './lib';
 /**
  * WordPress dependencies
  */
-const { sprintf, __ } = wp.i18n; // Import __() from wp.i18n
+const { sprintf, __ } = wp.i18n; // Import __() from wp.i18n.
 const {
 	Disabled,
 	Button,
@@ -93,7 +99,9 @@ class CloudflareStreamEdit extends Component {
 	toggleAttribute( attribute ) {
 		const { setAttributes } = this.props;
 		return ( newValue ) => {
-			setAttributes( { [ attribute ]: newValue } );
+			setAttributes( {
+				[ attribute ]: newValue,
+			} );
 		};
 	}
 
@@ -116,7 +124,11 @@ class CloudflareStreamEdit extends Component {
 			uid: attachment.uid,
 			thumbnail: attachment.thumb.src,
 		} );
-		this.setState( { editing: false, uploading: false, encoding: false } );
+		this.setState( {
+			editing: false,
+			uploading: false,
+			encoding: false,
+		} );
 		this.reload();
 	}
 
@@ -232,14 +244,19 @@ class CloudflareStreamEdit extends Component {
 				block.switchToEncoding();
 			},
 		} );
-		//Start the upload
+
+		// Start the upload.
 		upload.start();
 	}
 
 	switchToEncoding() {
 		const block = this;
 		block.setState(
-			{ editing: true, uploading: false, encoding: true },
+			{
+				editing: true,
+				uploading: false,
+				encoding: true,
+			},
 			() => {
 				const progressBar = jQuery( '#progressbar-' + this.instanceId );
 				const progressLabel = jQuery(
@@ -253,7 +270,6 @@ class CloudflareStreamEdit extends Component {
 						'cloudflare-stream-wordpress'
 					)
 				);
-
 				progressLabel.text( '' );
 				progressBar.progressbar( {
 					value: false,
@@ -281,7 +297,9 @@ class CloudflareStreamEdit extends Component {
 				if ( ! data.success ) {
 					console.error( 'Error: ' + data.data );
 					if ( block.state.resume === true ) {
-						block.setState( { resume: false } );
+						block.setState( {
+							resume: false,
+						} );
 						jQuery(
 							'.editor-media-placeholder .components-placeholder__instructions'
 						).html(
@@ -314,14 +332,16 @@ class CloudflareStreamEdit extends Component {
 						typeof data.data.thumbnail !== 'undefined'
 					) {
 						clearTimeout( block.encodingPoller );
-						setAttributes( { thumbnail: data.data.thumbnail } );
+						setAttributes( {
+							thumbnail: data.data.thumbnail,
+						} );
 						block.setState( {
 							editing: false,
 							uploading: false,
 							encoding: false,
 						} );
 					} else {
-						// Poll at a 5 second interval
+						// Poll at a 5 second interval.
 						block.encodingPoller = setTimeout( function () {
 							block.encode();
 						}, 5000 );
@@ -356,15 +376,27 @@ class CloudflareStreamEdit extends Component {
 		const { editing, uploading, encoding } = this.state;
 
 		const switchToEditing = () => {
-			this.setState( { editing: true } );
-			this.setState( { uploading: false } );
-			this.setState( { encoding: false } );
+			this.setState( {
+				editing: true,
+			} );
+			this.setState( {
+				uploading: false,
+			} );
+			this.setState( {
+				encoding: false,
+			} );
 		};
 
 		const switchFromEditing = () => {
-			this.setState( { editing: false } );
-			this.setState( { uploading: false } );
-			this.setState( { encoding: false } );
+			this.setState( {
+				editing: false,
+			} );
+			this.setState( {
+				uploading: false,
+			} );
+			this.setState( {
+				encoding: false,
+			} );
 		};
 
 		const switchToUploading = () => {
@@ -379,11 +411,17 @@ class CloudflareStreamEdit extends Component {
 			const file = jQuery(
 				".components-form-file-upload :input[type='file']"
 			)[ 0 ].files[ 0 ];
-			setAttributes( { file } );
+			setAttributes( {
+				file,
+			} );
 
 			const block = this;
 			block.setState(
-				{ editing: true, uploading: true, encoding: false },
+				{
+					editing: true,
+					uploading: true,
+					encoding: false,
+				},
 				() => {
 					const progressBar = jQuery(
 						'#progressbar-' + this.instanceId
@@ -403,6 +441,7 @@ class CloudflareStreamEdit extends Component {
 					width: '100%',
 				};
 				return (
+					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
 					<Placeholder
 						icon={ cloudflareStream.icon }
 						label={ __(
@@ -433,18 +472,22 @@ class CloudflareStreamEdit extends Component {
 							icon="update"
 							label={ __( 'Retry', 'cloudflare-stream' ) }
 							onClick={ switchToEditing }
-							style={ { display: 'none' } }
+							style={ {
+								display: 'none',
+							} }
 							className="editor-media-placeholder__retry-button"
 						>
 							{ __( 'Retry', 'cloudflare-stream-wordpress' ) }
 						</Button>
 					</Placeholder>
+					// phpcs:enable
 				);
 			} else if ( encoding ) {
 				const progressBarStyle = {
 					width: '100%',
 				};
 				return (
+					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
 					<Placeholder
 						icon={ cloudflareStream.icon }
 						label={ __(
@@ -478,12 +521,15 @@ class CloudflareStreamEdit extends Component {
 								'cloudflare-stream-wordpress'
 							) }
 							onClick={ switchToEditing }
-							style={ { display: 'none' } }
+							style={ {
+								display: 'none',
+							} }
 							className="editor-media-placeholder__retry-button"
 						>
 							{ __( 'Retry', 'cloudflare-stream-wordpress' ) }
 						</Button>
 					</Placeholder>
+					// phpcs:enable
 				);
 			}
 
@@ -492,6 +538,7 @@ class CloudflareStreamEdit extends Component {
 				'' === cloudflareStream.api.token
 			) {
 				return (
+					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
 					<Placeholder
 						icon={ cloudflareStream.icon }
 						label={ __(
@@ -516,6 +563,7 @@ class CloudflareStreamEdit extends Component {
 									onClick={ this.open }
 									className="editor-media-placeholder__browse-button"
 								>
+									{ ' ' }
 									{ __(
 										'Stream Library',
 										'cloudflare-stream-wordpress'
@@ -528,16 +576,20 @@ class CloudflareStreamEdit extends Component {
 							icon="cancel"
 							label={ __( 'Cancel' ) }
 							onClick={ switchFromEditing }
-							style={ { display: 'none' } }
+							style={ {
+								display: 'none',
+							} }
 							className="editor-media-placeholder__cancel-button"
 						>
+							{ ' ' }
 							{ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
 						</Button>
 					</Placeholder>
+					// phpcs:enable
 				);
 			}
-
 			return (
+				// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
 				<Placeholder
 					icon={ cloudflareStream.icon }
 					label="Cloudflare Stream"
@@ -564,6 +616,7 @@ class CloudflareStreamEdit extends Component {
 								onClick={ this.open }
 								className="editor-media-placeholder__browse-button"
 							>
+								{ ' ' }
 								{ __(
 									'Stream Library',
 									'cloudflare-stream-wordpress'
@@ -576,17 +629,20 @@ class CloudflareStreamEdit extends Component {
 						icon="cancel"
 						label={ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
 						onClick={ switchFromEditing }
-						style={ { display: 'none' } }
+						style={ {
+							display: 'none',
+						} }
 						className="editor-media-placeholder__cancel-button"
 					>
+						{ ' ' }
 						{ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
 					</Button>
 				</Placeholder>
+				// phpcs:enable
 			);
 		}
-
-		/* eslint-disable jsx-a11y/no-static-element-interactions, jsx-a11y/onclick-has-role, jsx-a11y/click-events-have-key-events */
 		return (
+			// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
 			<Fragment>
 				<BlockControls>
 					<Toolbar>
@@ -644,6 +700,7 @@ class CloudflareStreamEdit extends Component {
 				</InspectorControls>
 				<figure className={ className }>
 					<Disabled className="player-edit-wrapper">
+						{ ' ' }
 						{
 							<iframe
 								src={ streamIframeSource(
@@ -651,12 +708,11 @@ class CloudflareStreamEdit extends Component {
 								) }
 							></iframe>
 						}
-						{ /*<img src={ thumbnail } alt="Cloudflare Stream Video" /> */ }
 					</Disabled>
 				</figure>
 			</Fragment>
+			// phpcs:enable
 		);
-		/* eslint-enable jsx-a11y/no-static-element-interactions, jsx-a11y/onclick-has-role, jsx-a11y/click-events-have-key-events */
 	}
 }
 export default withNotices( CloudflareStreamEdit );

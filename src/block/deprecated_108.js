@@ -1,3 +1,10 @@
+/**
+ * Deprecated 108
+ *
+ * @package
+ */
+
+// phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
 const attributes = {
 	alignment: {
 		type: 'string',
@@ -59,7 +66,7 @@ const save = function ( props ) {
 	const { uid, controls, autoplay, loop, muted, className } =
 		props.attributes;
 	if ( uid !== false ) {
-		// Create block UI using WordPress createElement
+		// Create block UI using WordPress createElement.
 		return wp.element.createElement(
 			'figure',
 			{

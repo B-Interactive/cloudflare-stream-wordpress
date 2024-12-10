@@ -1,13 +1,15 @@
 /**
- * wp.media.model.StreamAttachments
+ * Stream Attachments
  *
- * A collection of Cloudflare Stream attachments.
- *
+ * @package
+ */
+
+/**
  * This collection has no persistence with the server without supplying
  * 'options.props.query = true', which will mirror the collection
  * to an Stream Attachments Query collection - @see wp.media.model.Attachments.mirror().
- *
  */
+
 wp.media.model.StreamAttachments = wp.media.model.Attachments.extend( {
 	initialize() {
 		wp.media.model.Attachments.prototype.initialize.apply(

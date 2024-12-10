@@ -1,11 +1,10 @@
-/* global cloudflareStream */
-
 /**
- * BLOCK: cloudflare-stream
+ * Block
  *
+ * @package
  */
 
-//  Import CSS.
+// Import CSS.
 import './style.scss';
 import './editor.scss';
 
@@ -20,8 +19,8 @@ import { streamIframeSource } from './lib';
 /* Deprecated version of block */
 import { deprecated_108 } from './deprecated_108';
 
-const { __ } = wp.i18n; // Import __() from wp.i18n
-const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks;
+const { __ } = wp.i18n; // Import __() from wp.i18n.
+const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks.
 
 /**
  * Cloudflare Stream SVG path icon
@@ -55,6 +54,7 @@ cloudflareStream.icon = wp.element.createElement(
  * @return {?WPBlock}          The block, if it has been successfully
  *                             registered; otherwise `undefined`.
  */
+// phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
 registerBlockType( 'cloudflare-stream/block-video', {
 	title: __( 'Cloudflare Stream Video', 'cloudflare-stream-wordpress' ),
 	icon: cloudflareStream.icon,
@@ -65,9 +65,7 @@ registerBlockType( 'cloudflare-stream/block-video', {
 		__( 'Stream', 'cloudflare-stream-wordpress' ),
 		__( 'video', 'cloudflare-stream-wordpress' ),
 	],
-
 	deprecated: [ deprecated_108 ],
-
 	attributes: {
 		alignment: {
 			type: 'string',
@@ -105,7 +103,6 @@ registerBlockType( 'cloudflare-stream/block-video', {
 			default: false,
 		},
 	},
-
 	supports: {
 		align: true,
 	},
@@ -134,7 +131,7 @@ registerBlockType( 'cloudflare-stream/block-video', {
 		const { uid, controls, autoplay, loop, muted, className } =
 			props.attributes;
 		if ( uid !== false ) {
-			// Create block UI using WordPress createElement
+			// Create block UI using WordPress createElement.
 			return wp.element.createElement(
 				'figure',
 				{
@@ -159,7 +156,6 @@ registerBlockType( 'cloudflare-stream/block-video', {
 				]
 			);
 		}
-
 		return wp.element.createElement( 'figure', {
 			className,
 		} );

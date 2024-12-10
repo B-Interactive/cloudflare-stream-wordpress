@@ -1,12 +1,14 @@
-/* global cloudflareStream */
+/**
+ * Media Frame
+ *
+ * @package
+ */
 
 const Post = wp.media.view.MediaFrame.Post,
 	Library = wp.media.controller.Library,
 	l10n = wp.media.view.l10n;
 
 /**
- * wp.media.view.MediaFrame.CloudflareStream
- *
  * The frame for manipulating media on the Edit Post page.
  *
  * @memberOf wp.media.view.MediaFrame
@@ -15,7 +17,12 @@ const Post = wp.media.view.MediaFrame.Post,
  * @augments wp.media.view.MediaFrame.Post
  */
 cloudflareStream.media.view.MediaFrame = Post.extend(
-	/** @lends @lends cloudflareStream.media.view.MediaFrame.prototype */ {
+	/**
+	 * Media Frame
+	 *
+	 * @lends cloudflareStream.media.view.MediaFrame.prototype
+	 */
+	{
 		initialize( options ) {
 			this.select = options;
 
@@ -49,9 +56,6 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 					filterable: false,
 					searchable: false,
 					date: false,
-					// library:    wp.media.query( _.defaults( {
-					// 	type: 'video',
-					// }, options.library ) ),
 					library: new cloudflareStream.media.model.Query(
 						null,
 						_.defaults(
@@ -84,11 +88,10 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			let handlers, checkCounts;
 
 			Post.prototype.bindHandlers.apply( this, arguments );
-			//Select.prototype.bindHandlers.apply( this, arguments );
 
 			this.on( 'activate', this.activate, this );
 
-			// Only bother checking media type counts if one of the counts is zero
+			// Only bother checking media type counts if one of the counts is zero.
 			checkCounts = _.find( this.counts, function ( type ) {
 				return type.count === 0;
 			} );
@@ -143,6 +146,8 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		},
 
 		/**
+		 * Delete Attachment
+		 *
 		 * @param {Object} event The Delete Event
 		 */
 		deleteAttachment( event ) {
@@ -152,13 +157,11 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			const controller = event.data;
 
 			/* eslint-disable */
-		if ( window.confirm( l10n.warnDelete ) ) {
+			if ( window.confirm( l10n.warnDelete ) ) {
 				/* eslint-enable */
 				const state = controller.state(),
 					selection = state.get( 'selection' ),
 					attachment = selection.first().toJSON();
-				//controller.model.destroy();
-				//this.controller.modal.focusManager.focus();
 
 				selection.remove( attachment );
 				state.trigger( 'delete', attachment ).reset();
@@ -166,6 +169,8 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		},
 
 		/**
+		 * Update Attachment
+		 *
 		 * @param {Object} event The Update Event
 		 */
 		updateAttachment( event ) {
@@ -177,7 +182,7 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 				selection = state.get( 'selection' ),
 				attachment = selection.first().toJSON();
 
-			// Update the model
+			// Update the model.
 			const newTitle = jQuery(
 				'label[data-setting="title"] input'
 			).val();
@@ -233,6 +238,8 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		},
 
 		/**
+		 * Insert Toolbar
+		 *
 		 * @param {wp.Backbone.View} view Backbone Toolbar view.
 		 */
 		mainInsertToolbar( view ) {

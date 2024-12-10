@@ -1,7 +1,10 @@
-/* global cloudflareStream */
+/**
+ * Managing Stream Queries
+ *
+ * @package
+ */
 
 /**
- * wp.media.streamquery
  *
  * Shorthand for creating a new Attachments Query.
  *
@@ -17,10 +20,7 @@ wp.media.streamquery = function ( props ) {
 };
 
 /**
- * wp.media.model.StreamQuery
- *
  * A collection of Stream Attachments that match the supplied query arguments.
- *
  */
 wp.media.model.StreamQuery = wp.media.model.Query.extend(
 	{
@@ -56,6 +56,8 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 			return this._more;
 		},
 		/**
+		 * Default posts per page
+		 *
 		 * @readonly
 		 */
 		defaultArgs: {
@@ -95,7 +97,7 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 				options.data.query = args;
 				return wp.media.ajax( options );
 
-				// Otherwise, fall back to Backbone.sync()
+				// Otherwise, fall back to Backbone.sync().
 			}
 			const fallback = wp.media.model.Attachments.prototype.sync
 				? wp.media.model.Attachments.prototype
@@ -104,9 +106,10 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 		},
 	},
 	{
-		// Caches query objects so queries can be easily reused.
 		get: ( function () {
 			/**
+			 * Caches query objects so queries can be easily reused.
+			 *
 			 * @static
 			 * @type Array
 			 */
