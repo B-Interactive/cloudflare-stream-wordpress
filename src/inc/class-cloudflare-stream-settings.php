@@ -220,7 +220,7 @@ class Cloudflare_Stream_Settings {
 			. '<input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $i ) . '" value="' . esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . '" ' . checked( self::STANDARD_MEDIA_DOMAINS[ $i ], $media_domain, false ) . ' >'
 			. esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . esc_html( $default_text ) . '</label>';
 
-			if ( $media_domain === self::STANDARD_MEDIA_DOMAINS[ $i ] ) {
+			if ( self::STANDARD_MEDIA_DOMAINS[ $i ] === $media_domain ) {
 				$existing_custom_domain = false;
 			}
 		}
@@ -229,7 +229,7 @@ class Cloudflare_Stream_Settings {
 		$account_subdomain = self::get_account_subdomain();
 
 		// In the event custom domain is in use, but API details are misconfigured, this retains that setting as default.
-		if ( empty( $account_subdomain ) && ( $existing_custom_domain && !self::test_api_keys() ) ) {
+		if ( empty( $account_subdomain ) && ( $existing_custom_domain && ! self::test_api_keys() ) ) {
 			$account_subdomain = $media_domain;
 		}
 
