@@ -105,9 +105,9 @@ function cloudflare_stream_block_editor_assets() {
 	);
 	wp_enqueue_style(
 		'progressbar',
-		'https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css',
+		plugins_url( 'src/css/jquery-ui.min.css', __DIR__ ),
 		array(),
-		'1.12.1'
+		'1.13.3'
 	);
 } // End function cloudflare_stream_editor_assets().
 
