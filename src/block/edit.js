@@ -197,7 +197,6 @@ class CloudflareStreamEdit extends Component {
 			'/media';
 
 		const upload = new tus.Upload( file, {
-			resume: block.state.resume,
 			removeFingerprintOnSuccess: true,
 			endpoint: baseUrl,
 			retryDelays: [ 0, 1000, 3000, 5000 ],
