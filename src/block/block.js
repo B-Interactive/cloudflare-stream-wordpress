@@ -56,14 +56,14 @@ cloudflareStream.icon = wp.element.createElement(
  */
 // phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
 registerBlockType( 'cloudflare-stream/block-video', {
-	title: __( 'Cloudflare Stream Video', 'cloudflare-stream-wordpress' ),
+	title: __( 'Cloudflare Stream Video', 'cloudflare-stream' ),
 	icon: cloudflareStream.icon,
 	render_callback: 'cloudflare_stream_render_block',
 	category: 'embed',
 	keywords: [
-		__( 'Cloudflare', 'cloudflare-stream-wordpress' ),
-		__( 'Stream', 'cloudflare-stream-wordpress' ),
-		__( 'video', 'cloudflare-stream-wordpress' ),
+		__( 'Cloudflare', 'cloudflare-stream' ),
+		__( 'Stream', 'cloudflare-stream' ),
+		__( 'video', 'cloudflare-stream' ),
 	],
 	deprecated: [ deprecated_108 ],
 	attributes: {

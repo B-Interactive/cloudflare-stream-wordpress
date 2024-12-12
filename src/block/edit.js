@@ -215,7 +215,7 @@ class CloudflareStreamEdit extends Component {
 				).html(
 					__(
 						'Upload Error: See the console for details.',
-						'cloudflare-stream-wordpress'
+						'cloudflare-stream'
 					)
 				);
 				jQuery( '.editor-media-placeholder__retry-button' ).show();
@@ -266,7 +266,7 @@ class CloudflareStreamEdit extends Component {
 				).html(
 					__(
 						'Upload Complete. Processing video.',
-						'cloudflare-stream-wordpress'
+						'cloudflare-stream'
 					)
 				);
 				progressLabel.text( '' );
@@ -304,7 +304,7 @@ class CloudflareStreamEdit extends Component {
 						).html(
 							__(
 								'Uploading your video.',
-								'cloudflare-stream-wordpress'
+								'cloudflare-stream'
 							)
 						);
 						block.uploadFromFiles( file );
@@ -316,7 +316,7 @@ class CloudflareStreamEdit extends Component {
 							sprintf(
 								__(
 									'Processing Error: %s',
-									'cloudflare-stream-wordpress'
+									'cloudflare-stream'
 								),
 								data.data
 							)
@@ -404,7 +404,7 @@ class CloudflareStreamEdit extends Component {
 			jQuery(
 				'.editor-media-placeholder .components-placeholder__instructions'
 			).html(
-				__( 'Processing your video', 'cloudflare-stream-wordpress' )
+				__( 'Processing your video', 'cloudflare-stream' )
 			);
 
 			const file = jQuery(
@@ -445,11 +445,11 @@ class CloudflareStreamEdit extends Component {
 						icon={ cloudflareStream.icon }
 						label={ __(
 							'Cloudflare Stream',
-							'cloudflare-stream-wordpress'
+							'cloudflare-stream'
 						) }
 						instructions={ __(
 							'Uploading your video.',
-							'cloudflare-stream-wordpress'
+							'cloudflare-stream'
 						) }
 						className="editor-media-placeholder"
 					>
@@ -476,7 +476,7 @@ class CloudflareStreamEdit extends Component {
 							} }
 							className="editor-media-placeholder__retry-button"
 						>
-							{ __( 'Retry', 'cloudflare-stream-wordpress' ) }
+							{ __( 'Retry', 'cloudflare-stream' ) }
 						</Button>
 					</Placeholder>
 					// phpcs:enable
@@ -491,11 +491,11 @@ class CloudflareStreamEdit extends Component {
 						icon={ cloudflareStream.icon }
 						label={ __(
 							'Cloudflare Stream',
-							'cloudflare-stream-wordpress'
+							'cloudflare-stream'
 						) }
 						instructions={ __(
 							'Processing your video.',
-							'cloudflare-stream-wordpress'
+							'cloudflare-stream'
 						) }
 						className="editor-media-placeholder"
 					>
@@ -517,7 +517,7 @@ class CloudflareStreamEdit extends Component {
 							icon="update"
 							label={ __(
 								'Retry',
-								'cloudflare-stream-wordpress'
+								'cloudflare-stream'
 							) }
 							onClick={ switchToEditing }
 							style={ {
@@ -525,7 +525,7 @@ class CloudflareStreamEdit extends Component {
 							} }
 							className="editor-media-placeholder__retry-button"
 						>
-							{ __( 'Retry', 'cloudflare-stream-wordpress' ) }
+							{ __( 'Retry', 'cloudflare-stream' ) }
 						</Button>
 					</Placeholder>
 					// phpcs:enable
@@ -542,11 +542,11 @@ class CloudflareStreamEdit extends Component {
 						icon={ cloudflareStream.icon }
 						label={ __(
 							'Cloudflare Stream',
-							'cloudflare-stream-wordpress'
+							'cloudflare-stream'
 						) }
 						instructions={ __(
 							'Select a file from your library.',
-							'cloudflare-stream-wordpress'
+							'cloudflare-stream'
 						) }
 					>
 						<MediaUpload
@@ -557,7 +557,7 @@ class CloudflareStreamEdit extends Component {
 								<Button
 									label={ __(
 										'Stream Library',
-										'cloudflare-stream-wordpress'
+										'cloudflare-stream'
 									) }
 									onClick={ this.open }
 									className="editor-media-placeholder__browse-button"
@@ -565,7 +565,7 @@ class CloudflareStreamEdit extends Component {
 									{ ' ' }
 									{ __(
 										'Stream Library',
-										'cloudflare-stream-wordpress'
+										'cloudflare-stream'
 									) }
 								</Button>
 							) }
@@ -581,7 +581,7 @@ class CloudflareStreamEdit extends Component {
 							className="editor-media-placeholder__cancel-button"
 						>
 							{ ' ' }
-							{ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
+							{ __( 'Cancel', 'cloudflare-stream' ) }
 						</Button>
 					</Placeholder>
 					// phpcs:enable
@@ -600,7 +600,7 @@ class CloudflareStreamEdit extends Component {
 						onChange={ switchToUploading }
 						accept="video/*"
 					>
-						{ __( 'Upload', 'cloudflare-stream-wordpress' ) }
+						{ __( 'Upload', 'cloudflare-stream' ) }
 					</FormFileUpload>
 					<MediaUpload
 						type="video"
@@ -610,7 +610,7 @@ class CloudflareStreamEdit extends Component {
 							<Button
 								label={ __(
 									'Stream Library',
-									'cloudflare-stream-wordpress'
+									'cloudflare-stream'
 								) }
 								onClick={ this.open }
 								className="editor-media-placeholder__browse-button"
@@ -618,7 +618,7 @@ class CloudflareStreamEdit extends Component {
 								{ ' ' }
 								{ __(
 									'Stream Library',
-									'cloudflare-stream-wordpress'
+									'cloudflare-stream'
 								) }
 							</Button>
 						) }
@@ -626,7 +626,7 @@ class CloudflareStreamEdit extends Component {
 					<Button
 						isSecondary
 						icon="cancel"
-						label={ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
+						label={ __( 'Cancel', 'cloudflare-stream' ) }
 						onClick={ switchFromEditing }
 						style={ {
 							display: 'none',
@@ -634,7 +634,7 @@ class CloudflareStreamEdit extends Component {
 						className="editor-media-placeholder__cancel-button"
 					>
 						{ ' ' }
-						{ __( 'Cancel', 'cloudflare-stream-wordpress' ) }
+						{ __( 'Cancel', 'cloudflare-stream' ) }
 					</Button>
 				</Placeholder>
 				// phpcs:enable
@@ -649,7 +649,7 @@ class CloudflareStreamEdit extends Component {
 							className="components-icon-button components-toolbar__control"
 							label={ __(
 								'Edit video',
-								'cloudflare-stream-wordpress'
+								'cloudflare-stream'
 							) }
 							onClick={ switchToEditing }
 							icon="edit"
@@ -660,13 +660,13 @@ class CloudflareStreamEdit extends Component {
 					<PanelBody
 						title={ __(
 							'Video Settings',
-							'cloudflare-stream-wordpress'
+							'cloudflare-stream'
 						) }
 					>
 						<ToggleControl
 							label={ __(
 								'Autoplay',
-								'cloudflare-stream-wordpress'
+								'cloudflare-stream'
 							) }
 							onChange={ this.toggleAttribute( 'autoplay' ) }
 							checked={ autoplay }
@@ -674,7 +674,7 @@ class CloudflareStreamEdit extends Component {
 						<ToggleControl
 							label={ __(
 								'Loop',
-								'cloudflare-stream-wordpress'
+								'cloudflare-stream'
 							) }
 							onChange={ this.toggleAttribute( 'loop' ) }
 							checked={ loop }
@@ -682,7 +682,7 @@ class CloudflareStreamEdit extends Component {
 						<ToggleControl
 							label={ __(
 								'Muted',
-								'cloudflare-stream-wordpress'
+								'cloudflare-stream'
 							) }
 							onChange={ this.toggleAttribute( 'muted' ) }
 							checked={ muted }
@@ -690,7 +690,7 @@ class CloudflareStreamEdit extends Component {
 						<ToggleControl
 							label={ __(
 								'Playback Controls',
-								'cloudflare-stream-wordpress'
+								'cloudflare-stream'
 							) }
 							onChange={ this.toggleAttribute( 'controls' ) }
 							checked={ controls }
