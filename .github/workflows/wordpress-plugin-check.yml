@@ -1,0 +1,2 @@
+- name: WordPress Plugin Check
+  uses: WordPress/plugin-check-action@v1
