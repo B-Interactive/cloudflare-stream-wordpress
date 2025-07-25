@@ -33,8 +33,6 @@
     "build:dev": "wp-scripts build  --env dev",
     "lint:css": "wp-scripts lint-style 'src/**/*.css'",
     "lint:css-fix": "wp-scripts lint-style 'src/**/*.css' --fix",
-    "lint:js": "wp-scripts lint-js ./src",
-    "lint:js-fix": "wp-scripts lint-js ./src --fix",
     "lint:md:docs": "wp-scripts lint-md-docs",
     "lint:pkg-json": "wp-scripts lint-pkg-json",
     "packages-update": "wp-scripts packages-update",
