@@ -1,6 +1,6 @@
 {
   "name": "cloudflare-stream",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress.",
   "author": "B-Interactive",
   "license": "GPL-2.0-or-later",

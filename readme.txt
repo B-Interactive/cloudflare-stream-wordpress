@@ -2,7 +2,7 @@
 Plugin Name: Cloudflare Stream
 Plugin URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
 Description: Securely embeds videos hosted with Cloudflare Stream, in your WordPress website via shortcodes or the block editor.
-Version: 1.1.0.0
+Version: 1.1.1
 Author: B-Interactive
 Author URI: https://b-interactive.com.au/
 Contributors: cloudflare, stevenkword, davidpurdy
@@ -11,7 +11,7 @@ License: GPL2
 Tags: video, streaming, cloudflare, stream, block
 Requires PHP: 7.1
 Requires at least: 5.0
-Tested up to: 6.7.1
+Tested up to: 6.8.2
 Stable tag: 1.1.0.0
 
 Description: Securely embeds videos hosted with Cloudflare Stream, in your WordPress website via shortcodes or the block editor.
