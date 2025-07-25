@@ -1,18 +1,18 @@
 /**
  * Query
  *
- * @package
+ * @package cloudflare-stream
  */
 
 /**
  * A collection of Stream Attachments that match the supplied query arguments.
  */
-cloudflareStream.media.model.Query = wp.media.model.Query.extend(
+cloudflareStream.media.model.Query   = wp.media.model.Query.extend(
 	{
 		initialize( models, options ) {
-			options = options || {};
+			options                  = options || {};
 			wp.media.model.Query.prototype.initialize.apply( this, arguments );
-			this.args = options.args || {};
+			this.args                = options.args || {};
 			this.args.posts_per_page = cloudflareStream.api.posts_per_page;
 		},
 
@@ -28,13 +28,16 @@ cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 		sync( method, model, options ) {
 			// Overload the read method so Attachment.fetch() functions correctly.
 			if ( 'read' === method ) {
-				options = options || {};
+				options         = options || {};
 				options.context = this;
-				options.data = _.extend( options.data || {}, {
-					action: 'query-cloudflare-stream-attachments',
-					post_id: wp.media.model.settings.post.id,
-					nonce: cloudflareStream.nonce,
-				} );
+				options.data    = _.extend(
+					options.data || {},
+					{
+						action: 'query-cloudflare-stream-attachments',
+						post_id: wp.media.model.settings.post.id,
+						nonce: cloudflareStream.nonce,
+					}
+				);
 
 				let timestampOffset = '';
 				if (
@@ -79,8 +82,8 @@ cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 			const queries = [];
 
 			return function ( props, options ) {
-				let args = {},
-					orderby = cloudflareStream.media.model.Query.orderby,
+				let args     = {},
+					orderby  = cloudflareStream.media.model.Query.orderby,
 					defaults = cloudflareStream.media.model.Query.defaultProps,
 					query;
 
@@ -110,16 +113,19 @@ cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 
 				// Generate the query `args` object.
 				// Correct any differing property names.
-				_.each( props, function ( value, prop ) {
-					if ( _.isNull( value ) ) {
-						return;
-					}
+				_.each(
+					props,
+					function ( value, prop ) {
+						if ( _.isNull( value ) ) {
+							return;
+						}
 
-					args[
+						args[
 						cloudflareStream.media.model.Query.propmap[ prop ] ||
 							prop
-					] = value;
-				} );
+						] = value;
+					}
+				);
 
 				// Fill any other default query args.
 				_.defaults(
@@ -133,18 +139,24 @@ cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 					orderby.valuemap[ props.orderby ] || props.orderby;
 
 				// Search the query cache for matches.
-				query = _.find( queries, function ( query ) {
-					return _.isEqual( query.args, args );
-				} );
+				query = _.find(
+					queries,
+					function ( query ) {
+						return _.isEqual( query.args, args );
+					}
+				);
 
 				// Otherwise, create a new query and add it to the cache.
 				if ( ! query ) {
 					query = new cloudflareStream.media.model.Query(
 						[],
-						_.extend( options || {}, {
-							props,
-							args,
-						} )
+						_.extend(
+							options || {},
+							{
+								props,
+								args,
+							}
+						)
 					);
 					queries.push( query );
 				}

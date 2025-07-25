@@ -1,7 +1,7 @@
 /**
  * Managing Stream Queries
  *
- * @package
+ * @package cloudflare-stream
  */
 
 /**
@@ -12,11 +12,17 @@
  * @return {wp.media.model.StreamAttachments} Stream attachments.
  */
 wp.media.streamquery = function ( props ) {
-	return new wp.media.model.StreamAttachments( null, {
-		props: _.extend( _.defaults( props || {}, { orderby: 'date' } ), {
-			query: true,
-		} ),
-	} );
+	return new wp.media.model.StreamAttachments(
+		null,
+		{
+			props: _.extend(
+				_.defaults( props || {}, { orderby: 'date' } ),
+				{
+					query: true,
+				}
+			),
+		}
+	);
 };
 
 /**
@@ -39,19 +45,21 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 				arguments
 			);
 
-			this._more.fail( function ( response ) {
-				if ( 429 === response.statuscode ) {
-					console.error(
-						'Error: You have reached this service data rate limit on this IP address for this hour. Try again in a bit.'
-					);
-				}
-				if ( response.msg ) {
-					console.error(
-						'Error: Could not retrieve remote library data:\n' +
+			this._more.fail(
+				function ( response ) {
+					if ( 429 === response.statuscode ) {
+							console.error(
+								'Error: You have reached this service data rate limit on this IP address for this hour. Try again in a bit.'
+							);
+					}
+					if ( response.msg ) {
+						console.error(
+							'Error: Could not retrieve remote library data:\n' +
 							response.msg
-					);
+						);
+					}
 				}
-			} );
+			);
 
 			return this._more;
 		},
@@ -75,15 +83,18 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 		sync( method, model, options ) {
 			// Overload the read method so Attachment.fetch() functions correctly.
 			if ( 'read' === method ) {
-				options = options || {};
+				options         = options || {};
 				options.context = this;
-				options.data = _.extend( options.data || {}, {
-					action: 'query-cloudflare-stream-attachments',
-					post_id: wp.media.model.settings.post.id,
-					nonce: cloudflareStream.nonce,
+				options.data    = _.extend(
+					options.data || {},
+					{
+						action: 'query-cloudflare-stream-attachments',
+						post_id: wp.media.model.settings.post.id,
+						nonce: cloudflareStream.nonce,
 
-					//security: rmlQueryAttachmentsParams.nonce
-				} );
+						//security: rmlQueryAttachmentsParams.nonce
+					}
+				);
 
 				// Clone the args so manipulation is non-destructive.
 				const args = _.clone( this.args );
@@ -116,8 +127,8 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 			const queries = [];
 
 			return function ( props, options ) {
-				let args = {},
-					orderby = wp.media.model.StreamQuery.orderby,
+				let args     = {},
+					orderby  = wp.media.model.StreamQuery.orderby,
 					defaults = wp.media.model.StreamQuery.defaultProps,
 					query;
 
@@ -147,14 +158,17 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 
 				// Generate the query `args` object.
 				// Correct any differing property names.
-				_.each( props, function ( value, prop ) {
-					if ( _.isNull( value ) ) {
-						return;
-					}
+				_.each(
+					props,
+					function ( value, prop ) {
+						if ( _.isNull( value ) ) {
+							return;
+						}
 
-					args[ wp.media.model.StreamQuery.propmap[ prop ] || prop ] =
+						args[ wp.media.model.StreamQuery.propmap[ prop ] || prop ] =
 						value;
-				} );
+					}
+				);
 
 				// Fill any other default query args.
 				_.defaults( args, wp.media.model.StreamQuery.defaultArgs );
@@ -165,18 +179,24 @@ wp.media.model.StreamQuery = wp.media.model.Query.extend(
 					orderby.valuemap[ props.orderby ] || props.orderby;
 
 				// Search the query cache for matches.
-				query = _.find( queries, function ( query ) {
-					return _.isEqual( query.args, args );
-				} );
+				query = _.find(
+					queries,
+					function ( query ) {
+						return _.isEqual( query.args, args );
+					}
+				);
 
 				// Otherwise, create a new query and add it to the cache.
 				if ( ! query ) {
 					query = new wp.media.model.StreamQuery(
 						[],
-						_.extend( options || {}, {
-							props,
-							args,
-						} )
+						_.extend(
+							options || {},
+							{
+								props,
+								args,
+							}
+						)
 					);
 					queries.push( query );
 				}

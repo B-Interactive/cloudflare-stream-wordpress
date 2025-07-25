@@ -1,7 +1,7 @@
 /**
  * Lib
  *
- * @package
+ * @package cloudflare-stream
  */
 
 export const streamIframeSource = function ( attributes ) {

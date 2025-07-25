@@ -1,7 +1,7 @@
 /**
  * Blocks Initializer
  *
- * @package
+ * @package cloudflare-stream
  */
 
 import './media/models/attachments.js';

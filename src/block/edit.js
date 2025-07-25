@@ -1,7 +1,7 @@
 /**
  * Edit
  *
- * @package
+ * @package cloudflare-stream
  */
 
 /* Necessary to use TUS protocol for uploads */
@@ -26,10 +26,10 @@ const {
 	withNotices,
 	Placeholder,
 	FormFileUpload,
-} = wp.components;
+}                     = wp.components;
 const { BlockControls, InspectorControls } = wp.editor;
-const { MediaUpload } = wp.blockEditor;
-const { Fragment, Component, createRef } = wp.element;
+const { MediaUpload }                      = wp.blockEditor;
+const { Fragment, Component, createRef }   = wp.element;
 
 class CloudflareStreamEdit extends Component {
 	constructor( instanceId ) {
@@ -43,16 +43,16 @@ class CloudflareStreamEdit extends Component {
 			resume: true,
 		};
 
-		this.instanceId = instanceId.clientId;
-		this.controller = this;
-		this.streamPlayer = createRef();
+		this.instanceId      = instanceId.clientId;
+		this.controller      = this;
+		this.streamPlayer    = createRef();
 		this.toggleAttribute = this.toggleAttribute.bind( this );
-		this.open = this.open.bind( this );
-		this.select = this.select.bind( this );
-		this.mediaFrame = new cloudflareStream.media.view.MediaFrame(
+		this.open            = this.open.bind( this );
+		this.select          = this.select.bind( this );
+		this.mediaFrame      = new cloudflareStream.media.view.MediaFrame(
 			this.select
 		);
-		this.encodingPoller = false;
+		this.encodingPoller  = false;
 	}
 
 	componentDidMount() {
@@ -67,13 +67,13 @@ class CloudflareStreamEdit extends Component {
 
 	componentDidUpdate() {
 		const { attributes } = this.props;
-		const streamPlayer = this.streamPlayer.current;
+		const streamPlayer   = this.streamPlayer.current;
 
 		if ( streamPlayer !== null && streamPlayer.play !== null ) {
 			streamPlayer.autoPlay = attributes.autoplay;
 			streamPlayer.controls = attributes.controls;
-			streamPlayer.mute = attributes.mute;
-			streamPlayer.loop = attributes.loop;
+			streamPlayer.mute     = attributes.mute;
+			streamPlayer.loop     = attributes.loop;
 			streamPlayer.controls = attributes.controls;
 
 			if (
@@ -99,9 +99,11 @@ class CloudflareStreamEdit extends Component {
 	toggleAttribute( attribute ) {
 		const { setAttributes } = this.props;
 		return ( newValue ) => {
-			setAttributes( {
-				[ attribute ]: newValue,
-			} );
+			setAttributes(
+				{
+					[ attribute ]: newValue,
+				}
+			);
 		};
 	}
 
@@ -110,42 +112,54 @@ class CloudflareStreamEdit extends Component {
 
 		this.mediaFrame.open();
 
-		this.mediaFrame.on( 'delete', function ( attachment ) {
-			block.delete( attachment );
-		} );
-		this.mediaFrame.on( 'select', function () {
-			block.select();
-		} );
+		this.mediaFrame.on(
+			'delete',
+			function ( attachment ) {
+				block.delete( attachment );
+			}
+		);
+		this.mediaFrame.on(
+			'select',
+			function () {
+				block.select();
+			}
+		);
 	}
 
 	select( attachment ) {
 		const { setAttributes } = this.props;
-		setAttributes( {
-			uid: attachment.uid,
-			thumbnail: attachment.thumb.src,
-		} );
-		this.setState( {
-			editing: false,
-			uploading: false,
-			encoding: false,
-		} );
+		setAttributes(
+			{
+				uid: attachment.uid,
+				thumbnail: attachment.thumb.src,
+			}
+		);
+		this.setState(
+			{
+				editing: false,
+				uploading: false,
+				encoding: false,
+			}
+		);
 		this.reload();
 	}
 
 	delete( attachment ) {
-		jQuery.ajax( {
-			url: ajaxurl + '?action=cloudflare-stream-delete',
-			data: {
-				nonce: cloudflareStream.nonce,
-				uid: attachment.uid,
-			},
-			success() {
-				jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
-			},
-			error( jqXHR, textStatus ) {
-				console.error( 'Error: ' + textStatus );
-			},
-		} );
+		jQuery.ajax(
+			{
+				url: ajaxurl + '?action=cloudflare-stream-delete',
+				data: {
+					nonce: cloudflareStream.nonce,
+					uid: attachment.uid,
+				},
+				success() {
+					jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
+				},
+				error( jqXHR, textStatus ) {
+					console.error( 'Error: ' + textStatus );
+				},
+			}
+		);
 	}
 
 	update( attachment ) {
@@ -153,41 +167,44 @@ class CloudflareStreamEdit extends Component {
 			'visibility',
 			'visible'
 		);
-		jQuery.ajax( {
-			url: ajaxurl + '?action=cloudflare-stream-update',
-			method: 'POST',
-			data: {
-				nonce: cloudflareStream.nonce,
-				uid: attachment.uid,
-				title: attachment.title,
-			},
-			success() {
-				jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
-			},
-			error( jqXHR, textStatus ) {
-				console.error( 'Error: ' + textStatus );
-			},
-		} );
+		jQuery.ajax(
+			{
+				url: ajaxurl + '?action=cloudflare-stream-update',
+				method: 'POST',
+				data: {
+					nonce: cloudflareStream.nonce,
+					uid: attachment.uid,
+					title: attachment.title,
+				},
+				success() {
+					jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
+				},
+				error( jqXHR, textStatus ) {
+					console.error( 'Error: ' + textStatus );
+				},
+			}
+		);
 	}
 
 	reload() {
 		const { attributes } = this.props;
-		const link =
+		const link           =
 			'https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' +
 			attributes.uid;
 
-		jQuery.getScript( link ).fail( function ( jqxhr, settings, exception ) {
-			console.error( 'Exception:' + exception );
-		} );
+		jQuery.getScript( link ).fail(
+			function ( jqxhr, settings, exception ) {
+				console.error( 'Exception:' + exception );
+			}
+		);
 	}
 
 	uploadFromFiles( file ) {
-		const block = this;
+		const block             = this;
 		const { setAttributes } = this.props;
-
-		const progressBar = jQuery( '#progressbar-' + this.instanceId );
-		const progressLabel = jQuery( '.progress-label-' + this.instanceId );
-		const val = progressBar.progressbar( 'value' ) || 0;
+		const progressBar       = jQuery( '#progressbar-' + this.instanceId );
+		const progressLabel     = jQuery( '.progress-label-' + this.instanceId );
+		const val               = progressBar.progressbar( 'value' ) || 0;
 
 		progressBar.progressbar( 'value', val );
 
@@ -196,68 +213,74 @@ class CloudflareStreamEdit extends Component {
 			cloudflareStream.api.account +
 			'/media';
 
-		const upload = new tus.Upload( file, {
-			removeFingerprintOnSuccess: true,
-			endpoint: baseUrl,
-			retryDelays: [ 0, 1000, 3000, 5000 ],
-			headers: {
-				Authorization: 'Bearer ' + cloudflareStream.api.token,
-			},
-			metadata: {
-				name: file.name,
-				type: file.type,
-			},
-			onError( error ) {
-				console.error( 'Error: ' + error );
-				progressBar.hide();
-				jQuery(
-					'.editor-media-placeholder .components-placeholder__instructions'
-				).html(
-					__(
-						'Upload Error: See the console for details.',
-						'cloudflare-stream'
-					)
-				);
-				jQuery( '.editor-media-placeholder__retry-button' ).show();
-			},
-			onProgress( bytesUploaded, bytesTotal ) {
-				const percentage = parseInt(
-					( bytesUploaded / bytesTotal ) * 100
-				);
+		const upload                 = new tus.Upload(
+			file,
+			{
+				removeFingerprintOnSuccess: true,
+				endpoint: baseUrl,
+				retryDelays: [ 0, 1000, 3000, 5000 ],
+				headers: {
+					Authorization: 'Bearer ' + cloudflareStream.api.token,
+				},
+				metadata: {
+					name: file.name,
+					type: file.type,
+				},
+				onError( error ) {
+					console.error( 'Error: ' + error );
+					progressBar.hide();
+					jQuery(
+						'.editor-media-placeholder .components-placeholder__instructions'
+					).html(
+						__(
+							'Upload Error: See the console for details.',
+							'cloudflare-stream'
+						)
+					);
+					jQuery( '.editor-media-placeholder__retry-button' ).show();
+				},
+				onProgress( bytesUploaded, bytesTotal ) {
+					const percentage = parseInt(
+						( bytesUploaded / bytesTotal ) * 100
+					);
 
-				progressLabel.text( percentage + '%' );
-				progressBar.progressbar( 'option', 'value', percentage );
-			},
-			onSuccess() {
-				const urlArray = upload.url.split( '/' );
-				const mediaId =
-					urlArray[ urlArray.length - 1 ].split( '?' )[ 0 ];
+					progressLabel.text( percentage + '%' );
+					progressBar.progressbar( 'option', 'value', percentage );
+				},
+				onSuccess() {
+					const urlArray = upload.url.split( '/' );
+					const mediaId  =
+						urlArray[ urlArray.length - 1 ].split( '?' )[ 0 ];
 
-				setAttributes( {
-					uid: mediaId,
-					fingerprint: upload.options.fingerprint(
-						upload.file,
-						upload.options
-					),
-				} );
-				block.switchToEncoding();
-			},
-		} );
+					setAttributes(
+						{
+							uid: mediaId,
+							fingerprint: upload.options.fingerprint(
+								upload.file,
+								upload.options
+							),
+						}
+					);
+					block.switchToEncoding();
+				},
+			}
+		);
 
 		// Start the upload.
 		upload.start();
 	}
 
 	switchToEncoding() {
-		const block = this;
+		const block                 = this;
 		block.setState(
 			{
 				editing: true,
 				uploading: false,
 				encoding: true,
 			},
-			() => {
-				const progressBar = jQuery( '#progressbar-' + this.instanceId );
+			() =>
+			{
+				const progressBar   = jQuery( '#progressbar-' + this.instanceId );
 				const progressLabel = jQuery(
 					'.progress-label-' + this.instanceId
 				);
@@ -270,9 +293,11 @@ class CloudflareStreamEdit extends Component {
 					)
 				);
 				progressLabel.text( '' );
-				progressBar.progressbar( {
-					value: false,
-				} );
+				progressBar.progressbar(
+					{
+						value: false,
+					}
+				);
 				block.encode();
 			}
 		);
@@ -280,125 +305,151 @@ class CloudflareStreamEdit extends Component {
 
 	encode() {
 		const { attributes, setAttributes } = this.props;
-		const block = this;
-		const progressBar = jQuery( '#progressbar-' + this.instanceId );
-		const progressLabel = jQuery( '.progress-label-' + this.instanceId );
+		const block                         = this;
+		const progressBar                   = jQuery( '#progressbar-' + this.instanceId );
+		const progressLabel                 = jQuery( '.progress-label-' + this.instanceId );
+		const { file }                      = this.props.attributes;
 
-		const { file } = this.props.attributes;
-
-		jQuery.ajax( {
-			url: ajaxurl + '?action=cloudflare-stream-check-upload',
-			data: {
-				nonce: cloudflareStream.nonce,
-				uid: attributes.uid,
-			},
-			success( data ) {
-				if ( ! data.success ) {
-					console.error( 'Error: ' + data.data );
-					if ( block.state.resume === true ) {
-						block.setState( {
-							resume: false,
-						} );
-						jQuery(
-							'.editor-media-placeholder .components-placeholder__instructions'
-						).html(
-							__(
-								'Uploading your video.',
-								'cloudflare-stream'
-							)
-						);
-						block.uploadFromFiles( file );
-					} else {
-						progressBar.hide();
-						jQuery(
-							'.editor-media-placeholder .components-placeholder__instructions'
-						).html(
-							sprintf(
+		jQuery.ajax(
+			{
+				url: ajaxurl + '?action=cloudflare-stream-check-upload',
+				data: {
+					nonce: cloudflareStream.nonce,
+					uid: attributes.uid,
+				},
+				success( data ) {
+					if ( ! data.success ) {
+						console.error( 'Error: ' + data.data );
+						if ( block.state.resume === true ) {
+							block.setState(
+								{
+									resume: false,
+								}
+							);
+							jQuery(
+								'.editor-media-placeholder .components-placeholder__instructions'
+							).html(
 								__(
-									'Processing Error: %s',
+									'Uploading your video.',
 									'cloudflare-stream'
-								),
-								data.data
-							)
-						);
-						jQuery(
-							'.editor-media-placeholder__retry-button'
-						).show();
-					}
-				} else if ( typeof data.data !== 'undefined' ) {
-					if (
-						data.data.readyToStream === true &&
-						typeof data.data.thumbnail !== 'undefined'
-					) {
-						clearTimeout( block.encodingPoller );
-						setAttributes( {
-							thumbnail: data.data.thumbnail,
-						} );
-						block.setState( {
-							editing: false,
-							uploading: false,
-							encoding: false,
-						} );
-					} else {
-						// Poll at a 5 second interval.
-						block.encodingPoller = setTimeout( function () {
-							block.encode();
-						}, 5000 );
-					}
-					if ( data.data.status.state === 'queued' ) {
-						progressLabel.text( '' );
-						progressBar.progressbar( {
-							value: false,
-						} );
-					} else if ( data.data.status.state === 'inprogress' ) {
-						const progress = Math.round(
-							data.data.status.pctComplete
-						);
-						progressLabel.text( progress + '%' );
+								)
+							);
+							block.uploadFromFiles( file );
+						} else {
+							progressBar.hide();
+							jQuery(
+								'.editor-media-placeholder .components-placeholder__instructions'
+							).html(
+								sprintf(
+									__(
+										'Processing Error: %s',
+										'cloudflare-stream'
+									),
+									data.data
+								)
+							);
+							jQuery(
+								'.editor-media-placeholder__retry-button'
+							).show();
+						}
+					} else if ( typeof data.data !== 'undefined' ) {
+						if (
+							data.data.readyToStream === true &&
+							typeof data.data.thumbnail !== 'undefined'
+						) {
+							clearTimeout( block.encodingPoller );
+							setAttributes(
+								{
+									thumbnail: data.data.thumbnail,
+								}
+							);
+							block.setState(
+								{
+									editing: false,
+									uploading: false,
+									encoding: false,
+								}
+							);
+						} else {
+							// Poll at a 5 second interval.
+							block.encodingPoller = setTimeout(
+								function () {
+									block.encode();
+								},
+								5000
+							);
+						}
+						if ( data.data.status.state === 'queued' ) {
+							progressLabel.text( '' );
+							progressBar.progressbar(
+								{
+									value: false,
+								}
+							);
+						} else if ( data.data.status.state === 'inprogress' ) {
+							const progress = Math.round(
+								data.data.status.pctComplete
+							);
+							progressLabel.text( progress + '%' );
 
-						progressBar.progressbar( {
-							value: progress,
-						} );
+							progressBar.progressbar(
+								{
+									value: progress,
+								}
+							);
+						}
+						block.reload();
 					}
-					block.reload();
-				}
-			},
-			error( jqXHR, textStatus ) {
-				console.error( 'Error: ' + textStatus );
-			},
-		} );
+				},
+				error( jqXHR, textStatus ) {
+					console.error( 'Error: ' + textStatus );
+				},
+			}
+		);
 	}
 
 	render() {
 		const { uid, autoplay, controls, loop, muted } = this.props.attributes;
-		const { className } = this.props;
-		const { editing, uploading, encoding } = this.state;
+		const { className }                            = this.props;
+		const { editing, uploading, encoding }         = this.state;
 
 		const switchToEditing = () => {
-			this.setState( {
-				editing: true,
-			} );
-			this.setState( {
-				uploading: false,
-			} );
-			this.setState( {
-				encoding: false,
-			} );
+			this.setState(
+				{
+					editing: true,
+				}
+			);
+			this.setState(
+				{
+					uploading: false,
+				}
+			);
+			this.setState(
+				{
+					encoding: false,
+				}
+			);
 		};
 
 		const switchFromEditing = () => {
-			this.setState( {
-				editing: false,
-			} );
-			this.setState( {
-				uploading: false,
-			} );
-			this.setState( {
-				encoding: false,
-			} );
+			this.setState(
+				{
+					editing: false,
+				}
+			);
+			this.setState(
+				{
+					uploading: false,
+				}
+			);
+			this.setState(
+				{
+					encoding: false,
+				}
+			);
 		};
 
-		const switchToUploading = () => {
+		const switchToUploading     = () => {
 			const { setAttributes } = this.props;
 
 			jQuery(
@@ -410,25 +461,30 @@ class CloudflareStreamEdit extends Component {
 			const file = jQuery(
 				".components-form-file-upload :input[type='file']"
 			)[ 0 ].files[ 0 ];
-			setAttributes( {
-				file,
-			} );
+			setAttributes(
+				{
+					file,
+				}
+			);
 
-			const block = this;
+			const block               = this;
 			block.setState(
 				{
 					editing: true,
 					uploading: true,
 					encoding: false,
 				},
-				() => {
+				() =>
+				{
 					const progressBar = jQuery(
 						'#progressbar-' + this.instanceId
 					);
 
-					progressBar.progressbar( {
-						value: false,
-					} );
+					progressBar.progressbar(
+						{
+							value: false,
+						}
+					);
 					block.uploadFromFiles( file );
 				}
 			);
@@ -440,7 +496,7 @@ class CloudflareStreamEdit extends Component {
 					width: '100%',
 				};
 				return (
-					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
+					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 					<Placeholder
 						icon={ cloudflareStream.icon }
 						label={ __(
@@ -486,7 +542,7 @@ class CloudflareStreamEdit extends Component {
 					width: '100%',
 				};
 				return (
-					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
+					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 					<Placeholder
 						icon={ cloudflareStream.icon }
 						label={ __(
@@ -537,7 +593,7 @@ class CloudflareStreamEdit extends Component {
 				'' === cloudflareStream.api.token
 			) {
 				return (
-					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
+					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 					<Placeholder
 						icon={ cloudflareStream.icon }
 						label={ __(
@@ -588,7 +644,7 @@ class CloudflareStreamEdit extends Component {
 				);
 			}
 			return (
-				// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
+				// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 				<Placeholder
 					icon={ cloudflareStream.icon }
 					label="Cloudflare Stream"
@@ -641,7 +697,7 @@ class CloudflareStreamEdit extends Component {
 			);
 		}
 		return (
-			// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore
+			// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 			<Fragment>
 				<BlockControls>
 					<Toolbar>

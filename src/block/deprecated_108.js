@@ -1,7 +1,7 @@
 /**
  * Deprecated 108
  *
- * @package
+ * @package cloudflare-stream
  */
 
 // phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
@@ -74,31 +74,43 @@ const save = function ( props ) {
 				key: uid,
 			},
 			[
-				wp.element.createElement( 'stream', {
-					src: uid,
-					controls,
-					autoplay,
-					loop,
-					muted,
-				} ),
-				wp.element.createElement( 'div', {
+				wp.element.createElement(
+					'stream',
+					{
+						src: uid,
+						controls,
+						autoplay,
+						loop,
+						muted,
+					}
+				),
+				wp.element.createElement(
+					'div',
+					{
 					className: 'target',
-				} ),
-				wp.element.createElement( 'script', {
-					'data-cfasync': false,
-					defer: true,
-					type: 'text/javascript',
-					src:
-						'https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' +
-						uid,
-				} ),
+					}
+				),
+				wp.element.createElement(
+					'script',
+					{
+						'data-cfasync': false,
+						defer: true,
+						type: 'text/javascript',
+						src:
+							'https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' +
+							uid,
+					}
+				),
 			]
 		);
 	}
 
-	return wp.element.createElement( 'figure', {
-		className,
-	} );
+	return wp.element.createElement(
+		'figure',
+		{
+			className,
+		}
+	);
 };
 
 export const deprecated_108 = {
