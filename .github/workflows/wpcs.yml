@@ -16,7 +16,7 @@ jobs:
         - name: WPCS check
           uses: 10up/wpcs-action@stable
           with:
-            standard: 'WordPress'
+            standard: 'WordPress-Extra'
             extra_args: '--report-json=./phpcs.json'
         - name: List files for debug
           run: ls -lah
