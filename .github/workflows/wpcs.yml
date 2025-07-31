@@ -21,7 +21,7 @@ jobs:
         run: composer install --prefer-dist --no-progress --no-suggest
 
       - name: Run PHPCS
-        run: vendor/bin/phpcs --standard=WordPress --report=json --report-file=phpcs.json .
+        run: vendor/bin/phpcs --standard=WordPress --extensions=php,js --ignore=.git/*,.github/*,node_modules/* --report=json --report-file=phpcs.json .
 
       - name: Update summary
         if: success() && hashFiles('phpcs.json') != ''
