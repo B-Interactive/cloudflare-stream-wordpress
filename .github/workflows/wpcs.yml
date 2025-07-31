@@ -18,6 +18,8 @@ jobs:
           with:
             standard: 'WordPress'
             extra_args: '--report-json=./phpcs.json'
+        - name: List files for debug
+          run: ls -lah
         - name: Update summary
           if: success() && hashFiles('./phpcs.json') != ''
           run: |
