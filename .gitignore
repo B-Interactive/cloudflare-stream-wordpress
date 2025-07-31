@@ -28,3 +28,4 @@ node_modules/
 /cloudflare-stream
 /node_modules
 .DS_Store
+phpcs.json

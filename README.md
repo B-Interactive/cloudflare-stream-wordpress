@@ -3,7 +3,6 @@
 ![latest-release](https://badgen.net//github/release/B-Interactive/cloudflare-stream-wordpress)
 ![license](https://badgen.net//github/license/B-Interactive/cloudflare-stream-wordpress)
 
-![wordpress-coding-standards](https://github.com/B-Interactive/cloudflare-stream-wordpress/actions/workflows/wpcs.yml/badge.svg)
 ![blocks-build](https://github.com/B-Interactive/cloudflare-stream-wordpress/actions/workflows/node.js.yml/badge.svg)
 
 A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork looks to achieve these key features:
