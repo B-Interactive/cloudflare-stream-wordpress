@@ -24,8 +24,8 @@ jobs:
         run: vendor/bin/phpcs --standard=WordPress --extensions=php,js --ignore=.git/*,.github/*,node_modules/* --report=json --report-file=phpcs.json .
 
       - name: Update summary
-        if: success() && hashFiles('phpcs.json') != ''
+        if: always() && hashFiles('phpcs.json') != ''
         run: |
-          npm i -g github:10up/phpcs-json-to-md
-          phpcs-json-to-md --path ./phpcs.json --output ./phpcs.md
-          cat phpcs.md >> $GITHUB_STEP_SUMMARY
+            npm i -g github:10up/phpcs-json-to-md
+            phpcs-json-to-md --path ./phpcs.json --output ./phpcs.md
+            cat phpcs.md >> $GITHUB_STEP_SUMMARY
