@@ -1,28 +1,31 @@
 name: WordPress Coding Standards
 
 on:
-  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
   pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   phpcs:
-      name: WPCS
-      runs-on: ubuntu-latest
-      steps:
-        - uses: actions/checkout@v4
-        - name: WPCS check
-          uses: 10up/wpcs-action@stable
-          with:
-            standard: 'WordPress-Extra'
-            extra_args: '--report-json=./phpcs.json'
-        - name: List files for debug
-          run: ls -lah
-        - name: Update summary
-          if: success() && hashFiles('./phpcs.json') != ''
-          run: |
-            npm i -g github:10up/phpcs-json-to-md
-            phpcs-json-to-md --path ./phpcs.json --output ./phpcs.md
-            cat phpcs.md >> $GITHUB_STEP_SUMMARY
+    name: Run PHPCS (WordPress Coding Standards)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate --no-check-publish
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-suggest
+
+      - name: Run PHPCS
+        run: vendor/bin/phpcs --standard=WordPress --report=json --report-file=phpcs.json .
+
+      - name: Update summary
+        if: success() && hashFiles('phpcs.json') != ''
+        run: |
+          npm i -g github:10up/phpcs-json-to-md
+          phpcs-json-to-md --path ./phpcs.json --output ./phpcs.md
+          cat phpcs.md >> $GITHUB_STEP_SUMMARY
