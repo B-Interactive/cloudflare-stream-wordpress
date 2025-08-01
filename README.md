@@ -11,6 +11,7 @@ A fork from the official Cloudflare Stream plugin 1.0.5 for WordPress. This fork
 - Take full advantage of Cloudflare Stream's security features.
 - Uses signed URL's / tokens, so video access can be strictly controlled and limited.
 - Uses a limited access API token for API access, eliminating the use of the global API key which presents security risk.
+- Secure methods for storing Cloudflare account credentials.
 - Incorporate additional features and new features as they're made available.
 
 The Block method of adding videos is currently limited to upload only. Browsing and selecting content from your Cloudflare Stream Library is not yet fixed. Legacy Block content is supported in a deprecated form, but will not take advantage of new features such as signed URLs.
@@ -32,6 +33,7 @@ For now, using the shortcode method is still the most appropriate way to insert 
 - Can select Cloudflare media domain, including new account specific sub-domain.
 - Can set poster/thumbnail location globally, and per-video.
 - Can specify a poster/thumbnail URL per-video.
+- Secure methods for storing the API token and Cloudflare account ID.
 
 ## Installation
 
@@ -39,6 +41,23 @@ For now, using the shortcode method is still the most appropriate way to insert 
 - In the WordPress admin panel, go to Plugins > Add New > Upload Plugin and upload the ZIP file
 - Click the "Activate" button
 - In the WordPress admin panel, visit the Plugins section Activate the Cloudflare Stream plugin.
+
+## API Credentials Security
+
+This plugin supports two secure ways to store your Cloudflare Stream credentials:
+
+### 1. **Define in wp-config.php (most secure)**
+Add the following to your `wp-config.php` file. Inputs will be disabled in the admin when this is present:
+```php
+define('CLOUDFLARE_STREAM_ACCOUNT_ID', 'your-account-id-here');
+define('CLOUDFLARE_STREAM_API_TOKEN', 'your-api-token-here');
+```
+
+### 2. **Store in Database (encrypted)**
+Credentials entered in the admin settings page are encrypted before being stored in the database using your site's authentication salt.
+
+**If upgrading:**  
+Existing credentials will be automatically migrated from plaintext to encrypted storage.
 
 ## Admin Settings
 
