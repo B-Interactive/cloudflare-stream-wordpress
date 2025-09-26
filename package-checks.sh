@@ -1,5 +1,60 @@
 #!/bin/bash
-set -e
+
+# ===== Required Tools and Rulesets Check =====
+
+# CLI tools
+REQUIRED_TOOLS=(phpcs phpcbf stylelint)
+for tool in "${REQUIRED_TOOLS[@]}"; do
+    if ! command -v "$tool" &>/dev/null; then
+        echo "❌ Required tool '$tool' is not installed or not in PATH."
+        missing_any=1
+    else
+        echo "✅ Found '$tool'"
+    fi
+done
+
+# PHP_CodeSniffer standards
+if command -v phpcs &>/dev/null; then
+    phpcs_standards=$(phpcs -i | sed 's/.*: //; s/, /\n/g')
+    for standard in PHPCompatibilityWP WordPress; do
+        if ! grep -q "^$standard$" <<<"$phpcs_standards"; then
+            echo "❌ phpcs standard '$standard' is missing."
+            missing_any=1
+        else
+            echo "✅ phpcs standard '$standard' is available."
+        fi
+    done
+fi
+
+# Stylelint config standard: Try a dry run
+if command -v stylelint &>/dev/null; then
+    # Check for Stylelint config file
+    if ! ls .stylelintrc* stylelint.config.* package.json 2>/dev/null | grep -q .; then
+        echo "❌ No Stylelint config file (.stylelintrc, stylelint.config.js, etc) found in this directory."
+        missing_any=1
+    elif ! stylelint --print-config . 1>/dev/null 2>&1; then
+        echo "❌ stylelint-config-standard is installed but not available to Stylelint in this directory."
+        echo "Check your NODE_PATH or ensure your config extends 'stylelint-config-standard'."
+        echo "If using Arch, you may need to set: export NODE_PATH=/usr/lib/node_modules"
+        missing_any=1
+    else
+        echo "✅ stylelint-config-standard is available to stylelint."
+    fi
+fi
+
+# Final check
+if [[ $missing_any == 1 ]]; then
+    echo
+    echo "One or more required tools or rulesets are missing."
+    echo "Please install them by your preferred means (package manager, npm, composer, etc)."
+    echo "After installation, ensure all tools and rulesets are available in your PATH and project."
+    exit 1
+else
+    echo
+    echo "All required tools and rulesets are available."
+fi
+
+# ===== End Required Tools and Rulesets Check =====
 
 # Update readme.txt.
 # $1 lineMatch value.
@@ -8,7 +63,7 @@ updateReadme() {
     sed -i "/$1*/c $1 $2" ./readme.txt
 }
 
-# Update readme.txt.
+# Update cloudflare-stream.php.
 # $1 lineMatch value.
 # $2 new value/version.
 updateCloudflareStreamPHP() {
@@ -18,22 +73,10 @@ updateCloudflareStreamPHP() {
 # Test PHP version compatibility
 versions=(7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4)
 
-# Check for phpcs
-if ! command -v phpcs &>/dev/null; then
-    echo "Error: phpcs is not installed or not in your PATH."
-    exit 1
-fi
-
-if ! phpcs -i | grep -q 'PHPCompatibilityWP'; then
-    echo "Error: PHPCompatibilityWP standard is not installed for phpcs."
-    exit 1
-fi
-
 incompatible_versions=()
 compatible_versions=()
 fatal_error_detected=0
 
-# Test compatibility against versions specified in $versions
 for version in "${versions[@]}"; do
     echo "------------------------------------------"
     echo "Testing PHP compatibility: $version+"
@@ -94,7 +137,8 @@ if [[ $pluginVer =~ [0-9] ]]; then
     echo "Updating plugin version from $currentVer to $pluginVer."
     updateReadme "$lineMatch" "$pluginVer"
     updateCloudflareStreamPHP "$lineMatch" "$pluginVer"
-    # Update version in package.json and package-lock.json using sed
+
+    # Update package.json and package-lock.json to match
     sed -i "s/\"version\": \".*\"/\"version\": \"$pluginVer\"/" package.json
     sed -i "s/\"version\": \".*\"/\"version\": \"$pluginVer\"/" package-lock.json
 else
@@ -137,4 +181,11 @@ if [[ "$jsStandard" == [Yy]* ]]; then
 fi
 
 # CSS Linting
-
+read -p "Lint CSS with Stylelint against stylelint-config-standard? [y/n]: " cssStandard
+if [[ "$cssStandard" == [Yy]* ]]; then
+    # You may want to adjust the path pattern as needed (e.g., 'src/**/*.css' or just '*.css')
+    stylelint "**/*.css"
+    # Optionally, prompt for listing outstanding issues (stylelint outputs all by default)
+else
+    echo "Skipping CSS linting..."
+fi
