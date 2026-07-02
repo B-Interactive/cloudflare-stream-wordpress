@@ -29,3 +29,4 @@ node_modules/
 /node_modules
 .DS_Store
 phpcs.json
+package-lock.json
