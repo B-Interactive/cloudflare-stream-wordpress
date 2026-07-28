@@ -264,9 +264,13 @@ class Cloudflare_Stream_API {
 		$standard_domain   = 'https://iframe.' . $media_domain . '/' . $uid . '?';
 		$account_subdomain = 'https://' . $media_domain . '/' . $uid . '/iframe?';
 		$src_uri           = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true ) ) ? $standard_domain : $account_subdomain;
-		$poster_time       = empty( $args['postertime'] ) ? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) : $args['postertime'];
-		$poster_time       = $poster_time . 's';
-		$poster_url        = empty( $args['posterurl'] ) ? esc_url( 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=' . $poster_time ) : $args['posterurl'];
+		$poster_time = empty( $args['postertime'] ) ? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) : $args['postertime'];
+		$poster_time = $poster_time . 's';
+		$poster_url  = empty( $args['posterurl'] )
+			? 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=' . $poster_time
+			: $args['posterurl'];
+		// Escape the poster URL, then encode it as a query value (same idea as encodeURIComponent in JS).
+		$poster_url = esc_url( $poster_url );
 
 		$video_embed = '<div class="cloudflare-stream" style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
@@ -275,7 +279,7 @@ class Cloudflare_Stream_API {
 			. ( filter_var( $args['autoplay'], FILTER_VALIDATE_BOOLEAN ) ? 'autoplay=true&' : '' )
 			. ( filter_var( $args['preload'], FILTER_VALIDATE_BOOLEAN ) ? 'preload=auto&' : '' )
 			. ( filter_var( $args['controls'], FILTER_VALIDATE_BOOLEAN ) || ! isset( $args['controls'] ) || strlen( trim( $args['controls'] ) ) === 0 ? '' : 'controls=false&' )
-			. 'poster=' . $poster_url . '"'
+			. 'poster=' . rawurlencode( $poster_url ) . '"'
 			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
 			. 'allowfullscreen="true" '

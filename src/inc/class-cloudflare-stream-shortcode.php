@@ -78,18 +78,13 @@ class Cloudflare_Stream_Shortcode {
 			$atts
 		);
 
-		// Validate and sanitize inputs.
-		foreach ( $attributes as $attr ) {
-			if ( $attr === $attributes['uid'] ) {
-				$attr = sanitize_text_field( $attr );
-				continue; }
-			if ( $attr === $attributes['postertime'] && '' !== $attr ) {
-				$attr = absint( $attr );
-				continue; }
-			if ( $attr === $attributes['posterurl'] && '' !== $attr ) {
-				$attr = esc_url_raw( $attr );
-				continue; }
-			$attr = ( filter_var( $attr, FILTER_VALIDATE_BOOLEAN ) ) ? 'true' : 'false'; // Filter to string based boolean.
+		// Sanitize each attribute by key.
+		$attributes['uid']        = sanitize_text_field( $attributes['uid'] );
+		$attributes['postertime'] = ( '' !== $attributes['postertime'] ) ? absint( $attributes['postertime'] ) : '';
+		$attributes['posterurl']  = ( '' !== $attributes['posterurl'] ) ? esc_url_raw( $attributes['posterurl'] ) : '';
+
+		foreach ( array( 'controls', 'autoplay', 'loop', 'preload', 'muted' ) as $flag ) {
+			$attributes[ $flag ] = filter_var( $attributes[ $flag ], FILTER_VALIDATE_BOOLEAN ) ? 'true' : 'false';
 		}
 
 		$stream_api    = Cloudflare_Stream_API::instance();
