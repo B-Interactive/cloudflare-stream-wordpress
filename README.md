@@ -64,6 +64,8 @@ Only grant the API Token permissions necesarry for the plugin to work, to again 
 
 When this is checked [x], videos are accessed using a temporary time-limited token, aka signed URL. This alone does not secure your content however. Please see **[Securing Video Access](#securing-video-access)** below for further details on how to do that.
 
+Signed tokens are written into the page HTML when the video is rendered. If a full-page cache (for example WP Super Cache, LiteSpeed Cache, or Cloudflare HTML cache) stores that page for longer than the token lifetime, visitors can share one token or hit an expired player. With signed URLs on, this plugin marks front-end responses that include a Stream embed so common WordPress page caches skip storing them, and it sends no-cache headers on those responses. Still keep any external full-page cache TTL no longer than your signed URL expiration for pages that embed Stream videos.
+
 ### Signed URL Expiration
 
 When **Use Signed URLs** is checked [x], this setting controls how long any particular token / signed ULR is valid for **in minutes**. The Cloudflare default, is 60 minutes. Generally, you'd want to make sure this is larger than your longest video.

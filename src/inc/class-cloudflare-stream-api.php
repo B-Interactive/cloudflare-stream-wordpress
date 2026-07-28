@@ -56,6 +56,13 @@ class Cloudflare_Stream_API {
 	public $api_limit = 40;
 
 	/**
+	 * Whether this request already marked the response uncacheable for signed embeds.
+	 *
+	 * @var bool
+	 */
+	private static $signed_embed_nocache = false;
+
+	/**
 	 * The accounts API.
 	 */
 	const ACCOUNTS_API = 'accounts';
@@ -271,6 +278,76 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Whether the current request is a front-end HTML page view.
+	 *
+	 * @return bool
+	 */
+	private function is_frontend_page_request() {
+		if ( is_admin() || wp_doing_ajax() || wp_doing_cron() ) {
+			return false;
+		}
+
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			return false;
+		}
+
+		if ( defined( 'WP_CLI' ) && WP_CLI ) {
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Send no-cache HTTP headers for a response that includes signed embeds.
+	 *
+	 * @return void
+	 */
+	public function send_signed_embed_nocache_headers() {
+		if ( headers_sent() ) {
+			return;
+		}
+
+		nocache_headers();
+	}
+
+	/**
+	 * Mark the front-end response so full-page caches skip signed embed HTML.
+	 *
+	 * Signed tokens are written into the HTML at render time. A long-lived page
+	 * cache would reuse one token for every visitor and may keep serving it after
+	 * the token has expired.
+	 *
+	 * @return void
+	 */
+	public function mark_signed_embed_uncacheable() {
+		if ( self::$signed_embed_nocache || ! $this->is_frontend_page_request() ) {
+			return;
+		}
+
+		self::$signed_embed_nocache = true;
+
+		// Common markers checked by WP Super Cache, LiteSpeed, and similar plugins.
+		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			define( 'DONOTCACHEPAGE', true );
+		}
+
+		if ( ! defined( 'LSCACHE_NO_CACHE' ) ) {
+			define( 'LSCACHE_NO_CACHE', true );
+		}
+
+		// LiteSpeed Cache listens for this when deciding whether to store the HTML.
+		do_action( 'litespeed_control_set_nocache', 'cloudflare stream signed embed' );
+
+		// Send headers once even when the page has several Stream embeds.
+		if ( did_action( 'send_headers' ) ) {
+			$this->send_signed_embed_nocache_headers();
+		} else {
+			add_action( 'send_headers', array( $this, 'send_signed_embed_nocache_headers' ), 0 );
+		}
+	}
+
+	/**
 	 * Get the embed code
 	 *
 	 * @param string $uid Unique Video ID.
@@ -288,6 +365,7 @@ class Cloudflare_Stream_API {
 				return '';
 			}
 			$uid = $token;
+			$this->mark_signed_embed_uncacheable();
 		} elseif ( ! $this->is_valid_video_uid( $uid ) ) {
 			return '';
 		}

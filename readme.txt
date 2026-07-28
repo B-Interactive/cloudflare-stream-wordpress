@@ -75,6 +75,10 @@ No. Stream only supports on-demand video streaming.
 
 Stream lets you own and control the video viewing experience and is ideal for videos that require a paid subscription.
 
+6) Can I use full-page caching with signed URLs?
+
+Signed tokens are written into the page HTML when a Stream video is rendered. If a full-page cache stores that HTML longer than the token lifetime, visitors may share one token or get an expired player. When signed URLs are enabled, the plugin marks those front-end responses so common WordPress page caches (such as WP Super Cache and LiteSpeed Cache) do not store them, and it sends no-cache headers. Keep any external full-page cache TTL no longer than your signed URL expiration for pages that embed Stream videos.
+
 == Screenshots ==
 
 1. Uploading a video
