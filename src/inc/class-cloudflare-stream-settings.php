@@ -39,6 +39,7 @@ class Cloudflare_Stream_Settings {
 	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
 	const STANDARD_MEDIA_DOMAINS      = array( 'cloudflarestream.com', 'videodelivery.net' );
 	const ADMIN_ACTION_SIGNING_KEY    = 'cloudflare_stream_signing_key';
+	const TRANSIENT_SIGNING_KEY_REVEAL = 'cfstream_sk_reveal_';
 
 	/**
 	 * Singleton
@@ -259,12 +260,171 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
+	 * User-specific transient name for a one-time signing key reveal.
+	 *
+	 * @return string
+	 */
+	private function signing_key_reveal_transient_name() {
+		return self::TRANSIENT_SIGNING_KEY_REVEAL . get_current_user_id();
+	}
+
+	/**
+	 * Stash key id + PEM for short-lived setup (user must choose how to keep it).
+	 *
+	 * @param string $key_id  Signing key id.
+	 * @param string $pem     PEM as returned (base64 or PEM text).
+	 * @param string $context setup|migrate
+	 */
+	private function stash_signing_key_reveal( $key_id, $pem, $context = 'setup' ) {
+		$context = ( 'migrate' === $context ) ? 'migrate' : 'setup';
+
+		set_transient(
+			$this->signing_key_reveal_transient_name(),
+			array(
+				'id'      => (string) $key_id,
+				'pem'     => (string) $pem,
+				'context' => $context,
+			),
+			15 * MINUTE_IN_SECONDS
+		);
+	}
+
+	/**
+	 * Read a pending setup/migrate payload without deleting it.
+	 *
+	 * @return array{id:string,pem:string,context:string}|null
+	 */
+	private function get_signing_key_reveal() {
+		$payload = get_transient( $this->signing_key_reveal_transient_name() );
+
+		if ( ! is_array( $payload ) ) {
+			return null;
+		}
+
+		$id  = isset( $payload['id'] ) ? (string) $payload['id'] : '';
+		$pem = isset( $payload['pem'] ) ? (string) $payload['pem'] : '';
+
+		if ( '' === $id || '' === $pem ) {
+			return null;
+		}
+
+		$context = isset( $payload['context'] ) ? (string) $payload['context'] : 'setup';
+		if ( 'migrate' !== $context ) {
+			$context = 'setup';
+		}
+
+		return array(
+			'id'      => $id,
+			'pem'     => $pem,
+			'context' => $context,
+		);
+	}
+
+	/**
+	 * Drop the user-specific setup/migrate transient.
+	 */
+	private function clear_signing_key_reveal() {
+		delete_transient( $this->signing_key_reveal_transient_name() );
+	}
+
+	/**
+	 * Whether wp_options holds a signing key id and PEM (even if constants override).
+	 *
+	 * @return bool
+	 */
+	private function db_has_signing_key_options() {
+		$id  = get_option( self::OPTION_SIGNING_KEY_ID, '' );
+		$pem = get_option( self::OPTION_SIGNING_KEY_PEM, '' );
+
+		return is_string( $id ) && '' !== $id && is_string( $pem ) && '' !== $pem;
+	}
+
+	/**
+	 * Remove signing key id/PEM from WordPress options.
+	 */
+	private function delete_db_signing_key_options() {
+		delete_option( self::OPTION_SIGNING_KEY_ID );
+		delete_option( self::OPTION_SIGNING_KEY_PEM );
+	}
+
+	/**
+	 * Ready-to-paste wp-config.php defines for a signing key.
+	 *
+	 * @param string $key_id Signing key id.
+	 * @param string $pem    PEM value as stored / usable in the constant.
+	 * @return string
+	 */
+	private function build_signing_key_wpconfig_snippet( $key_id, $pem ) {
+		return 'define( \'CLOUDFLARE_STREAM_SIGNING_KEY_ID\', ' . var_export( (string) $key_id, true ) . " );\n"
+			. 'define( \'CLOUDFLARE_STREAM_SIGNING_KEY_PEM\', ' . var_export( (string) $pem, true ) . ' );';
+	}
+
+	/**
+	 * One-time setup panel: snippet only, plus explicit keep choices.
+	 *
+	 * @param string $key_id  Signing key id.
+	 * @param string $pem     PEM value.
+	 * @param string $context setup|migrate
+	 */
+	private function render_signing_key_setup_panel( $key_id, $pem, $context = 'setup' ) {
+		$context = ( 'migrate' === $context ) ? 'migrate' : 'setup';
+		$snippet = $this->build_signing_key_wpconfig_snippet( $key_id, $pem );
+		$action  = esc_url( admin_url( 'admin-post.php' ) );
+
+		echo '<div class="notice notice-warning cloudflare-stream-signing-key-reveal" style="padding:12px 16px;">';
+		echo '<p><strong>' . esc_html__( 'Signing key setup', 'cloudflare-stream' ) . '</strong></p>';
+		echo '<p>' . esc_html__( 'Copy the snippet below into wp-config.php (above the line that says "That\'s all, stop editing!"). This screen is only available for a short time, and the private key will not be shown again after you finish.', 'cloudflare-stream' ) . '</p>';
+
+		echo '<p><label for="cloudflare_stream_reveal_snippet"><strong>' . esc_html__( 'Paste into wp-config.php', 'cloudflare-stream' ) . '</strong></label></p>';
+		echo '<textarea class="large-text code" id="cloudflare_stream_reveal_snippet" rows="8" readonly="readonly" onclick="this.select();">' . esc_textarea( $snippet ) . '</textarea>';
+
+		echo '<p style="margin-top:1em;"><strong>' . esc_html__( 'Choose how to keep this key', 'cloudflare-stream' ) . '</strong></p>';
+
+		if ( 'setup' === $context ) {
+			echo '<form method="post" action="' . $action . '" style="margin-bottom:0.75em;">';
+			echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+			echo '<input type="hidden" name="signing_key_do" value="confirm_constants">';
+			wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+			submit_button( __( 'I have pasted this into wp-config.php', 'cloudflare-stream' ), 'primary', 'submit', false );
+			echo '<p class="description">' . esc_html__( 'Most secure. We check that the constants work, remove any database copy, and discard this temporary copy.', 'cloudflare-stream' ) . '</p>';
+			echo '</form>';
+
+			echo '<form method="post" action="' . $action . '">';
+			echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+			echo '<input type="hidden" name="signing_key_do" value="store_db">';
+			wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+			submit_button( __( 'Store in the WordPress database', 'cloudflare-stream' ), 'secondary', 'submit', false );
+			echo '<p class="description">' . esc_html__( 'Less secure. Saves the key in WordPress options so signed playback works without constants. You can move it to wp-config.php later.', 'cloudflare-stream' ) . '</p>';
+			echo '</form>';
+		} else {
+			echo '<form method="post" action="' . $action . '" style="margin-bottom:0.75em;">';
+			echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+			echo '<input type="hidden" name="signing_key_do" value="confirm_moved">';
+			wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+			submit_button( __( 'I moved it to wp-config.php', 'cloudflare-stream' ), 'primary', 'submit', false );
+			echo '<p class="description">' . esc_html__( 'Checks that the constants work, then removes the key from the database.', 'cloudflare-stream' ) . '</p>';
+			echo '</form>';
+
+			echo '<form method="post" action="' . $action . '">';
+			echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+			echo '<input type="hidden" name="signing_key_do" value="dismiss">';
+			wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+			submit_button( __( 'Keep in the database', 'cloudflare-stream' ), 'secondary', 'submit', false );
+			echo '<p class="description">' . esc_html__( 'Hides this snippet and leaves the key stored in WordPress options.', 'cloudflare-stream' ) . '</p>';
+			echo '</form>';
+		}
+
+		echo '</div>';
+	}
+
+	/**
 	 * Callback for signing key status (actions render outside the options form).
 	 */
 	public function signing_key_cb() {
 		$api        = Cloudflare_Stream_API::instance();
 		$has_key    = $api->has_signing_key();
 		$from_const = $this->signing_key_from_constants();
+		$db_has     = $this->db_has_signing_key_options();
 		$key_id     = $api->get_signing_key_id();
 
 		if ( $has_key ) {
@@ -281,43 +441,76 @@ class Cloudflare_Stream_Settings {
 			echo '<p class="description">' . esc_html__( 'Without a key, signed playback still works via the Cloudflare /token API (one request per cache miss). For production, prefer constants CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY_PEM in wp-config.php.', 'cloudflare-stream' ) . '</p>';
 		}
 
-		if ( $from_const ) {
-			echo '<p class="description">' . esc_html__( 'Constants are set, so they override any key stored in the database. Clear or change the constants in wp-config.php to use a different key.', 'cloudflare-stream' ) . '</p>';
+		if ( $from_const && $db_has ) {
+			echo '<p class="notice notice-warning inline" style="margin:0.5em 0;padding:8px 12px;"><strong>' . esc_html__( 'Database still has a signing key copy.', 'cloudflare-stream' ) . '</strong> '
+				. esc_html__( 'Constants are active now, but if you remove them later the old database key will come back. Use Remove stored signing key below.', 'cloudflare-stream' ) . '</p>';
+		} elseif ( $from_const ) {
+			echo '<p class="description">' . esc_html__( 'Constants are set and override any database value. Change or remove them in wp-config.php to use a different key.', 'cloudflare-stream' ) . '</p>';
+		} elseif ( $db_has ) {
+			echo '<p class="description">' . esc_html__( 'Use the buttons below the Save Changes form to show a wp-config.php snippet or remove the stored key.', 'cloudflare-stream' ) . '</p>';
 		} else {
-			echo '<p class="description">' . esc_html__( 'Use the signing key buttons below the Save Changes form to generate or remove a stored key.', 'cloudflare-stream' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Use Generate signing key below the Save Changes form. You will copy a wp-config.php snippet, then choose constants (preferred) or database storage.', 'cloudflare-stream' ) . '</p>';
 		}
 	}
 
 	/**
-	 * Render generate/clear controls outside the main settings form (avoids nested forms).
+	 * Render generate/clear/reveal controls outside the main settings form (avoids nested forms).
 	 */
 	public function render_signing_key_actions() {
-		if ( $this->signing_key_from_constants() ) {
+		// Setup panel owns the next step while a transient is pending.
+		if ( null !== $this->get_signing_key_reveal() ) {
 			return;
 		}
 
-		$api     = Cloudflare_Stream_API::instance();
-		$has_key = $api->has_signing_key();
-		$do      = $has_key ? 'clear' : 'generate';
-		$label   = $has_key
-			? __( 'Remove stored signing key', 'cloudflare-stream' )
-			: __( 'Generate signing key', 'cloudflare-stream' );
-		$type    = $has_key ? 'delete' : 'secondary';
+		$from_const = $this->signing_key_from_constants();
+		$db_has     = $this->db_has_signing_key_options();
+		$api        = Cloudflare_Stream_API::instance();
+		$has_key    = $api->has_signing_key();
+		$action     = esc_url( admin_url( 'admin-post.php' ) );
+
+		if ( $from_const && ! $db_has ) {
+			return;
+		}
 
 		echo '<hr />';
 		echo '<h2>' . esc_html__( 'Signing key actions', 'cloudflare-stream' ) . '</h2>';
-		echo '<form method="post" action="' . esc_url( admin_url( 'admin-post.php' ) ) . '">';
-		echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
-		echo '<input type="hidden" name="signing_key_do" value="' . esc_attr( $do ) . '">';
-		wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
-		submit_button( $label, $type, 'submit', false );
 
-		if ( $has_key ) {
-			echo '<p class="description">' . esc_html__( 'Removes the key from WordPress options only. Revoke it in the Cloudflare dashboard if it should no longer work.', 'cloudflare-stream' ) . '</p>';
-		} else {
-			echo '<p class="description">' . esc_html__( 'Creates a key via the Cloudflare API and saves the id and private key. Cloudflare only shows the private key once.', 'cloudflare-stream' ) . '</p>';
+		if ( $from_const && $db_has ) {
+			echo '<form method="post" action="' . $action . '">';
+			echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+			echo '<input type="hidden" name="signing_key_do" value="clear">';
+			wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+			submit_button( __( 'Remove stored signing key', 'cloudflare-stream' ), 'delete', 'submit', false );
+			echo '<p class="description">' . esc_html__( 'Deletes the leftover key from WordPress options only. Constants keep working. Revoke the key in Cloudflare if it should stop working entirely.', 'cloudflare-stream' ) . '</p>';
+			echo '</form>';
+			return;
 		}
 
+		if ( $has_key && $db_has ) {
+			echo '<form method="post" action="' . $action . '" style="margin-bottom:1em;">';
+			echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+			echo '<input type="hidden" name="signing_key_do" value="reveal">';
+			wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+			submit_button( __( 'Show wp-config snippet', 'cloudflare-stream' ), 'secondary', 'submit', false );
+			echo '<p class="description">' . esc_html__( 'Shows a ready-to-paste wp-config.php snippet for a short time so you can move the key out of the database.', 'cloudflare-stream' ) . '</p>';
+			echo '</form>';
+
+			echo '<form method="post" action="' . $action . '">';
+			echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+			echo '<input type="hidden" name="signing_key_do" value="clear">';
+			wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+			submit_button( __( 'Remove stored signing key', 'cloudflare-stream' ), 'delete', 'submit', false );
+			echo '<p class="description">' . esc_html__( 'Removes the key from WordPress options only. Revoke it in the Cloudflare dashboard if it should no longer work.', 'cloudflare-stream' ) . '</p>';
+			echo '</form>';
+			return;
+		}
+
+		echo '<form method="post" action="' . $action . '">';
+		echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
+		echo '<input type="hidden" name="signing_key_do" value="generate">';
+		wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
+		submit_button( __( 'Generate signing key', 'cloudflare-stream' ), 'secondary', 'submit', false );
+		echo '<p class="description">' . esc_html__( 'Creates a key via the Cloudflare API. Nothing is saved until you paste constants or choose database storage on the next screen.', 'cloudflare-stream' ) . '</p>';
 		echo '</form>';
 	}
 
@@ -339,7 +532,16 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Generate or clear the stored signing key (manage_options + nonce).
+	 * Whether constants alone provide a usable signing key.
+	 *
+	 * @return bool
+	 */
+	private function constants_signing_key_ready() {
+		return Cloudflare_Stream_API::instance()->has_signing_key_from_constants();
+	}
+
+	/**
+	 * Generate, finish setup, migrate, or clear signing key (manage_options + nonce).
 	 */
 	public function handle_signing_key_action() {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -348,14 +550,57 @@ class Cloudflare_Stream_Settings {
 
 		check_admin_referer( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
 
-		$do = isset( $_POST['signing_key_do'] ) ? sanitize_text_field( wp_unslash( $_POST['signing_key_do'] ) ) : '';
+		$do  = isset( $_POST['signing_key_do'] ) ? sanitize_text_field( wp_unslash( $_POST['signing_key_do'] ) ) : '';
+		$api = Cloudflare_Stream_API::instance();
 
-		if ( $this->signing_key_from_constants() ) {
-			$this->redirect_signing_key_notice( 'constants' );
+		if ( 'clear' === $do ) {
+			$this->delete_db_signing_key_options();
+			$this->clear_signing_key_reveal();
+			$this->redirect_signing_key_notice( 'cleared' );
+		}
+
+		if ( 'dismiss' === $do ) {
+			$this->clear_signing_key_reveal();
+			$this->redirect_signing_key_notice( 'dismissed' );
+		}
+
+		if ( 'confirm_constants' === $do || 'confirm_moved' === $do ) {
+			if ( ! $this->constants_signing_key_ready() ) {
+				$this->redirect_signing_key_notice( 'constants_missing' );
+			}
+
+			$this->delete_db_signing_key_options();
+			$this->clear_signing_key_reveal();
+			$this->redirect_signing_key_notice( 'confirm_constants' === $do ? 'constants_ok' : 'moved' );
+		}
+
+		if ( 'store_db' === $do ) {
+			$pending = $this->get_signing_key_reveal();
+			if ( null === $pending || 'setup' !== $pending['context'] ) {
+				$this->redirect_signing_key_notice( 'store_failed' );
+			}
+
+			update_option( self::OPTION_SIGNING_KEY_ID, $pending['id'], false );
+			update_option( self::OPTION_SIGNING_KEY_PEM, $pending['pem'], false );
+
+			if ( ! $api->has_signing_key() ) {
+				$this->delete_db_signing_key_options();
+				$this->redirect_signing_key_notice( 'invalid' );
+			}
+
+			$this->clear_signing_key_reveal();
+			$this->redirect_signing_key_notice( 'stored' );
 		}
 
 		if ( 'generate' === $do ) {
-			$api    = Cloudflare_Stream_API::instance();
+			if ( $this->signing_key_from_constants() ) {
+				$this->redirect_signing_key_notice( 'constants' );
+			}
+
+			if ( $api->has_signing_key() || $this->db_has_signing_key_options() ) {
+				$this->redirect_signing_key_notice( 'noop' );
+			}
+
 			$result = $api->create_signing_key();
 
 			if ( ! is_object( $result ) || empty( $result->id ) || empty( $result->pem ) || ! is_string( $result->pem ) ) {
@@ -365,23 +610,25 @@ class Cloudflare_Stream_Settings {
 			$key_id  = sanitize_text_field( (string) $result->id );
 			$pem_raw = trim( $result->pem );
 
-			// Persist then confirm OpenSSL can use the key; roll back if not.
-			update_option( self::OPTION_SIGNING_KEY_ID, $key_id, false );
-			update_option( self::OPTION_SIGNING_KEY_PEM, $pem_raw, false );
-
-			if ( '' === $key_id || ! $api->has_signing_key() ) {
-				delete_option( self::OPTION_SIGNING_KEY_ID );
-				delete_option( self::OPTION_SIGNING_KEY_PEM );
+			if ( '' === $key_id || '' === $pem_raw ) {
 				$this->redirect_signing_key_notice( 'invalid' );
 			}
 
-			$this->redirect_signing_key_notice( 'saved' );
+			// Do not write options yet; user chooses constants or database next.
+			$this->stash_signing_key_reveal( $key_id, $pem_raw, 'setup' );
+			$this->redirect_signing_key_notice( 'generated' );
 		}
 
-		if ( 'clear' === $do ) {
-			delete_option( self::OPTION_SIGNING_KEY_ID );
-			delete_option( self::OPTION_SIGNING_KEY_PEM );
-			$this->redirect_signing_key_notice( 'cleared' );
+		if ( 'reveal' === $do ) {
+			if ( $this->signing_key_from_constants() || ! $this->db_has_signing_key_options() ) {
+				$this->redirect_signing_key_notice( 'reveal_failed' );
+			}
+
+			$key_id = get_option( self::OPTION_SIGNING_KEY_ID, '' );
+			$pem    = get_option( self::OPTION_SIGNING_KEY_PEM, '' );
+
+			$this->stash_signing_key_reveal( $key_id, $pem, 'migrate' );
+			$this->redirect_signing_key_notice( 'reveal' );
 		}
 
 		$this->redirect_signing_key_notice( 'noop' );
@@ -404,25 +651,57 @@ class Cloudflare_Stream_Settings {
 		$code = sanitize_key( wp_unslash( $_GET['cfstream_sk_notice'] ) );
 
 		$messages = array(
-			'saved'           => array(
+			'generated'          => array(
 				'type' => 'success',
-				'text' => __( 'Signing key created and saved. Prefer moving it to CLOUDFLARE_STREAM_SIGNING_KEY_* constants for production.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key created. Copy the snippet below, then choose constants (preferred) or database storage. Nothing is saved in the database until you choose.', 'cloudflare-stream' ),
 			),
-			'cleared'         => array(
+			'reveal'             => array(
+				'type' => 'success',
+				'text' => __( 'wp-config.php snippet is shown below for a short time. After you paste it, confirm so the database copy can be removed.', 'cloudflare-stream' ),
+			),
+			'constants_ok'       => array(
+				'type' => 'success',
+				'text' => __( 'Constants look good. Any database copy of the signing key was removed.', 'cloudflare-stream' ),
+			),
+			'moved'              => array(
+				'type' => 'success',
+				'text' => __( 'Constants look good. The signing key was removed from WordPress options.', 'cloudflare-stream' ),
+			),
+			'stored'             => array(
+				'type' => 'success',
+				'text' => __( 'Signing key stored in WordPress options. Constants in wp-config.php are still preferred for production.', 'cloudflare-stream' ),
+			),
+			'cleared'            => array(
 				'type' => 'success',
 				'text' => __( 'Stored signing key removed from WordPress options.', 'cloudflare-stream' ),
 			),
-			'generate_failed' => array(
+			'dismissed'          => array(
+				'type' => 'success',
+				'text' => __( 'Snippet hidden. The signing key remains stored in WordPress options.', 'cloudflare-stream' ),
+			),
+			'constants_missing'  => array(
+				'type' => 'error',
+				'text' => __( 'Could not detect usable signing key constants yet. Add the defines to wp-config.php, reload PHP if needed, then try again. The setup snippet is still available for a short time.', 'cloudflare-stream' ),
+			),
+			'generate_failed'    => array(
 				'type' => 'error',
 				'text' => __( 'Could not create a signing key. Check the API token and Account ID.', 'cloudflare-stream' ),
 			),
-			'invalid'         => array(
+			'invalid'            => array(
 				'type' => 'error',
-				'text' => __( 'Cloudflare returned a signing key that could not be validated. Nothing was saved.', 'cloudflare-stream' ),
+				'text' => __( 'That signing key could not be validated. Nothing was kept in the database.', 'cloudflare-stream' ),
 			),
-			'constants'       => array(
+			'store_failed'       => array(
 				'type' => 'error',
-				'text' => __( 'Signing key constants are defined; stored options were not changed.', 'cloudflare-stream' ),
+				'text' => __( 'No pending signing key to store. Generate a key again.', 'cloudflare-stream' ),
+			),
+			'reveal_failed'      => array(
+				'type' => 'error',
+				'text' => __( 'No signing key is stored in WordPress options to show.', 'cloudflare-stream' ),
+			),
+			'constants'          => array(
+				'type' => 'error',
+				'text' => __( 'Signing key constants are already defined, so that action was skipped.', 'cloudflare-stream' ),
 			),
 		);
 
@@ -614,10 +893,19 @@ class Cloudflare_Stream_Settings {
 	 * @since 1.0.0
 	 */
 	public function settings_page() {
+		$reveal = null;
+		if ( current_user_can( 'manage_options' ) ) {
+			$reveal = $this->get_signing_key_reveal();
+		}
 		?>
 		<div class="wrap">
 		<div id="icon-options-cloudflare-stream" class="icon32"></div>
 			<h1><?php esc_html_e( 'Cloudflare Stream Settings', 'cloudflare-stream' ); ?></h1>
+			<?php
+			if ( is_array( $reveal ) ) {
+				$this->render_signing_key_setup_panel( $reveal['id'], $reveal['pem'], $reveal['context'] );
+			}
+			?>
 			<form method="post" action="options.php">
 			<?php
 				settings_fields( self::SETTING_GROUP );

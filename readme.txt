@@ -2,7 +2,7 @@
 Plugin Name: Cloudflare Stream
 Plugin URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
 Description: Securely embeds videos hosted with Cloudflare Stream, in your WordPress website via shortcodes or the block editor.
-Version: 1.1.3
+Version: 1.1.4
 Author: B-Interactive
 Author URI: https://b-interactive.com.au/
 Contributors: cloudflare, stevenkword, davidpurdy
@@ -81,7 +81,7 @@ Signed tokens are written into the page HTML when a Stream video is rendered. If
 
 7) What is a signing key vs the /token API?
 
-A Stream signing key lets the plugin build RS256 playback JWTs on the server (OpenSSL) with no per-render call to POST .../stream/{uid}/token. Configure CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY_PEM in wp-config.php (preferred), or generate a key under Settings → Cloudflare Stream (stored in options; PEM is never shown again in full and never sent to the browser). If no signing key is configured, signed playback still uses the Cloudflare /token API with a short cache. Constants override stored options.
+A Stream signing key lets the plugin build RS256 playback JWTs on the server (OpenSSL) with no per-render call to POST .../stream/{uid}/token. Preferred setup: Generate signing key under Settings → Cloudflare Stream, copy the short-lived wp-config.php snippet (both defines), then choose "I have pasted this into wp-config.php". That checks the constants work and does not keep a database copy. You can instead store the key in WordPress options (less secure). If a key is already in options, use Show wp-config snippet and confirm after moving it to constants. Leftover DB keys can be removed with Remove stored signing key even when constants are set. Constants override stored options. The PEM is only shown on the admin settings page and is never sent to the browser. If no signing key is configured, signed playback still uses the Cloudflare /token API with a short cache.
 
 == Screenshots ==
 

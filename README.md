@@ -96,11 +96,23 @@ Constants override any key stored in the database.
 On **Settings → Cloudflare Stream** you can:
 
 - See whether a signing key is active (**Key on file**), from constants or options
-- **Generate signing key** via the Cloudflare API (saves id + PEM immediately; Cloudflare only shows PEM once)
-- **Remove stored signing key** from WordPress options (does not revoke the key at Cloudflare)
+- **Generate signing key** via the Cloudflare API (does **not** write to the database yet)
+- On the short-lived setup panel: copy a ready-to-paste `wp-config.php` snippet, then choose either:
+  1. **I have pasted this into wp-config.php** (preferred) — checks constants work, deletes any DB copy, discards the temporary key
+  2. **Store in the WordPress database** (less secure) — saves id + PEM to options
+- **Show wp-config snippet** while the key is only in options, then confirm you moved it to constants (removes the DB copy) or keep it in the database
+- **Remove stored signing key** from WordPress options even when constants are active (clears leftover DB copies; does not revoke the key at Cloudflare)
 
-Storing PEM in `wp_options` matches how the API token is stored today; constants are the better path for production secrets.
+#### Recommended generate flow
 
+1. Click **Generate signing key** in **Settings → Cloudflare Stream**.
+2. Copy the one-time `wp-config.php` snippet (both defines) into `wp-config.php`.
+3. Click **I have pasted this into wp-config.php**. If constants are not detected yet, add them and try again while the panel is still available.
+4. Confirm the settings page shows the key **from PHP constants**. No database copy is kept when you confirm constants.
+
+If you already stored a key in options, use **Show wp-config snippet**, paste into `wp-config.php`, then **I moved it to wp-config.php** so the DB copy is removed.
+
+Storing PEM in `wp_options` matches how the API token is stored today; constants are the better path for production secrets. Confirming constants does not keep a DB copy. Leftover DB keys can still be removed while constants are set. The private key is only shown on the admin settings page (`manage_options`), never in front-end or block editor JS.
 ### Preferred Media Domain
 
 This option allows you to select from a small list of different Cloudflare media domains. This domain is used when delivering content to your users. The 3rd option is a unique subdomain specific to your Cloudflare account. This option will only be presented if you have at least one video already uploaded to your Cloudflare Stream account.

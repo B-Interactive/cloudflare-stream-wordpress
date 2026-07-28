@@ -530,9 +530,31 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Whether PHP constants alone provide a usable signing key (ignores options).
+	 *
+	 * @return bool
+	 */
+	public function has_signing_key_from_constants() {
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) || ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) ) {
+			return false;
+		}
+
+		$id  = CLOUDFLARE_STREAM_SIGNING_KEY_ID;
+		$raw = CLOUDFLARE_STREAM_SIGNING_KEY_PEM;
+
+		if ( ! is_string( $id ) || '' === $id || ! is_string( $raw ) || '' === $raw ) {
+			return false;
+		}
+
+		$pem = $this->decode_signing_key_material( $raw );
+
+		return $this->is_valid_signing_key_pem( $pem );
+	}
+
+	/**
 	 * Create a Stream signing key via the Cloudflare API.
 	 *
-	 * Response includes id and pem (base64) once; store immediately.
+	 * Response includes id and pem (base64) once; caller decides storage.
 	 *
 	 * @return object|false Decoded API result object on success, false on failure.
 	 */
