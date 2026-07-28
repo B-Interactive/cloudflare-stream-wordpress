@@ -196,40 +196,30 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			const newTitle = jQuery(
 				'label[data-setting="title"] input'
 			).val();
-			const data     = {
-				uid: attachment.uid,
-				meta: {
-					name: newTitle,
-					upload: attachment.cloudflare.meta.upload,
-				},
-			};
 
 			jQuery( '.media-sidebar .spinner' ).css( 'visibility', 'visible' );
 
 			jQuery.ajax(
 				{
-					url:
-						'https://api.cloudflare.com/client/v4/accounts/' +
-						cloudflareStream.api.account +
-						'/media/' +
-						attachment.uid,
+					url: ajaxurl + '?action=cloudflare-stream-update',
 					method: 'POST',
-					contentType: 'application/json; charset=utf-8',
-					dataType: 'json',
-					data: JSON.stringify( data ),
-					headers: {
-						'X-Auth-Email': cloudflareStream.api.email,
-						'X-Auth-Key': cloudflareStream.api.key,
+					data: {
+						nonce: cloudflareStream.nonce,
+						uid: attachment.uid,
+						title: newTitle,
+						upload: attachment.cloudflare && attachment.cloudflare.meta
+							? attachment.cloudflare.meta.upload
+							: '',
 					},
-						success() {
-							selection.models[ 0 ].set( 'filename', newTitle );
-							jQuery( '.media-sidebar .spinner' ).css(
-								'visibility',
-								'hidden'
-							);
+					success() {
+						selection.models[ 0 ].set( 'filename', newTitle );
+						jQuery( '.media-sidebar .spinner' ).css(
+							'visibility',
+							'hidden'
+						);
 					},
-						error( jqXHR, textStatus ) {
-							console.error( 'Error: ' + textStatus );
+					error( jqXHR, textStatus ) {
+						console.error( 'Error: ' + textStatus );
 					},
 				}
 			);

@@ -208,66 +208,102 @@ class CloudflareStreamEdit extends Component {
 
 		progressBar.progressbar( 'value', val );
 
-		const baseUrl =
-			'https://api.cloudflare.com/client/v4/accounts/' +
-			cloudflareStream.api.account +
-			'/media';
+		const showUploadError = ( message ) => {
+			console.error( 'Error: ' + message );
+			progressBar.hide();
+			jQuery(
+				'.editor-media-placeholder .components-placeholder__instructions'
+			).html(
+				message ||
+					__(
+						'Upload Error: See the console for details.',
+						'cloudflare-stream'
+					)
+			);
+			jQuery( '.editor-media-placeholder__retry-button' ).show();
+		};
 
-		const upload                 = new tus.Upload(
-			file,
+		// Ask WordPress for a one-time upload URL so the API token never hits the browser.
+		jQuery.ajax(
 			{
-				removeFingerprintOnSuccess: true,
-				endpoint: baseUrl,
-				retryDelays: [ 0, 1000, 3000, 5000 ],
-				headers: {
-					Authorization: 'Bearer ' + cloudflareStream.api.token,
+				url: ajaxurl + '?action=query-cloudflare-stream-upload',
+				method: 'POST',
+				data: {
+					nonce: cloudflareStream.nonce,
 				},
-				metadata: {
-					name: file.name,
-					type: file.type,
-				},
-				onError( error ) {
-					console.error( 'Error: ' + error );
-					progressBar.hide();
-					jQuery(
-						'.editor-media-placeholder .components-placeholder__instructions'
-					).html(
-						__(
-							'Upload Error: See the console for details.',
-							'cloudflare-stream'
-						)
-					);
-					jQuery( '.editor-media-placeholder__retry-button' ).show();
-				},
-				onProgress( bytesUploaded, bytesTotal ) {
-					const percentage = parseInt(
-						( bytesUploaded / bytesTotal ) * 100
-					);
+				success( response ) {
+					if (
+						! response.success ||
+						! response.data ||
+						! response.data.uploadURL ||
+						! response.data.uid
+					) {
+						const message =
+							response.data && response.data.message
+								? response.data.message
+								: __(
+									'Could not start upload.',
+									'cloudflare-stream'
+								);
+						showUploadError( message );
+						return;
+					}
 
-					progressLabel.text( percentage + '%' );
-					progressBar.progressbar( 'option', 'value', percentage );
-				},
-				onSuccess() {
-					const urlArray = upload.url.split( '/' );
-					const mediaId  =
-						urlArray[ urlArray.length - 1 ].split( '?' )[ 0 ];
-
-					setAttributes(
+					const mediaId = response.data.uid;
+					const upload  = new tus.Upload(
+						file,
 						{
-							uid: mediaId,
-							fingerprint: upload.options.fingerprint(
-								upload.file,
-								upload.options
-							),
+							removeFingerprintOnSuccess: true,
+							// Pre-created direct upload URL; no account API token needed.
+							uploadUrl: response.data.uploadURL,
+							retryDelays: [ 0, 1000, 3000, 5000 ],
+							metadata: {
+								name: file.name,
+								type: file.type,
+							},
+							onError( error ) {
+								showUploadError(
+									__(
+										'Upload Error: See the console for details.',
+										'cloudflare-stream'
+									)
+								);
+								console.error( 'Error: ' + error );
+							},
+							onProgress( bytesUploaded, bytesTotal ) {
+								const percentage = parseInt(
+									( bytesUploaded / bytesTotal ) * 100
+								);
+
+								progressLabel.text( percentage + '%' );
+								progressBar.progressbar(
+									'option',
+									'value',
+									percentage
+								);
+							},
+							onSuccess() {
+								setAttributes(
+									{
+										uid: mediaId,
+										fingerprint: upload.options.fingerprint(
+											upload.file,
+											upload.options
+										),
+									}
+								);
+								block.switchToEncoding();
+							},
 						}
 					);
-					block.switchToEncoding();
+
+					upload.start();
+				},
+				error( jqXHR, textStatus ) {
+					showUploadError( textStatus );
 				},
 			}
 		);
-
-		// Start the upload.
-		upload.start();
 	}
 
 	switchToEncoding() {
@@ -588,10 +624,8 @@ class CloudflareStreamEdit extends Component {
 				);
 			}
 
-			if (
-				! cloudflareStream.api.token ||
-				'' === cloudflareStream.api.token
-			) {
+			// Nonce is only localised for users who can manage Stream.
+			if ( ! cloudflareStream.nonce ) {
 				return (
 					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 					<Placeholder

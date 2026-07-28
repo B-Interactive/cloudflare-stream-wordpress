@@ -339,6 +339,34 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Create a one-time direct upload URL for browser TUS uploads.
+	 *
+	 * @param array $args Optional body fields for the Cloudflare direct_upload endpoint.
+	 * @since 1.0.0
+	 * @return object|null Decoded API response, or null on transport failure.
+	 */
+	public function create_direct_upload( $args = array() ) {
+		$defaults = array(
+			'maxDurationSeconds' => 21600,
+			'requireSignedURLs'  => (bool) get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS ),
+		);
+
+		$body = wp_parse_args( $args, $defaults );
+
+		$request_args = array(
+			'body' => wp_json_encode( $body ),
+		);
+
+		$response_text = $this->post( 'stream/direct_upload', $request_args );
+
+		if ( empty( $response_text ) || ! is_string( $response_text ) ) {
+			return null;
+		}
+
+		return json_decode( $response_text );
+	}
+
+	/**
 	 * Delete video.
 	 *
 	 * @param array $uid Unique Video ID.

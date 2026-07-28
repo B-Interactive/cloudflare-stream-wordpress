@@ -69,8 +69,8 @@ function cloudflare_stream_block_editor_assets() {
 	);
 
 	// Only localise privileged Stream data for users who can manage options.
+	// Never send the API token to the browser; uploads use a server-made direct upload URL.
 	$can_manage_stream = current_user_can( 'manage_options' );
-	$api_token         = $can_manage_stream ? get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) : '';
 	$api_account       = $can_manage_stream ? get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT ) : '';
 	$api_nonce         = $can_manage_stream ? wp_create_nonce( Cloudflare_Stream_Settings::NONCE ) : '';
 	$api               = Cloudflare_Stream_API::instance();
@@ -80,7 +80,6 @@ function cloudflare_stream_block_editor_assets() {
 		array(
 			'nonce' => $api_nonce,
 			'api'   => array(
-				'token'          => $api_token,
 				'account'        => $api_account,
 				'posts_per_page' => $api->api_limit,
 				'uid'            => md5( $current_user->user_login ),
@@ -288,13 +287,45 @@ add_action( 'wp_ajax_cloudflare-stream-check-upload', 'action_wp_ajax_refresh_ch
 /**
  * AJAX method for initializing a video upload.
  *
+ * Returns a one-time Cloudflare direct upload URL for the browser.
+ * The API token stays on the server.
+ *
  * @since 1.0.0
  */
 function action_wp_ajax_query_cloudflare_stream_upload() {
 	cloudflare_stream_verify_ajax_request();
+
 	$api  = Cloudflare_Stream_API::instance();
-	$data = $api->init_video();
-	wp_send_json_success( $data );
+	$data = $api->create_direct_upload();
+
+	if ( empty( $data ) || ! is_object( $data ) ) {
+		wp_send_json_error(
+			array(
+				'message' => __( 'Could not create upload URL.', 'cloudflare-stream' ),
+			)
+		);
+	}
+
+	if ( empty( $data->success ) || empty( $data->result->uploadURL ) || empty( $data->result->uid ) ) {
+		$message = __( 'Could not create upload URL.', 'cloudflare-stream' );
+
+		if ( ! empty( $data->errors[0]->message ) ) {
+			$message = sanitize_text_field( $data->errors[0]->message );
+		}
+
+		wp_send_json_error(
+			array(
+				'message' => $message,
+			)
+		);
+	}
+
+	wp_send_json_success(
+		array(
+			'uploadURL' => esc_url_raw( $data->result->uploadURL ),
+			'uid'       => sanitize_text_field( $data->result->uid ),
+		)
+	);
 }
 add_action( 'wp_ajax_query-cloudflare-stream-upload', 'action_wp_ajax_query_cloudflare_stream_upload' );
 
@@ -331,8 +362,8 @@ function action_wp_ajax_cloudflare_stream_update() {
 			'upload' => $upload,
 		),
 	);
-	$api    = Cloudflare_Stream_API::instance();
-	$data   = $api->update_video_details( 'b9105cd434ea071e32690336969991cd', $args );
+	$api  = Cloudflare_Stream_API::instance();
+	$data = $api->update_video_details( $uid, $args );
 	wp_send_json_success( $data );
 }
 add_action( 'wp_ajax_cloudflare-stream-update', 'action_wp_ajax_cloudflare_stream_update' );
