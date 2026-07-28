@@ -70,6 +70,37 @@ Signed tokens are written into the page HTML when the video is rendered. If a fu
 
 When **Use Signed URLs** is checked [x], this setting controls how long any particular token / signed ULR is valid for **in minutes**. The Cloudflare default, is 60 minutes. Generally, you'd want to make sure this is larger than your longest video.
 
+### Signing Key
+
+Signed playback can use either:
+
+1. **Local RS256 JWT (preferred)** when a Stream signing key is configured. Tokens are built on the server with OpenSSL. No per-render call to Cloudflare `POST .../stream/{uid}/token`.
+2. **Cloudflare `/token` API (fallback)** when no signing key is configured. The plugin still short-caches those tokens. Existing sites keep working without a key.
+
+The private key never goes to the browser. Only the short-lived playback token is written into the embed HTML.
+
+#### Recommended: PHP constants (production)
+
+In `wp-config.php` (or another file loaded before the plugin):
+
+```php
+define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'your-key-id' );
+// Decoded PEM text, or the base64 value Cloudflare returns once when the key is created:
+define( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM', "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" );
+```
+
+Constants override any key stored in the database.
+
+#### Settings UI
+
+On **Settings → Cloudflare Stream** you can:
+
+- See whether a signing key is active (**Key on file**), from constants or options
+- **Generate signing key** via the Cloudflare API (saves id + PEM immediately; Cloudflare only shows PEM once)
+- **Remove stored signing key** from WordPress options (does not revoke the key at Cloudflare)
+
+Storing PEM in `wp_options` matches how the API token is stored today; constants are the better path for production secrets.
+
 ### Preferred Media Domain
 
 This option allows you to select from a small list of different Cloudflare media domains. This domain is used when delivering content to your users. The 3rd option is a unique subdomain specific to your Cloudflare account. This option will only be presented if you have at least one video already uploaded to your Cloudflare Stream account.
@@ -85,11 +116,12 @@ Thumbnails for videos will be auto-generated, taken from a location (in seconds)
     
     ![use-signed-urls](https://user-images.githubusercontent.com/16984998/166195570-6e2ecfd4-72af-4f11-a52c-f615df470a36.png)
     
-2. Your videos **must** be set to **Require Signed URLs** on a per-video basis, in your Cloudflare Stream dashboard. This will make the original video ID worthless to would-be thieves, because a signed URL/token can only be created in conjunction with your (secure) API key or API token.
+2. Optionally configure a **Signing Key** so tokens are minted locally (see above). Without a key, the plugin falls back to Cloudflare’s `/token` endpoint.
+3. Your videos **must** be set to **Require Signed URLs** on a per-video basis, in your Cloudflare Stream dashboard. This will make the original video ID worthless to would-be thieves, because a signed URL/token can only be created with your signing key or API token.
     
     ![require-signed-url](https://user-images.githubusercontent.com/16984998/166195689-f52c48c6-86f4-40c5-8e96-b9f6ae5790d0.png)
     
-3. To further restrict which domains can embed your videos, specify **Allowed Origins** on a per-video basis in your Cloudflare Stream dashboard.
+4. To further restrict which domains can embed your videos, specify **Allowed Origins** on a per-video basis in your Cloudflare Stream dashboard.
     
     ![allowed-origins](https://user-images.githubusercontent.com/16984998/166195828-80c23260-fc02-47bb-89b1-ceb8a4217638.png)
     

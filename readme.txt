@@ -79,6 +79,10 @@ Stream lets you own and control the video viewing experience and is ideal for vi
 
 Signed tokens are written into the page HTML when a Stream video is rendered. If a full-page cache stores that HTML longer than the token lifetime, visitors may share one token or get an expired player. When signed URLs are enabled, the plugin marks those front-end responses so common WordPress page caches (such as WP Super Cache and LiteSpeed Cache) do not store them, and it sends no-cache headers. Keep any external full-page cache TTL no longer than your signed URL expiration for pages that embed Stream videos.
 
+7) What is a signing key vs the /token API?
+
+A Stream signing key lets the plugin build RS256 playback JWTs on the server (OpenSSL) with no per-render call to POST .../stream/{uid}/token. Configure CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY_PEM in wp-config.php (preferred), or generate a key under Settings → Cloudflare Stream (stored in options; PEM is never shown again in full and never sent to the browser). If no signing key is configured, signed playback still uses the Cloudflare /token API with a short cache. Constants override stored options.
+
 == Screenshots ==
 
 1. Uploading a video

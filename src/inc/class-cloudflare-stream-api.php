@@ -412,7 +412,241 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Base64url encode without padding (JWT style).
+	 *
+	 * @param string $data Raw bytes.
+	 * @return string
+	 */
+	private function base64url_encode( $data ) {
+		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
+	}
+
+	/**
+	 * Decode PEM/JWK material that Cloudflare returns base64-encoded.
+	 *
+	 * Accepts already-decoded PEM text as well.
+	 *
+	 * @param string $value Base64 blob or PEM text.
+	 * @return string
+	 */
+	private function decode_signing_key_material( $value ) {
+		$value = trim( (string) $value );
+
+		if ( '' === $value ) {
+			return '';
+		}
+
+		if ( false !== strpos( $value, 'BEGIN' ) ) {
+			return $value;
+		}
+
+		$decoded = base64_decode( $value, true );
+
+		if ( false !== $decoded && '' !== $decoded && false !== strpos( $decoded, 'BEGIN' ) ) {
+			return $decoded;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Whether a string looks like a usable RSA private key PEM.
+	 *
+	 * @param string $pem Candidate PEM.
+	 * @return bool
+	 */
+	private function is_valid_signing_key_pem( $pem ) {
+		if ( ! is_string( $pem ) || '' === $pem ) {
+			return false;
+		}
+
+		if ( false === strpos( $pem, 'PRIVATE KEY' ) ) {
+			return false;
+		}
+
+		$key = openssl_pkey_get_private( $pem );
+
+		return false !== $key;
+	}
+
+	/**
+	 * Signing key id from constant, then stored option.
+	 *
+	 * @return string
+	 */
+	public function get_signing_key_id() {
+		if ( defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) ) {
+			$id = CLOUDFLARE_STREAM_SIGNING_KEY_ID;
+			if ( is_string( $id ) && '' !== $id ) {
+				return sanitize_text_field( $id );
+			}
+		}
+
+		$id = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, '' );
+
+		return is_string( $id ) ? sanitize_text_field( $id ) : '';
+	}
+
+	/**
+	 * Signing key PEM from constant, then stored option.
+	 *
+	 * Constants may hold decoded PEM text or the base64 form Cloudflare returns once.
+	 *
+	 * @return string Decoded PEM text, or empty string.
+	 */
+	public function get_signing_key_pem() {
+		$raw = '';
+
+		if ( defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) ) {
+			$constant = CLOUDFLARE_STREAM_SIGNING_KEY_PEM;
+			if ( is_string( $constant ) && '' !== $constant ) {
+				$raw = $constant;
+			}
+		}
+
+		if ( '' === $raw ) {
+			$option = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, '' );
+			if ( is_string( $option ) && '' !== $option ) {
+				$raw = $option;
+			}
+		}
+
+		if ( '' === $raw ) {
+			return '';
+		}
+
+		$pem = $this->decode_signing_key_material( $raw );
+
+		return $this->is_valid_signing_key_pem( $pem ) ? $pem : '';
+	}
+
+	/**
+	 * Whether a local signing key is available (constants or options).
+	 *
+	 * @return bool
+	 */
+	public function has_signing_key() {
+		return '' !== $this->get_signing_key_id() && '' !== $this->get_signing_key_pem();
+	}
+
+	/**
+	 * Create a Stream signing key via the Cloudflare API.
+	 *
+	 * Response includes id and pem (base64) once; store immediately.
+	 *
+	 * @return object|false Decoded API result object on success, false on failure.
+	 */
+	public function create_signing_key() {
+		$response_text = $this->post( 'stream/keys', array() );
+
+		if ( ! is_string( $response_text ) || '' === $response_text ) {
+			error_log( 'Cloudflare Stream: create signing key failed with empty response.' );
+			return false;
+		}
+
+		$data = json_decode( $response_text );
+
+		if (
+			! is_object( $data )
+			|| empty( $data->success )
+			|| ! isset( $data->result )
+			|| ! is_object( $data->result )
+			|| empty( $data->result->id )
+			|| empty( $data->result->pem )
+		) {
+			error_log( 'Cloudflare Stream: create signing key response was invalid or unsuccessful.' );
+			return false;
+		}
+
+		return $data->result;
+	}
+
+	/**
+	 * Revoke a Stream signing key via the Cloudflare API.
+	 *
+	 * @param string $key_id Signing key id.
+	 * @return bool
+	 */
+	public function delete_signing_key( $key_id ) {
+		$key_id = sanitize_text_field( (string) $key_id );
+
+		if ( '' === $key_id ) {
+			return false;
+		}
+
+		$response_text = $this->delete( 'stream/keys/' . rawurlencode( $key_id ), array() );
+
+		if ( ! is_string( $response_text ) || '' === $response_text ) {
+			error_log( 'Cloudflare Stream: delete signing key failed with empty response.' );
+			return false;
+		}
+
+		$data = json_decode( $response_text );
+
+		return is_object( $data ) && ! empty( $data->success );
+	}
+
+	/**
+	 * Build a signed playback JWT locally with the signing key (RS256).
+	 *
+	 * @param string $uid Video UID.
+	 * @param int    $exp Unix expiry timestamp.
+	 * @return string|false
+	 */
+	public function create_signed_token_local( $uid, $exp ) {
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			return false;
+		}
+
+		$key_id = $this->get_signing_key_id();
+		$pem    = $this->get_signing_key_pem();
+
+		if ( '' === $key_id || '' === $pem ) {
+			return false;
+		}
+
+		$exp = intval( $exp );
+		if ( $exp <= time() ) {
+			return false;
+		}
+
+		// Cloudflare caps signed token life at 24 hours from signing.
+		$max_exp = time() + DAY_IN_SECONDS;
+		if ( $exp > $max_exp ) {
+			$exp = $max_exp;
+		}
+
+		$header = array(
+			'alg' => 'RS256',
+			'kid' => $key_id,
+		);
+
+		$payload = array(
+			'sub' => strtolower( $uid ),
+			'kid' => $key_id,
+			'exp' => $exp,
+		);
+
+		$header_b64  = $this->base64url_encode( wp_json_encode( $header ) );
+		$payload_b64 = $this->base64url_encode( wp_json_encode( $payload ) );
+		$signing_input = $header_b64 . '.' . $payload_b64;
+
+		$signature = '';
+		$ok        = openssl_sign( $signing_input, $signature, $pem, OPENSSL_ALGO_SHA256 );
+
+		if ( ! $ok || '' === $signature ) {
+			error_log( 'Cloudflare Stream: local RS256 signing failed.' );
+			return false;
+		}
+
+		return $signing_input . '.' . $this->base64url_encode( $signature );
+	}
+
+	/**
 	 * Mint a signed playback token for a video.
+	 *
+	 * Prefers a local RS256 JWT when a signing key is configured; otherwise
+	 * falls back to POST stream/{uid}/token and short-lived transient cache.
 	 *
 	 * @param string $uid Unique Video ID.
 	 * @param array  $args Additional API arguments.
@@ -429,14 +663,25 @@ class Cloudflare_Stream_API {
 		}
 
 		$duration_minutes = $this->get_signed_url_duration_minutes();
-		$cache_key        = 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
-		$cached_token     = get_transient( $cache_key );
+		$exp              = time() + ( $duration_minutes * MINUTE_IN_SECONDS );
+
+		// Sign locally when a key is on file (no per-render API call).
+		if ( $this->has_signing_key() ) {
+			$token = $this->create_signed_token_local( $uid, $exp );
+			if ( is_string( $token ) && '' !== $token ) {
+				return $token;
+			}
+			error_log( 'Cloudflare Stream: local signing failed; not falling back to API token mint while a key is configured.' );
+			return false;
+		}
+
+		$cache_key    = 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
+		$cached_token = get_transient( $cache_key );
 
 		if ( is_string( $cached_token ) && '' !== $cached_token ) {
 			return $cached_token;
 		}
 
-		$exp          = time() + ( $duration_minutes * MINUTE_IN_SECONDS );
 		$args['body'] = wp_json_encode(
 			array(
 				'exp' => $exp,
