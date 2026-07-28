@@ -68,17 +68,20 @@ function cloudflare_stream_block_editor_assets() {
 		// Enqueue the script in the footer.
 	);
 
-	// Don't load the API Credentials if the user cannot edit the post.
-	$api_token = current_user_can( 'manage_options' ) ? get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) : '';
-	$api       = Cloudflare_Stream_API::instance();
+	// Only localise privileged Stream data for users who can manage options.
+	$can_manage_stream = current_user_can( 'manage_options' );
+	$api_token         = $can_manage_stream ? get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) : '';
+	$api_account       = $can_manage_stream ? get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT ) : '';
+	$api_nonce         = $can_manage_stream ? wp_create_nonce( Cloudflare_Stream_Settings::NONCE ) : '';
+	$api               = Cloudflare_Stream_API::instance();
 	wp_localize_script(
 		'cloudflare-stream-block-js',
 		'cloudflareStream',
 		array(
-			'nonce' => wp_create_nonce( Cloudflare_Stream_Settings::NONCE ),
+			'nonce' => $api_nonce,
 			'api'   => array(
 				'token'          => $api_token,
-				'account'        => get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT ),
+				'account'        => $api_account,
 				'posts_per_page' => $api->api_limit,
 				'uid'            => md5( $current_user->user_login ),
 			),
@@ -174,12 +177,25 @@ function cloudflare_stream_admin_body_class( $classes ) {
 add_filter( 'admin_body_class', 'cloudflare_stream_admin_body_class' );
 
 /**
+ * Verify nonce and manage_options for Stream AJAX handlers.
+ *
+ * @since 1.0.0
+ */
+function cloudflare_stream_verify_ajax_request() {
+	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+
+	if ( ! current_user_can( 'manage_options' ) ) {
+		wp_send_json_error( array( 'message' => 'Forbidden' ), 403 );
+	}
+}
+
+/**
  * AJAX method for retrieving a collection of Stream videos.
  *
  * @since 1.0.0
  */
 function action_wp_ajax_query_cloudflare_stream_attachments() {
-	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+	cloudflare_stream_verify_ajax_request();
 	$api            = Cloudflare_Stream_API::instance();
 	$args['query']  = isset( $_REQUEST['query'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['query'] ) ) : '';
 	$args['query'] .= '&limit=' . $api->api_limit;
@@ -254,7 +270,7 @@ add_action( 'wp_ajax_query-cloudflare-stream-attachments', 'action_wp_ajax_query
  * @since 1.0.0
  */
 function action_wp_ajax_refresh_check_upload() {
-	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+	cloudflare_stream_verify_ajax_request();
 	$uid  = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 	$data = array();
 
@@ -275,7 +291,7 @@ add_action( 'wp_ajax_cloudflare-stream-check-upload', 'action_wp_ajax_refresh_ch
  * @since 1.0.0
  */
 function action_wp_ajax_query_cloudflare_stream_upload() {
-	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+	cloudflare_stream_verify_ajax_request();
 	$api  = Cloudflare_Stream_API::instance();
 	$data = $api->init_video();
 	wp_send_json_success( $data );
@@ -288,7 +304,7 @@ add_action( 'wp_ajax_query-cloudflare-stream-upload', 'action_wp_ajax_query_clou
  * @since 1.0.0
  */
 function action_wp_ajax_cloudflare_stream_delete() {
-	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+	cloudflare_stream_verify_ajax_request();
 	$uid  = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 	$data = array();
 	$api  = Cloudflare_Stream_API::instance();
@@ -303,7 +319,7 @@ add_action( 'wp_ajax_cloudflare-stream-delete', 'action_wp_ajax_cloudflare_strea
  * @since 1.0.0
  */
 function action_wp_ajax_cloudflare_stream_update() {
-	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+	cloudflare_stream_verify_ajax_request();
 	$uid    = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 	$title  = isset( $_REQUEST['title'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['title'] ) ) : '';
 	$upload = isset( $_REQUEST['upload'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['upload'] ) ) : '';
