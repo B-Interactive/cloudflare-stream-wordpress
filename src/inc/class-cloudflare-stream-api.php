@@ -129,6 +129,11 @@ class Cloudflare_Stream_API {
 			'Content-Type'  => 'application/json',
 		);
 
+		// Keep outbound API calls from hanging the page render.
+		if ( empty( $args['timeout'] ) ) {
+			$args['timeout'] = 15;
+		}
+
 		$query_string = isset( $args['query'] ) ? '?' . $args['query'] : '';
 		$endpoint    .= $query_string;
 		$route        = $base_url . $endpoint;
@@ -237,18 +242,57 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Whether a value looks like a Cloudflare Stream video UID.
+	 *
+	 * @param string $uid Candidate video id.
+	 * @return bool
+	 */
+	private function is_valid_video_uid( $uid ) {
+		return is_string( $uid ) && (bool) preg_match( '/^[a-f0-9]{32}$/i', $uid );
+	}
+
+	/**
+	 * Signed URL lifetime in minutes, clamped to Cloudflare's practical bounds.
+	 *
+	 * @return int Minutes between 1 and 1440.
+	 */
+	private function get_signed_url_duration_minutes() {
+		$minutes = intval( get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION, 60 ) );
+
+		if ( $minutes < 1 ) {
+			return 1;
+		}
+
+		if ( $minutes > 1440 ) {
+			return 1440;
+		}
+
+		return $minutes;
+	}
+
+	/**
 	 * Get the embed code
 	 *
 	 * @param string $uid Unique Video ID.
 	 * @param array  $args Additional API arguments.
 	 * @since 1.0.0
+	 * @return string Embed HTML, or empty string when signed playback cannot be minted.
 	 */
 	public function get_video_embed( $uid, $args = array() ) {
 		$signed_urls = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
-		$uid         = ( $signed_urls ) ? $this->get_signed_video_token( $uid )->result->token : $uid;
-		$video_embed = $this->get_video_embed_template( $uid, $args );
 
-		return $video_embed;
+		if ( $signed_urls ) {
+			$token = $this->get_signed_video_token( $uid );
+			if ( ! is_string( $token ) || '' === $token ) {
+				// Fail closed: do not fall back to a public UID embed.
+				return '';
+			}
+			$uid = $token;
+		} elseif ( ! $this->is_valid_video_uid( $uid ) ) {
+			return '';
+		}
+
+		return $this->get_video_embed_template( $uid, $args );
 	}
 
 	/**
@@ -290,27 +334,65 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Get a specific video's signed id.
+	 * Mint a signed playback token for a video.
 	 *
 	 * @param string $uid Unique Video ID.
 	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @param bool   $return_headers Unused; kept for backward compatibility.
 	 * @since 1.0.5
+	 * @return string|false Token string on success, false on failure.
 	 */
 	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
-		$signed_urls_duration = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION );
+		unset( $return_headers );
 
-		// Determine token expiration time if custom signed urls duration is set.
-		if ( false !== $signed_urls_duration ) {
-			$body         = array(
-				'exp' => ( time() + ( intval( $signed_urls_duration ) * 60 ) ),
-			);
-			$body         = wp_json_encode( $body );
-			$args['body'] = $body;
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			error_log( 'Cloudflare Stream: refused signed token request for invalid video uid.' );
+			return false;
 		}
 
-		$response_text = $this->post( 'stream/' . $uid . '/token', $args, $return_headers );
-		return json_decode( $response_text );
+		$duration_minutes = $this->get_signed_url_duration_minutes();
+		$cache_key        = 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
+		$cached_token     = get_transient( $cache_key );
+
+		if ( is_string( $cached_token ) && '' !== $cached_token ) {
+			return $cached_token;
+		}
+
+		$exp          = time() + ( $duration_minutes * MINUTE_IN_SECONDS );
+		$args['body'] = wp_json_encode(
+			array(
+				'exp' => $exp,
+			)
+		);
+
+		$response_text = $this->post( 'stream/' . $uid . '/token', $args, false );
+
+		if ( ! is_string( $response_text ) || '' === $response_text ) {
+			error_log( 'Cloudflare Stream: signed token request failed with empty response.' );
+			return false;
+		}
+
+		$data = json_decode( $response_text );
+
+		if (
+			! is_object( $data )
+			|| empty( $data->success )
+			|| ! isset( $data->result )
+			|| ! is_object( $data->result )
+			|| empty( $data->result->token )
+			|| ! is_string( $data->result->token )
+		) {
+			error_log( 'Cloudflare Stream: signed token response was invalid or unsuccessful.' );
+			return false;
+		}
+
+		$token = $data->result->token;
+
+		// Cache for half the token life so renders reuse a still-valid token.
+		$cache_ttl = (int) max( 30, floor( ( $duration_minutes * MINUTE_IN_SECONDS ) / 2 ) );
+		set_transient( $cache_key, $token, $cache_ttl );
+
+		return $token;
 	}
 
 	/**

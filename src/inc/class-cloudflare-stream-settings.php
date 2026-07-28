@@ -93,7 +93,14 @@ class Cloudflare_Stream_Settings {
 		register_setting( self::SETTING_GROUP, self::OPTION_API_ACCOUNT );
 		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
-		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS_DURATION );
+		register_setting(
+			self::SETTING_GROUP,
+			self::OPTION_SIGNED_URLS_DURATION,
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => array( $this, 'sanitize_signed_urls_duration' ),
+			)
+		);
 		register_setting( self::SETTING_GROUP, self::OPTION_MEDIA_DOMAIN );
 		register_setting( self::SETTING_GROUP, self::OPTION_POSTER_TIME );
 
@@ -202,8 +209,28 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function api_signed_urls_duration_cb() {
 		$signed_urls_duration = get_option( self::OPTION_SIGNED_URLS_DURATION );
-		echo '<label for="cloudflare_stream_signed_urls_duration"><input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" value="' . esc_attr( intval( $signed_urls_duration ) ) . '" autocomplete="off"> minutes</label>'
-		. '<small class="form-text text-muted">' . esc_html__( 'Sets how long the unique signed URL/token remains accessible for, in minutes.', 'cloudflare-stream' ) . '</small>';
+		echo '<label for="cloudflare_stream_signed_urls_duration"><input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" min="1" max="1440" value="' . esc_attr( intval( $signed_urls_duration ) ) . '" autocomplete="off"> minutes</label>'
+		. '<small class="form-text text-muted">' . esc_html__( 'Sets how long the unique signed URL/token remains accessible for, in minutes (1 to 1440).', 'cloudflare-stream' ) . '</small>';
+	}
+
+	/**
+	 * Clamp signed URL duration to 1..1440 minutes on save.
+	 *
+	 * @param mixed $value Submitted option value.
+	 * @return int
+	 */
+	public function sanitize_signed_urls_duration( $value ) {
+		$minutes = intval( $value );
+
+		if ( $minutes < 1 ) {
+			return 1;
+		}
+
+		if ( $minutes > 1440 ) {
+			return 1440;
+		}
+
+		return $minutes;
 	}
 
 	/**
