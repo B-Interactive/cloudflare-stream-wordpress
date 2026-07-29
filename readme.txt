@@ -83,6 +83,10 @@ Signed tokens are written into the page HTML when a Stream video is rendered. If
 
 A Stream signing key lets the plugin build RS256 playback JWTs on the server (OpenSSL) with no per-render call to POST .../stream/{uid}/token. Preferred setup: Generate signing key under Settings → Cloudflare Stream, copy the short-lived wp-config.php snippet (both defines), then choose "I have pasted this into wp-config.php". That checks the constants work and does not keep a database copy. You can instead store the key in WordPress options (less secure). If a key is already in options, use Show wp-config snippet and confirm after moving it to constants. Leftover DB keys can be removed with Remove stored signing key even when constants are set. Constants override stored options. The PEM is only shown on the admin settings page and is never sent to the browser. If no signing key is configured, signed playback still uses the Cloudflare /token API with a short cache.
 
+8) Does Use Signed URLs change videos in Cloudflare?
+
+For new uploads only: when Use Signed URLs is enabled, the plugin sets requireSignedURLs and allowedOrigins (site host from the WordPress home URL) on direct upload create. Existing videos are not bulk-updated; change those in the Cloudflare dashboard if needed. When the setting is off, new uploads are not forced private.
+
 == Screenshots ==
 
 1. Uploading a video

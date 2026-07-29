@@ -766,16 +766,47 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Default requireSignedURLs / allowedOrigins for new videos.
+	 *
+	 * Only when Use Signed URLs is on: require signed playback and allow this
+	 * site host (from home_url). When off, returns empty so public uploads
+	 * are left alone.
+	 *
+	 * @return array Fragment to merge into create/update bodies.
+	 */
+	public function get_default_video_security_args() {
+		if ( ! get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS ) ) {
+			return array();
+		}
+
+		$args = array(
+			'requireSignedURLs' => true,
+		);
+
+		$host = wp_parse_url( home_url(), PHP_URL_HOST );
+		if ( is_string( $host ) && '' !== $host ) {
+			$args['allowedOrigins'] = array( $host );
+		}
+
+		return $args;
+	}
+
+	/**
 	 * Create a one-time direct upload URL for browser TUS uploads.
+	 *
+	 * When Use Signed URLs is enabled, new videos get requireSignedURLs and
+	 * allowedOrigins (site host) at creation time.
 	 *
 	 * @param array $args Optional body fields for the Cloudflare direct_upload endpoint.
 	 * @since 1.0.0
 	 * @return object|null Decoded API response, or null on transport failure.
 	 */
 	public function create_direct_upload( $args = array() ) {
-		$defaults = array(
-			'maxDurationSeconds' => 21600,
-			'requireSignedURLs'  => (bool) get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS ),
+		$defaults = array_merge(
+			array(
+				'maxDurationSeconds' => 21600,
+			),
+			$this->get_default_video_security_args()
 		);
 
 		$body = wp_parse_args( $args, $defaults );
