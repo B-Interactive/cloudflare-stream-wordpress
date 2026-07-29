@@ -219,7 +219,7 @@ class Cloudflare_Stream_API {
 	 */
 	public function get_videos( $args = array(), $return_headers = 'false' ) {
 		$response_text = $this->request( 'stream', $args, $return_headers );
-		return json_decode( $response_text );
+		return $this->decode_api_response( $response_text );
 	}
 
 	/**
@@ -231,8 +231,12 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_details( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->request( 'stream/' . $uid, $args, $return_headers );
-		return json_decode( $response_text );
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			return null;
+		}
+
+		$response_text = $this->request( 'stream/' . rawurlencode( $uid ), $args, $return_headers );
+		return $this->decode_api_response( $response_text );
 	}
 
 	/**
@@ -244,8 +248,12 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function update_video_details( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->post( 'stream/' . $uid, $args, $return_headers );
-		return json_decode( $response_text );
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			return null;
+		}
+
+		$response_text = $this->post( 'stream/' . rawurlencode( $uid ), $args, $return_headers );
+		return $this->decode_api_response( $response_text );
 	}
 
 	/**
@@ -256,6 +264,110 @@ class Cloudflare_Stream_API {
 	 */
 	private function is_valid_video_uid( $uid ) {
 		return is_string( $uid ) && (bool) preg_match( '/^[a-f0-9]{32}$/i', $uid );
+	}
+
+	/**
+	 * Configured playback / media domain from settings.
+	 *
+	 * @return string
+	 */
+	public function get_media_domain() {
+		$domain = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN, '' );
+
+		if ( ! is_string( $domain ) || '' === $domain ) {
+			$defaults = Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS;
+			return $defaults[0];
+		}
+
+		return $domain;
+	}
+
+	/**
+	 * Whether the domain is a Cloudflare standard host (not a customer subdomain).
+	 *
+	 * @param string|null $domain Domain to check; defaults to the configured option.
+	 * @return bool
+	 */
+	public function is_standard_media_domain( $domain = null ) {
+		if ( null === $domain ) {
+			$domain = $this->get_media_domain();
+		}
+
+		return in_array( $domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true );
+	}
+
+	/**
+	 * Host used for media assets (thumbnails, manifests), not the iframe player.
+	 *
+	 * Standard iframe hosts are iframe.cloudflarestream.com / iframe.videodelivery.net.
+	 * Asset URLs use videodelivery.net, or the customer-*.cloudflarestream.com host.
+	 *
+	 * @param string|null $domain Configured media domain; defaults to the option.
+	 * @return string
+	 */
+	public function get_media_asset_host( $domain = null ) {
+		if ( null === $domain ) {
+			$domain = $this->get_media_domain();
+		}
+
+		if ( $this->is_standard_media_domain( $domain ) ) {
+			// cloudflarestream.com is valid for iframes only; assets live on videodelivery.net.
+			return 'videodelivery.net';
+		}
+
+		return $domain;
+	}
+
+	/**
+	 * Iframe player URL for a video UID or signed token (no query string).
+	 *
+	 * @param string $id Video UID or signed playback token.
+	 * @return string
+	 */
+	public function get_iframe_url( $id ) {
+		$domain = $this->get_media_domain();
+		$id     = ltrim( (string) $id, '/' );
+
+		if ( $this->is_standard_media_domain( $domain ) ) {
+			return 'https://iframe.' . $domain . '/' . $id;
+		}
+
+		return 'https://' . $domain . '/' . $id . '/iframe';
+	}
+
+	/**
+	 * Thumbnail / poster URL for a video UID or signed token.
+	 *
+	 * @param string $id   Video UID or signed playback token.
+	 * @param string $time Optional poster time with unit, e.g. "0s" or "10s".
+	 * @return string
+	 */
+	public function get_poster_url( $id, $time = '' ) {
+		$host = $this->get_media_asset_host();
+		$id   = ltrim( (string) $id, '/' );
+		$url  = 'https://' . $host . '/' . $id . '/thumbnails/thumbnail.jpg';
+
+		if ( is_string( $time ) && '' !== $time ) {
+			$url = add_query_arg( 'time', $time, $url );
+		}
+
+		return $url;
+	}
+
+	/**
+	 * Decode a JSON API body into an object, or null on failure.
+	 *
+	 * @param mixed $response_text Body from request(), or error string.
+	 * @return object|null
+	 */
+	private function decode_api_response( $response_text ) {
+		if ( ! is_string( $response_text ) || '' === $response_text ) {
+			return null;
+		}
+
+		$data = json_decode( $response_text );
+
+		return is_object( $data ) ? $data : null;
 	}
 
 	/**
@@ -376,31 +488,33 @@ class Cloudflare_Stream_API {
 	/**
 	 * Get the video embed with placeholder UID
 	 *
-	 * @param string $uid Unique Video ID.
+	 * @param string $uid  Unique Video ID or signed token.
 	 * @param array  $args Additional API arguments.
 	 *
 	 * @since 1.0.9.4
 	 */
-	public function get_video_embed_template( $uid = 'UID', $args ) {
-		$media_domain      = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
-		$standard_domain   = 'https://iframe.' . $media_domain . '/' . $uid . '?';
-		$account_subdomain = 'https://' . $media_domain . '/' . $uid . '/iframe?';
-		$src_uri           = ( in_array( $media_domain, Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS, true ) ) ? $standard_domain : $account_subdomain;
+	public function get_video_embed_template( $uid, $args = array() ) {
+		if ( ! is_array( $args ) ) {
+			$args = array();
+		}
+
+		$src_uri = $this->get_iframe_url( $uid ) . '?';
+
 		$poster_time = empty( $args['postertime'] ) ? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) : $args['postertime'];
 		$poster_time = $poster_time . 's';
 		$poster_url  = empty( $args['posterurl'] )
-			? 'https://' . $media_domain . '/' . $uid . '/thumbnails/thumbnail.jpg?time=' . $poster_time
+			? $this->get_poster_url( $uid, $poster_time )
 			: $args['posterurl'];
 		// Escape the poster URL, then encode it as a query value (same idea as encodeURIComponent in JS).
 		$poster_url = esc_url( $poster_url );
 
 		$video_embed = '<div class="cloudflare-stream" style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
-			. ( filter_var( $args['muted'], FILTER_VALIDATE_BOOLEAN ) ? 'muted=true&' : '' )
-			. ( filter_var( $args['loop'], FILTER_VALIDATE_BOOLEAN ) ? 'loop=true&' : '' )
-			. ( filter_var( $args['autoplay'], FILTER_VALIDATE_BOOLEAN ) ? 'autoplay=true&' : '' )
-			. ( filter_var( $args['preload'], FILTER_VALIDATE_BOOLEAN ) ? 'preload=auto&' : '' )
-			. ( filter_var( $args['controls'], FILTER_VALIDATE_BOOLEAN ) || ! isset( $args['controls'] ) || strlen( trim( $args['controls'] ) ) === 0 ? '' : 'controls=false&' )
+			. ( filter_var( $args['muted'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'muted=true&' : '' )
+			. ( filter_var( $args['loop'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'loop=true&' : '' )
+			. ( filter_var( $args['autoplay'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'autoplay=true&' : '' )
+			. ( filter_var( $args['preload'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'preload=auto&' : '' )
+			. ( filter_var( $args['controls'] ?? true, FILTER_VALIDATE_BOOLEAN ) || ! isset( $args['controls'] ) || strlen( trim( (string) $args['controls'] ) ) === 0 ? '' : 'controls=false&' )
 			. 'poster=' . rawurlencode( $poster_url ) . '"'
 			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
@@ -559,17 +673,10 @@ class Cloudflare_Stream_API {
 	 * @return object|false Decoded API result object on success, false on failure.
 	 */
 	public function create_signing_key() {
-		$response_text = $this->post( 'stream/keys', array() );
-
-		if ( ! is_string( $response_text ) || '' === $response_text ) {
-			error_log( 'Cloudflare Stream: create signing key failed with empty response.' );
-			return false;
-		}
-
-		$data = json_decode( $response_text );
+		$data = $this->decode_api_response( $this->post( 'stream/keys', array() ) );
 
 		if (
-			! is_object( $data )
+			null === $data
 			|| empty( $data->success )
 			|| ! isset( $data->result )
 			|| ! is_object( $data->result )
@@ -596,16 +703,14 @@ class Cloudflare_Stream_API {
 			return false;
 		}
 
-		$response_text = $this->delete( 'stream/keys/' . rawurlencode( $key_id ), array() );
+		$data = $this->decode_api_response( $this->delete( 'stream/keys/' . rawurlencode( $key_id ), array() ) );
 
-		if ( ! is_string( $response_text ) || '' === $response_text ) {
+		if ( null === $data ) {
 			error_log( 'Cloudflare Stream: delete signing key failed with empty response.' );
 			return false;
 		}
 
-		$data = json_decode( $response_text );
-
-		return is_object( $data ) && ! empty( $data->success );
+		return ! empty( $data->success );
 	}
 
 	/**
@@ -710,17 +815,11 @@ class Cloudflare_Stream_API {
 			)
 		);
 
-		$response_text = $this->post( 'stream/' . $uid . '/token', $args, false );
-
-		if ( ! is_string( $response_text ) || '' === $response_text ) {
-			error_log( 'Cloudflare Stream: signed token request failed with empty response.' );
-			return false;
-		}
-
-		$data = json_decode( $response_text );
+		$response_text = $this->post( 'stream/' . rawurlencode( $uid ) . '/token', $args, false );
+		$data          = $this->decode_api_response( $response_text );
 
 		if (
-			! is_object( $data )
+			null === $data
 			|| empty( $data->success )
 			|| ! isset( $data->result )
 			|| ! is_object( $data->result )
@@ -749,7 +848,11 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function get_video_link( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->request( 'stream/' . $uid . '/preview', $args, $return_headers );
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			return '';
+		}
+
+		$response_text = $this->request( 'stream/' . rawurlencode( $uid ) . '/preview', $args, $return_headers );
 		return $response_text;
 	}
 
@@ -817,24 +920,24 @@ class Cloudflare_Stream_API {
 
 		$response_text = $this->post( 'stream/direct_upload', $request_args );
 
-		if ( empty( $response_text ) || ! is_string( $response_text ) ) {
-			return null;
-		}
-
-		return json_decode( $response_text );
+		return $this->decode_api_response( $response_text );
 	}
 
 	/**
 	 * Delete video.
 	 *
-	 * @param array $uid Unique Video ID.
-	 * @param array $args Additional API arguments.
-	 * @param bool  $return_headers Return the response headers intead of the response body.
+	 * @param string $uid Unique Video ID.
+	 * @param array  $args Additional API arguments.
+	 * @param bool   $return_headers Return the response headers intead of the response body.
 	 * @since 1.0.0
 	 */
 	public function delete_video( $uid, $args = array(), $return_headers = false ) {
-		$response_text = $this->delete( 'stream/' . $uid, $args, $return_headers );
-		return json_decode( $response_text );
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			return null;
+		}
+
+		$response_text = $this->delete( 'stream/' . rawurlencode( $uid ), $args, $return_headers );
+		return $this->decode_api_response( $response_text );
 	}
 
 	/**
@@ -845,13 +948,21 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.9
 	 */
 	public function get_account_subdomain( $args = array(), $return_headers = false ) {
-		$response_text = json_decode( $this->request( 'stream/', $args, $return_headers ) );
-		if ( $response_text->success ) {
-			if ( count( $response_text->result ) > 0 ) {
-				$text_array = explode( '/', $response_text->result[0]->thumbnail );
-				return $text_array[2];
-			}
+		$response_text = $this->decode_api_response( $this->request( 'stream/', $args, $return_headers ) );
+
+		if ( null === $response_text || empty( $response_text->success ) ) {
+			return false;
 		}
+
+		if ( ! empty( $response_text->result ) && is_array( $response_text->result ) && count( $response_text->result ) > 0 ) {
+			$thumbnail = isset( $response_text->result[0]->thumbnail ) ? $response_text->result[0]->thumbnail : '';
+			if ( ! is_string( $thumbnail ) || '' === $thumbnail ) {
+				return false;
+			}
+			$text_array = explode( '/', $thumbnail );
+			return isset( $text_array[2] ) ? $text_array[2] : false;
+		}
+
 		return false;
 	}
 
@@ -863,16 +974,20 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.9
 	 */
 	public function get_account_id( $save = false ) {
-		$response_text = json_decode( $this->request( '', array(), false, self::ZONES_API ) );
-		if ( $response_text->success ) {
-			$api_id = $response_text->result->account->id;
-			if ( strlen( $api_id ) === 32 ) {
-				if ( $save ) {
-					add_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT, $api_id );
-				}
-				return $api_id;
-			}
+		$response_text = $this->decode_api_response( $this->request( '', array(), false, self::ZONES_API ) );
+
+		if ( null === $response_text || empty( $response_text->success ) || empty( $response_text->result->account->id ) ) {
+			return false;
 		}
+
+		$api_id = $response_text->result->account->id;
+		if ( strlen( $api_id ) === 32 ) {
+			if ( $save ) {
+				add_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT, $api_id );
+			}
+			return $api_id;
+		}
+
 		return false;
 	}
 }

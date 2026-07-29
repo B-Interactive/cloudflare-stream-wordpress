@@ -37,6 +37,7 @@ class Cloudflare_Stream_Settings {
 	const OPTION_SIGNING_KEY_PEM      = 'cloudflare_stream_signing_key_pem';
 	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
 	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
+	// Standard iframe hosts (iframe.{domain}). Asset URLs always use videodelivery.net for these.
 	const STANDARD_MEDIA_DOMAINS      = array( 'cloudflarestream.com', 'videodelivery.net' );
 	const ADMIN_ACTION_SIGNING_KEY    = 'cloudflare_stream_signing_key';
 	const SIGNING_KEY_FORM_ID         = 'cloudflare-stream-signing-key-form';
@@ -776,12 +777,19 @@ class Cloudflare_Stream_Settings {
 		$existing_custom_domain = true; // Placeholder value, but will be confirmed below.
 
 		for ( $i = 0; $i < $num_domains; $i++ ) {
+			$domain       = self::STANDARD_MEDIA_DOMAINS[ $i ];
 			$default_text = 0 === $i ? esc_html__( ' (default)', 'cloudflare-stream' ) : '';
+			// Standard options control the iframe host; posters use videodelivery.net.
+			$label = sprintf(
+				/* translators: 1: domain name used for iframe embeds */
+				__( '%1$s (iframe.%1$s)', 'cloudflare-stream' ),
+				$domain
+			);
 			echo '<label for="cloudflare_stream_media_domain_' . esc_attr( $i ) . '">'
-			. '<input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $i ) . '" value="' . esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . '" ' . checked( self::STANDARD_MEDIA_DOMAINS[ $i ], $media_domain, false ) . ' >'
-			. esc_html( self::STANDARD_MEDIA_DOMAINS[ $i ] ) . esc_html( $default_text ) . '</label>';
+			. '<input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $i ) . '" value="' . esc_attr( $domain ) . '" ' . checked( $domain, $media_domain, false ) . ' >'
+			. esc_html( $label ) . esc_html( $default_text ) . '</label>';
 
-			if ( self::STANDARD_MEDIA_DOMAINS[ $i ] === $media_domain ) {
+			if ( $domain === $media_domain ) {
 				$existing_custom_domain = false;
 			}
 		}
@@ -798,7 +806,7 @@ class Cloudflare_Stream_Settings {
 			echo '<label for="cloudflare_stream_media_domain_' . esc_attr( $num_domains ) . '"><input type="radio" class="radio-option" name="cloudflare_stream_media_domain" id="cloudflare_stream_media_domain_' . esc_attr( $num_domains ) . '" value="' . esc_html( $account_subdomain ) . '" ' . checked( $account_subdomain, $media_domain, false ) . ' >' . esc_html( $account_subdomain ) . ' (<a href="' . esc_url( 'https://community.cloudflare.com/t/upcoming-domain-change-to-ensure-delivery-of-your-video-content/405842' ) . '" target="_blank">' . esc_html__( 'more information', 'cloudflare-stream' ) . '</a>)</label>';
 		}
 
-		echo '<small class="form-text text-muted">' . esc_html__( 'Set which Cloudflare domain is used by your users, to access video content. Changing this may require an update to your sites Content Security Policy.', 'cloudflare-stream' ) . '</small>';
+		echo '<small class="form-text text-muted">' . esc_html__( 'Sets the iframe player host. Standard domains use videodelivery.net for thumbnails. A customer subdomain is used for both player and thumbnails. Changing this may require a Content Security Policy update.', 'cloudflare-stream' ) . '</small>';
 	}
 
 	/** PLAYER SETTINGS CALLBACKS **/
@@ -936,7 +944,17 @@ class Cloudflare_Stream_Settings {
 	public function test_api_keys() {
 		$api    = Cloudflare_Stream_API::instance();
 		$videos = $api->get_videos();
-		return ( count( $videos->errors ) <= 0 ) ? true : false;
+
+		if ( ! is_object( $videos ) ) {
+			return false;
+		}
+
+		// Successful list responses omit errors or return an empty list.
+		if ( isset( $videos->success ) ) {
+			return ! empty( $videos->success );
+		}
+
+		return empty( $videos->errors );
 	}
 	/**
 	 * Settings Page
