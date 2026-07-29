@@ -36,7 +36,7 @@
     "lint:md:docs": "wp-scripts lint-md-docs",
     "lint:pkg-json": "wp-scripts lint-pkg-json",
     "packages-update": "wp-scripts packages-update",
-    "zip": "wp-scripts plugin-zip --no-root-folder",
-    "package": "wp-scripts build && wp-scripts plugin-zip --no-root-folder"
+    "zip": "wp-scripts plugin-zip",
+    "package": "wp-scripts build && wp-scripts plugin-zip"
   }
 }

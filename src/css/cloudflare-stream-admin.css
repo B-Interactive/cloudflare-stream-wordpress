@@ -3,3 +3,21 @@
 	display: block;
 	margin: 5px 0 0;
 }
+
+/* Signing key controls sit inside the settings field; forms stay outside. */
+.settings_page_cloudflare-stream .cloudflare-stream-signing-key-actions,
+.settings_page_cloudflare-stream .cloudflare-stream-signing-key-reveal {
+	margin-top: 0.75em;
+}
+
+.settings_page_cloudflare-stream .cloudflare-stream-signing-key-action {
+	margin: 0.75em 0 0.25em;
+}
+
+.settings_page_cloudflare-stream .cloudflare-stream-signing-key-reveal {
+	padding: 12px 16px;
+}
+
+.settings_page_cloudflare-stream .cloudflare-stream-signing-key-external-form {
+	display: none;
+}
