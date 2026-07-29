@@ -13,11 +13,9 @@ import './editor.scss';
  */
 import edit from './edit';
 
-/* Common logic for stream iframe URL */
-import { streamIframeSource } from './lib';
-
-/* Deprecated version of block */
+/* Deprecated versions of block */
 import { deprecated_108 } from './deprecated_108';
+import { deprecated_iframe } from './deprecated_iframe';
 
 const { __ }                = wp.i18n; // Import __() from wp.i18n.
 const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks.
@@ -73,7 +71,8 @@ registerBlockType(
 			__( 'Stream', 'cloudflare-stream' ),
 			__( 'video', 'cloudflare-stream' ),
 		],
-		deprecated: [ deprecated_108 ],
+		// Newest deprecations first so iframe posts match before the old stream tag version.
+		deprecated: [ deprecated_iframe, deprecated_108 ],
 		attributes: {
 			alignment: {
 				type: 'string',
@@ -126,53 +125,14 @@ registerBlockType(
 		edit,
 
 		/**
-		* The save function defines the way in which the different attributes should be combined
-		* into the final markup, which is then serialized by Gutenberg into post_content.
-		*
-		* The "save" property must be specified and must be a valid function.
+		* Dynamic block: nothing is stored in post content except attributes.
+		* Front-end markup comes from the PHP render_callback.
 		*
 		* @link https://wordpress.org/gutenberg/handbook/block-api/block-edit-save/
-		* @param {Object} props Block Properties.
-		* @return {Object} A WordPress block.
+		* @return {null} Null save output for dynamic rendering.
 		*/
-		save( props ) {
-			const { uid, controls, autoplay, loop, muted, className } =
-				props.attributes;
-			if ( uid !== false ) {
-				// Create block UI using WordPress createElement.
-				return wp.element.createElement(
-					'figure',
-					{
-						className,
-						key: uid,
-					},
-					[
-						wp.element.createElement(
-							'div',
-							{
-								className: 'player-wrapper',
-							},
-							[
-								wp.element.createElement(
-									'iframe',
-									{
-										className: 'player-frame',
-										src: streamIframeSource( props.attributes ),
-										allow: 'accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;',
-										allowfullscreen: 'true',
-									}
-								),
-							]
-						),
-					]
-				);
-			}
-			return wp.element.createElement(
-				'figure',
-				{
-					className,
-				}
-			);
+		save() {
+			return null;
 		},
 	}
 );
