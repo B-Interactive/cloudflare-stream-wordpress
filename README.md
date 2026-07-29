@@ -29,6 +29,7 @@ For now, using the shortcode method is still the most appropriate way to insert 
 - If updating from version older than 1.0.6, you'll need to enter your Cloudflare API Token and Cloudflare Account ID in the configuration page.
 - Added admin setting for signed URL/token duration (default is otherwise 1 hour).
 - Added admin toggle for whether or not to use signed URLs/tokens.
+- When Use Signed URLs is on, new direct uploads set `requireSignedURLs` and `allowedOrigins` (WordPress home URL host). Existing videos are not bulk-updated.
 - Can select Cloudflare media domain, including new account specific sub-domain.
 - Can set poster/thumbnail location globally, and per-video.
 - Can specify a poster/thumbnail URL per-video.
@@ -124,16 +125,16 @@ Thumbnails for videos will be auto-generated, taken from a location (in seconds)
 
 ## Securing Video Access
 
-1. Make sure **Use Signed URLs** is checked [x], in the admin settings. **This feature alone does not secure your videos.** The original ID of your videos is still accessible and could be used to access them.
+1. Make sure **Use Signed URLs** is checked [x], in the admin settings. With this on, **new uploads** from the plugin set Cloudflare `requireSignedURLs` and `allowedOrigins` (the site host from the WordPress home URL) at direct-upload creation time. Existing library videos are not bulk-updated; change those in the Cloudflare Stream dashboard if needed. When the setting is off, new uploads are left public (no automated `requireSignedURLs` / `allowedOrigins`).
     
     ![use-signed-urls](https://user-images.githubusercontent.com/16984998/166195570-6e2ecfd4-72af-4f11-a52c-f615df470a36.png)
     
 2. Optionally configure a **Signing Key** so tokens are minted locally (see above). Without a key, the plugin falls back to Cloudflare’s `/token` endpoint.
-3. Your videos **must** be set to **Require Signed URLs** on a per-video basis, in your Cloudflare Stream dashboard. This will make the original video ID worthless to would-be thieves, because a signed URL/token can only be created with your signing key or API token.
+3. For videos uploaded before this automation (or outside the plugin), set **Require Signed URLs** per video in the Cloudflare Stream dashboard so the raw video ID cannot be played without a token.
     
     ![require-signed-url](https://user-images.githubusercontent.com/16984998/166195689-f52c48c6-86f4-40c5-8e96-b9f6ae5790d0.png)
     
-4. To further restrict which domains can embed your videos, specify **Allowed Origins** on a per-video basis in your Cloudflare Stream dashboard.
+4. **Allowed Origins** for new plugin uploads defaults to the home URL host only (e.g. `example.com` does not cover `www.example.com`). Adjust per video in the dashboard if you need more hosts.
     
     ![allowed-origins](https://user-images.githubusercontent.com/16984998/166195828-80c23260-fc02-47bb-89b1-ceb8a4217638.png)
     
