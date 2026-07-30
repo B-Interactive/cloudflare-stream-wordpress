@@ -49,6 +49,7 @@ class Cloudflare_Stream_Settings {
 	const ADMIN_ACTION_SIGNING_KEY     = 'cloudflare_stream_signing_key';
 	const SIGNING_KEY_FORM_ID          = 'cloudflare-stream-signing-key-form';
 	const TRANSIENT_SIGNING_KEY_REVEAL = 'cfstream_sk_reveal_';
+	const TRANSIENT_SIGNING_KEY_NOTICE = 'cfstream_sk_notice_';
 	const TRANSIENT_SECRETS_AUTO_CLEAN = 'cfstream_secrets_auto_clean_';
 
 	/**
@@ -293,7 +294,7 @@ class Cloudflare_Stream_Settings {
 			esc_html(
 				sprintf(
 					/* translators: %s: comma-separated list of removed items (not secret values) */
-					__( 'These are now read from wp-config.php, so the database copy was removed: %s.', 'cloudflare-stream' ),
+					__( 'These are now read from PHP constants, so the database copy was removed: %s.', 'cloudflare-stream' ),
 					implode( ', ', $labels )
 				)
 			)
@@ -462,13 +463,13 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Plain words for where a value is kept.
 	 *
-	 * @param bool $from_const Value comes from a wp-config.php constant.
+	 * @param bool $from_const Value comes from PHP constant.
 	 * @param bool $in_db      Value is stored in the database.
 	 * @return string
 	 */
 	private function storage_status_text( $from_const, $in_db ) {
 		if ( $from_const ) {
-			return __( 'Stored in wp-config.php', 'cloudflare-stream' );
+			return __( 'Stored as PHP constants', 'cloudflare-stream' );
 		}
 
 		if ( $in_db ) {
@@ -498,7 +499,7 @@ class Cloudflare_Stream_Settings {
 
 		if ( $from_const ) {
 			echo '<input type="text" class="regular-text" value="' . esc_attr( self::get_api_account() ) . '" disabled="disabled" autocomplete="off">';
-			echo '<p class="description">' . esc_html__( 'Set by CLOUDFLARE_STREAM_API_ACCOUNT in wp-config.php.', 'cloudflare-stream' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Set by CLOUDFLARE_STREAM_API_ACCOUNT in wp-config.php / PHP constants.', 'cloudflare-stream' ) . '</p>';
 			return;
 		}
 
@@ -525,7 +526,7 @@ class Cloudflare_Stream_Settings {
 
 		if ( $from_const ) {
 			echo '<input type="password" class="regular-text" value="********" disabled="disabled" autocomplete="off">';
-			echo '<p class="description">' . esc_html__( 'Set by CLOUDFLARE_STREAM_API_TOKEN in wp-config.php.', 'cloudflare-stream' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Set by CLOUDFLARE_STREAM_API_TOKEN in wp-config.php / PHP constants.', 'cloudflare-stream' ) . '</p>';
 			return;
 		}
 
@@ -582,7 +583,7 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Whether wp-config.php is the source of the signing key.
+	 * Whether PHP constants are the source of the signing key.
 	 *
 	 * @return bool
 	 */
@@ -679,7 +680,7 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Ready-to-paste wp-config.php defines for a signing key.
+	 * Ready-to-paste wp-config.php / PHP constant defines for a signing key.
 	 *
 	 * @param string $key_id Signing key id.
 	 * @param string $pem    PEM value as stored / usable in the constant.
@@ -788,7 +789,7 @@ class Cloudflare_Stream_Settings {
 		$reveal       = $this->get_signing_key_reveal();
 
 		if ( $const_broken ) {
-			$this->echo_field_status( __( 'Set in wp-config.php, but not usable', 'cloudflare-stream' ) );
+			$this->echo_field_status( __( 'Set as a PHP constant, but not usable', 'cloudflare-stream' ) );
 		} else {
 			$this->echo_field_status( $this->storage_status_text( $const_ready, $in_db ) );
 		}
@@ -801,7 +802,7 @@ class Cloudflare_Stream_Settings {
 
 		if ( $const_broken ) {
 			echo '<p class="notice notice-warning inline">'
-				. esc_html__( 'wp-config.php needs both CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY_PEM, with a private key that can be read. Until that is fixed, playback links are signed by Cloudflare instead.', 'cloudflare-stream' )
+				. esc_html__( 'Both CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY_PEM need to be set, with a private key that can be read. Until that is fixed, playback links are signed by Cloudflare instead.', 'cloudflare-stream' )
 				. '</p>';
 
 			if ( $in_db ) {
@@ -822,7 +823,7 @@ class Cloudflare_Stream_Settings {
 		}
 
 		if ( $in_db ) {
-			echo '<p class="description">' . esc_html__( 'Move the key to wp-config.php to keep it out of database backups.', 'cloudflare-stream' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Move the key to wp-config.php / PHP constants to keep it out of database backups.', 'cloudflare-stream' ) . '</p>';
 
 			echo '<div class="cloudflare-stream-signing-key-actions">';
 			$this->echo_signing_key_form_button( 'reveal', __( 'Show wp-config.php lines', 'cloudflare-stream' ) );
@@ -877,15 +878,29 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Redirect helper with a short notice code for admin_notices.
+	 * User-specific transient for a one-shot signing key admin notice.
+	 *
+	 * @return string
+	 */
+	private function signing_key_notice_transient_name() {
+		return self::TRANSIENT_SIGNING_KEY_NOTICE . get_current_user_id();
+	}
+
+	/**
+	 * Stash a notice code, then redirect to settings without a sticky query arg.
 	 *
 	 * @param string $code Notice code.
 	 */
 	private function redirect_signing_key_notice( $code ) {
+		$code = sanitize_key( $code );
+
+		if ( '' !== $code && 'noop' !== $code ) {
+			set_transient( $this->signing_key_notice_transient_name(), $code, HOUR_IN_SECONDS );
+		}
+
 		$redirect = add_query_arg(
 			array(
-				'page'               => 'cloudflare-stream',
-				'cfstream_sk_notice' => sanitize_key( $code ),
+				'page' => 'cloudflare-stream',
 			),
 			admin_url( 'options-general.php' )
 		);
@@ -1009,13 +1024,27 @@ class Cloudflare_Stream_Settings {
 			return;
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only notice flag after redirect.
-		if ( empty( $_GET['page'] ) || 'cloudflare-stream' !== $_GET['page'] || empty( $_GET['cfstream_sk_notice'] ) ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- settings page screen check only.
+		if ( empty( $_GET['page'] ) || 'cloudflare-stream' !== $_GET['page'] ) {
 			return;
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		$code = sanitize_key( wp_unslash( $_GET['cfstream_sk_notice'] ) );
+		$code = get_transient( $this->signing_key_notice_transient_name() );
+		if ( ! is_string( $code ) || '' === $code ) {
+			return;
+		}
+
+		// Consume immediately so reload/dismiss cannot replay the notice.
+		delete_transient( $this->signing_key_notice_transient_name() );
+		$code = sanitize_key( $code );
+
+		// Drop state-dependent copy when it is no longer true.
+		if ( in_array( $code, array( 'constants_ok', 'moved' ), true ) && ! $this->constants_signing_key_ready() ) {
+			return;
+		}
+		if ( 'constants' === $code && ! $this->signing_key_from_constants() ) {
+			return;
+		}
 
 		$messages = array(
 			'generated'         => array(
@@ -1024,15 +1053,15 @@ class Cloudflare_Stream_Settings {
 			),
 			'reveal'            => array(
 				'type' => 'success',
-				'text' => __( 'The wp-config.php lines are shown below for a short time.', 'cloudflare-stream' ),
+				'text' => __( 'The wp-config.php / PHP constants are shown below for a short time.', 'cloudflare-stream' ),
 			),
 			'constants_ok'      => array(
 				'type' => 'success',
-				'text' => __( 'Signing key is now read from wp-config.php.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key is now read from PHP constants.', 'cloudflare-stream' ),
 			),
 			'moved'             => array(
 				'type' => 'success',
-				'text' => __( 'Signing key is now read from wp-config.php and the database copy was removed.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key is now read from PHP constants and the database copy was removed.', 'cloudflare-stream' ),
 			),
 			'stored'            => array(
 				'type' => 'success',
@@ -1048,7 +1077,7 @@ class Cloudflare_Stream_Settings {
 			),
 			'constants_missing' => array(
 				'type' => 'error',
-				'text' => __( 'The wp-config.php lines are not working yet. Check them, then try again. They are still shown below for a short time.', 'cloudflare-stream' ),
+				'text' => __( 'The PHP constants are not working yet. Check them, then try again. They are still shown below for a short time.', 'cloudflare-stream' ),
 			),
 			'generate_failed'   => array(
 				'type' => 'error',
@@ -1068,7 +1097,7 @@ class Cloudflare_Stream_Settings {
 			),
 			'constants'         => array(
 				'type' => 'error',
-				'text' => __( 'The signing key is set in wp-config.php, so that action was skipped.', 'cloudflare-stream' ),
+				'text' => __( 'The signing key is set as PHP constants, so that action was skipped.', 'cloudflare-stream' ),
 			),
 		);
 
@@ -1318,7 +1347,7 @@ class Cloudflare_Stream_Settings {
 			esc_url( 'https://github.com/B-Interactive/cloudflare-stream-wordpress#readme' )
 		);
 		echo '</p>';
-		echo '<p>' . esc_html__( 'On production sites you can keep these secrets in wp-config.php instead of the database. Any value set there is used, the matching field becomes read only, and the database copy is removed for you. See the setup guide for the lines to add.', 'cloudflare-stream' ) . '</p>';
+		echo '<p>' . esc_html__( 'On production sites you can keep these secrets in wp-config.php / PHP constants instead of the database. Any value set there is used, the matching field becomes read only, and the database copy is removed for you. See the setup guide for the lines to add.', 'cloudflare-stream' ) . '</p>';
 	}
 
 	/**
