@@ -4,6 +4,10 @@
 	margin: 5px 0 0;
 }
 
+.settings_page_cloudflare-stream .cloudflare-stream-field-status {
+	margin: 0 0 0.5em;
+}
+
 /* Signing key controls sit inside the settings field; forms stay outside. */
 .settings_page_cloudflare-stream .cloudflare-stream-signing-key-actions,
 .settings_page_cloudflare-stream .cloudflare-stream-signing-key-reveal {

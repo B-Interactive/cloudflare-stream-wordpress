@@ -20,28 +20,36 @@ class Cloudflare_Stream_Settings {
 	 */
 	private static $instance = false;
 
-	const NONCE                       = 'cloudflare-stream';
-	const SETTING_PAGE                = 'cloudflare-stream';
-	const SETTING_GROUP               = 'cloudflare_stream';
-	const SETTING_SECTION_GENERAL     = 'cloudflare_stream_settings_general';
-	const SETTING_SECTION_PLAYER      = 'cloudflare_stream_settings_player';
-	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
-	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
-	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id'; // Deprecated.
-	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
-	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
-	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
-	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
-	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
-	const OPTION_SIGNING_KEY_ID       = 'cloudflare_stream_signing_key_id';
-	const OPTION_SIGNING_KEY_PEM      = 'cloudflare_stream_signing_key_pem';
-	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
-	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
+	/**
+	 * Cached result of the API credential test for this request.
+	 *
+	 * @var bool|null
+	 */
+	private static $api_keys_work = null;
+
+	const NONCE                        = 'cloudflare-stream';
+	const SETTING_PAGE                 = 'cloudflare-stream';
+	const SETTING_GROUP                = 'cloudflare_stream';
+	const SETTING_SECTION_GENERAL      = 'cloudflare_stream_settings_general';
+	const SETTING_SECTION_PLAYER       = 'cloudflare_stream_settings_player';
+	const SETTING_SECTION_REPORTING    = 'cloudflare_stream_settings_reporting';
+	const OPTION_API_TOKEN             = 'cloudflare_stream_api_token';
+	const OPTION_API_ZONE_ID           = 'cloudflare_stream_api_zone_id'; // Deprecated.
+	const OPTION_API_KEY               = 'cloudflare_stream_api_key';
+	const OPTION_API_EMAIL             = 'cloudflare_stream_api_email';
+	const OPTION_API_ACCOUNT           = 'cloudflare_stream_api_account';
+	const OPTION_SIGNED_URLS           = 'cloudflare_stream_signed_urls';
+	const OPTION_SIGNED_URLS_DURATION  = 'cloudflare_stream_signed_urls_duration';
+	const OPTION_SIGNING_KEY_ID        = 'cloudflare_stream_signing_key_id';
+	const OPTION_SIGNING_KEY_PEM       = 'cloudflare_stream_signing_key_pem';
+	const OPTION_MEDIA_DOMAIN          = 'cloudflare_stream_media_domain';
+	const OPTION_POSTER_TIME           = 'cloudflare_stream_poster_time';
 	// Standard iframe hosts (iframe.{domain}). Asset URLs always use videodelivery.net for these.
-	const STANDARD_MEDIA_DOMAINS      = array( 'cloudflarestream.com', 'videodelivery.net' );
-	const ADMIN_ACTION_SIGNING_KEY    = 'cloudflare_stream_signing_key';
-	const SIGNING_KEY_FORM_ID         = 'cloudflare-stream-signing-key-form';
+	const STANDARD_MEDIA_DOMAINS       = array( 'cloudflarestream.com', 'videodelivery.net' );
+	const ADMIN_ACTION_SIGNING_KEY     = 'cloudflare_stream_signing_key';
+	const SIGNING_KEY_FORM_ID          = 'cloudflare-stream-signing-key-form';
 	const TRANSIENT_SIGNING_KEY_REVEAL = 'cfstream_sk_reveal_';
+	const TRANSIENT_SECRETS_AUTO_CLEAN = 'cfstream_secrets_auto_clean_';
 
 	/**
 	 * Singleton
@@ -86,6 +94,8 @@ class Cloudflare_Stream_Settings {
 		add_action( 'admin_init', array( $this, 'action_admin_init' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'cloudflare_stream_admin_enqueue_styles' ) );
 		add_action( 'admin_post_' . self::ADMIN_ACTION_SIGNING_KEY, array( $this, 'handle_signing_key_action' ) );
+		// Drop leftover DB secrets when matching PHP constants are the live source.
+		add_action( 'load-settings_page_cloudflare-stream', array( $this, 'maybe_auto_clean_constant_secrets' ) );
 	}
 
 	/**
@@ -97,8 +107,22 @@ class Cloudflare_Stream_Settings {
 	public function action_admin_init() {
 
 		// Register Settings.
-		register_setting( self::SETTING_GROUP, self::OPTION_API_ACCOUNT );
-		register_setting( self::SETTING_GROUP, self::OPTION_API_TOKEN );
+		register_setting(
+			self::SETTING_GROUP,
+			self::OPTION_API_ACCOUNT,
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array( $this, 'sanitize_api_account' ),
+			)
+		);
+		register_setting(
+			self::SETTING_GROUP,
+			self::OPTION_API_TOKEN,
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array( $this, 'sanitize_api_token' ),
+			)
+		);
 		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
 		register_setting(
 			self::SETTING_GROUP,
@@ -135,6 +159,14 @@ class Cloudflare_Stream_Settings {
 			);
 
 			add_settings_field(
+				'signing_key',
+				esc_html__( 'Signing Key', 'cloudflare-stream' ),
+				array( $this, 'signing_key_cb' ),
+				self::SETTING_PAGE,
+				self::SETTING_SECTION_GENERAL
+			);
+
+			add_settings_field(
 				self::OPTION_SIGNED_URLS,
 				esc_html__( 'Use Signed URLs', 'cloudflare-stream' ),
 				array( $this, 'api_signed_urls_cb' ),
@@ -146,14 +178,6 @@ class Cloudflare_Stream_Settings {
 				self::OPTION_SIGNED_URLS_DURATION,
 				esc_html__( 'Signed URL Expiration', 'cloudflare-stream' ),
 				array( $this, 'api_signed_urls_duration_cb' ),
-				self::SETTING_PAGE,
-				self::SETTING_SECTION_GENERAL
-			);
-
-			add_settings_field(
-				'signing_key',
-				esc_html__( 'Signing Key', 'cloudflare-stream' ),
-				array( $this, 'signing_key_cb' ),
 				self::SETTING_PAGE,
 				self::SETTING_SECTION_GENERAL
 			);
@@ -184,31 +208,335 @@ class Cloudflare_Stream_Settings {
 		add_action( 'admin_notices', array( $this, 'settings_errors_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'onboarding_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'signing_key_admin_notices' ) );
+		add_action( 'admin_notices', array( $this, 'secrets_auto_clean_admin_notices' ) );
+
+		// When a constant is active, do not rewrite the matching option from the settings form.
+		add_filter( 'pre_update_option_' . self::OPTION_API_TOKEN, array( $this, 'pre_update_api_token' ), 10, 2 );
+		add_filter( 'pre_update_option_' . self::OPTION_API_ACCOUNT, array( $this, 'pre_update_api_account' ), 10, 2 );
+	}
+
+	/**
+	 * User-specific transient for the one-time auto-clean notice.
+	 *
+	 * @return string
+	 */
+	private function secrets_auto_clean_transient_name() {
+		return self::TRANSIENT_SECRETS_AUTO_CLEAN . get_current_user_id();
+	}
+
+	/**
+	 * On settings page load, delete DB copies of secrets that PHP constants already supply.
+	 */
+	public function maybe_auto_clean_constant_secrets() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$removed = array();
+
+		if ( self::api_token_from_constant() && self::db_has_api_token_option() ) {
+			delete_option( self::OPTION_API_TOKEN );
+			$removed[] = __( 'API token', 'cloudflare-stream' );
+		}
+
+		if ( self::api_account_from_constant() && self::db_has_api_account_option() ) {
+			delete_option( self::OPTION_API_ACCOUNT );
+			$removed[] = __( 'API account ID', 'cloudflare-stream' );
+		}
+
+		// Only when both signing constants are fully usable.
+		if ( $this->constants_signing_key_ready() && $this->db_has_signing_key_options() ) {
+			$this->delete_db_signing_key_options();
+			$removed[] = __( 'signing key', 'cloudflare-stream' );
+		}
+
+		if ( empty( $removed ) ) {
+			return;
+		}
+
+		set_transient( $this->secrets_auto_clean_transient_name(), $removed, HOUR_IN_SECONDS );
+	}
+
+	/**
+	 * One-time success notice after auto-clean removed leftover DB secrets.
+	 */
+	public function secrets_auto_clean_admin_notices() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- settings page screen check only.
+		if ( empty( $_GET['page'] ) || 'cloudflare-stream' !== $_GET['page'] ) {
+			return;
+		}
+
+		$removed = get_transient( $this->secrets_auto_clean_transient_name() );
+		if ( ! is_array( $removed ) || empty( $removed ) ) {
+			return;
+		}
+
+		delete_transient( $this->secrets_auto_clean_transient_name() );
+
+		$labels = array();
+		foreach ( $removed as $label ) {
+			if ( is_string( $label ) && '' !== $label ) {
+				$labels[] = $label;
+			}
+		}
+
+		if ( empty( $labels ) ) {
+			return;
+		}
+
+		printf(
+			'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+			esc_html(
+				sprintf(
+					/* translators: %s: comma-separated list of removed items (not secret values) */
+					__( 'These are now read from wp-config.php, so the database copy was removed: %s.', 'cloudflare-stream' ),
+					implode( ', ', $labels )
+				)
+			)
+		);
 	}
 
 	/** API CONFIGURATION CALLBACKS **/
 
 	/**
+	 * Trimmed string value of a PHP constant, or empty string when unusable.
+	 *
+	 * @param string $name Constant name.
+	 * @return string
+	 */
+	private static function constant_string( $name ) {
+		if ( ! defined( $name ) ) {
+			return '';
+		}
+
+		$value = constant( $name );
+
+		return is_string( $value ) ? trim( $value ) : '';
+	}
+
+	/**
+	 * Whether the API token comes from a PHP constant.
+	 *
+	 * @return bool
+	 */
+	public static function api_token_from_constant() {
+		return '' !== self::constant_string( 'CLOUDFLARE_STREAM_API_TOKEN' );
+	}
+
+	/**
+	 * Whether the API account id comes from a PHP constant.
+	 *
+	 * @return bool
+	 */
+	public static function api_account_from_constant() {
+		return '' !== self::constant_string( 'CLOUDFLARE_STREAM_API_ACCOUNT' );
+	}
+
+	/**
+	 * API token: constant first, then the stored option.
+	 *
+	 * @return string
+	 */
+	public static function get_api_token() {
+		$constant = self::constant_string( 'CLOUDFLARE_STREAM_API_TOKEN' );
+
+		if ( '' !== $constant ) {
+			return $constant;
+		}
+
+		$option = get_option( self::OPTION_API_TOKEN, '' );
+
+		return is_string( $option ) ? trim( $option ) : '';
+	}
+
+	/**
+	 * API account id: constant first, then the stored option.
+	 *
+	 * @return string
+	 */
+	public static function get_api_account() {
+		$constant = self::constant_string( 'CLOUDFLARE_STREAM_API_ACCOUNT' );
+
+		if ( '' !== $constant ) {
+			return sanitize_text_field( $constant );
+		}
+
+		$option = get_option( self::OPTION_API_ACCOUNT, '' );
+
+		return is_string( $option ) ? sanitize_text_field( $option ) : '';
+	}
+
+	/**
+	 * Whether wp_options holds a non-empty API token (even if the constant overrides).
+	 *
+	 * @return bool
+	 */
+	public static function db_has_api_token_option() {
+		$option = get_option( self::OPTION_API_TOKEN, '' );
+
+		return is_string( $option ) && '' !== trim( $option );
+	}
+
+	/**
+	 * Whether wp_options holds a non-empty API account id (even if the constant overrides).
+	 *
+	 * @return bool
+	 */
+	public static function db_has_api_account_option() {
+		$option = get_option( self::OPTION_API_ACCOUNT, '' );
+
+		return is_string( $option ) && '' !== trim( $option );
+	}
+
+	/**
+	 * Keep the stored token when the password field is left blank; ignore form when a constant is set.
+	 *
+	 * @param mixed $value Submitted option value.
+	 * @return string
+	 */
+	public function sanitize_api_token( $value ) {
+		if ( self::api_token_from_constant() ) {
+			$stored = get_option( self::OPTION_API_TOKEN, '' );
+			return is_string( $stored ) ? $stored : '';
+		}
+
+		$value = is_string( $value ) ? trim( $value ) : '';
+
+		if ( '' === $value ) {
+			$stored = get_option( self::OPTION_API_TOKEN, '' );
+			return is_string( $stored ) ? $stored : '';
+		}
+
+		return sanitize_text_field( $value );
+	}
+
+	/**
+	 * Ignore form account id when the constant is set.
+	 *
+	 * @param mixed $value Submitted option value.
+	 * @return string
+	 */
+	public function sanitize_api_account( $value ) {
+		if ( self::api_account_from_constant() ) {
+			$stored = get_option( self::OPTION_API_ACCOUNT, '' );
+			return is_string( $stored ) ? sanitize_text_field( $stored ) : '';
+		}
+
+		return sanitize_text_field( is_string( $value ) ? $value : '' );
+	}
+
+	/**
+	 * Skip option writes for the API token while the PHP constant is active.
+	 *
+	 * @param mixed $value     Proposed value.
+	 * @param mixed $old_value Existing value.
+	 * @return mixed
+	 */
+	public function pre_update_api_token( $value, $old_value ) {
+		if ( self::api_token_from_constant() ) {
+			return $old_value;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Skip option writes for the API account id while the PHP constant is active.
+	 *
+	 * @param mixed $value     Proposed value.
+	 * @param mixed $old_value Existing value.
+	 * @return mixed
+	 */
+	public function pre_update_api_account( $value, $old_value ) {
+		if ( self::api_account_from_constant() ) {
+			return $old_value;
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Plain words for where a value is kept.
+	 *
+	 * @param bool $from_const Value comes from a wp-config.php constant.
+	 * @param bool $in_db      Value is stored in the database.
+	 * @return string
+	 */
+	private function storage_status_text( $from_const, $in_db ) {
+		if ( $from_const ) {
+			return __( 'Stored in wp-config.php', 'cloudflare-stream' );
+		}
+
+		if ( $in_db ) {
+			return __( 'Stored in the database', 'cloudflare-stream' );
+		}
+
+		return __( 'Not set', 'cloudflare-stream' );
+	}
+
+	/**
+	 * One-line status above a settings field.
+	 *
+	 * @param string $status Short status text.
+	 */
+	private function echo_field_status( $status ) {
+		echo '<p class="cloudflare-stream-field-status"><strong>' . esc_html__( 'Status:', 'cloudflare-stream' ) . '</strong> '
+			. esc_html( $status ) . '</p>';
+	}
+
+	/**
 	 * Callback for rendering the API Account ID settings field
 	 */
 	public function api_account_cb() {
-		$api_account = get_option( self::OPTION_API_ACCOUNT );
-		if ( empty( $api_account ) ) {
-			$api_account = self::get_account_id();
+		$from_const = self::api_account_from_constant();
+
+		$this->echo_field_status( $this->storage_status_text( $from_const, self::db_has_api_account_option() ) );
+
+		if ( $from_const ) {
+			echo '<input type="text" class="regular-text" value="' . esc_attr( self::get_api_account() ) . '" disabled="disabled" autocomplete="off">';
+			echo '<p class="description">' . esc_html__( 'Set by CLOUDFLARE_STREAM_API_ACCOUNT in wp-config.php.', 'cloudflare-stream' ) . '</p>';
+			return;
 		}
-		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_account" id="cloudflare_stream_api_account" value="' . esc_attr( $api_account ) . '" autocomplete="on"> '
-		. '<small class="form-text text-muted">' . esc_html__( 'Cloudflare > [domain] > Overview > [scroll down to API section on the right and copy the Account ID].', 'cloudflare-stream' ) . '</small>';
+
+		$api_account = self::get_api_account();
+
+		if ( '' === $api_account ) {
+			// Older installs can still resolve the account ID from a stored zone ID.
+			$legacy      = $this->get_account_id();
+			$api_account = is_string( $legacy ) ? $legacy : '';
+		}
+
+		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_account" id="cloudflare_stream_api_account" value="' . esc_attr( $api_account ) . '" autocomplete="on">';
+		echo '<p class="description">' . esc_html__( 'In Cloudflare, open your domain, go to Overview, then copy the Account ID from the API panel on the right.', 'cloudflare-stream' ) . '</p>';
 	}
 
 	/**
 	 * Callback for rendering the API Token settings field
 	 */
 	public function api_token_cb() {
-		$api_token = get_option( self::OPTION_API_TOKEN );
-		echo '<input type="password" class="regular-text" name="cloudflare_stream_api_token" id="cloudflare_stream_api_token" value="' . esc_attr( $api_token ) . '" autocomplete="off">'
-		. '<small class="form-text text-muted">'
-		. esc_html__( 'Cloudflare > My Profile > API Tokens > API Tokens > [Create Token]', 'cloudflare-stream' ) . '</small>'
-		. '<small class="form-text text-muted">' . esc_html__( 'Must have permission for: Account - Stream:Edit', 'cloudflare-stream' ) . '</small>';
+		$from_const = self::api_token_from_constant();
+		$in_db      = self::db_has_api_token_option();
+
+		$this->echo_field_status( $this->storage_status_text( $from_const, $in_db ) );
+
+		if ( $from_const ) {
+			echo '<input type="password" class="regular-text" value="********" disabled="disabled" autocomplete="off">';
+			echo '<p class="description">' . esc_html__( 'Set by CLOUDFLARE_STREAM_API_TOKEN in wp-config.php.', 'cloudflare-stream' ) . '</p>';
+			return;
+		}
+
+		// Blank on purpose: saving an empty field keeps the stored token (see sanitize_api_token).
+		echo '<input type="password" class="regular-text" name="cloudflare_stream_api_token" id="cloudflare_stream_api_token" value="" autocomplete="off">';
+
+		if ( $in_db ) {
+			echo '<p class="description">' . esc_html__( 'Leave blank to keep the saved token, or enter a new token to replace it.', 'cloudflare-stream' ) . '</p>';
+		}
+
+		echo '<p class="description">' . esc_html__( 'In Cloudflare, go to My Profile, API Tokens, then Create Token. It needs the Account - Stream:Edit permission.', 'cloudflare-stream' ) . '</p>';
 	}
 
 	/**
@@ -254,15 +582,12 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Whether signing key id/pem come from PHP constants.
+	 * Whether wp-config.php is the source of the signing key.
 	 *
 	 * @return bool
 	 */
 	private function signing_key_from_constants() {
-		$id_set  = defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) && is_string( CLOUDFLARE_STREAM_SIGNING_KEY_ID ) && '' !== CLOUDFLARE_STREAM_SIGNING_KEY_ID;
-		$pem_set = defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) && is_string( CLOUDFLARE_STREAM_SIGNING_KEY_PEM ) && '' !== CLOUDFLARE_STREAM_SIGNING_KEY_PEM;
-
-		return $id_set && $pem_set;
+		return Cloudflare_Stream_API::instance()->signing_key_constants_present();
 	}
 
 	/**
@@ -432,25 +757,21 @@ class Cloudflare_Stream_Settings {
 
 		echo '<div class="notice notice-warning inline cloudflare-stream-signing-key-reveal">';
 		echo '<p><strong>' . esc_html__( 'Signing key setup', 'cloudflare-stream' ) . '</strong></p>';
-		echo '<p>' . esc_html__( 'Copy the snippet below into wp-config.php (above the line that says "That\'s all, stop editing!"). This screen is only available for a short time, and the private key will not be shown again after you finish.', 'cloudflare-stream' ) . '</p>';
-
-		echo '<p><label for="cloudflare_stream_reveal_snippet"><strong>' . esc_html__( 'Paste into wp-config.php', 'cloudflare-stream' ) . '</strong></label></p>';
+		echo '<p>' . esc_html__( 'Copy the lines below into wp-config.php, above the line that says "That\'s all, stop editing!". They are only shown for a short time and the private key is not shown again.', 'cloudflare-stream' ) . '</p>';
 		echo '<textarea class="large-text code" id="cloudflare_stream_reveal_snippet" rows="8" readonly="readonly" onclick="this.select();">' . esc_textarea( $snippet ) . '</textarea>';
 
-		echo '<p><strong>' . esc_html__( 'Choose how to keep this key', 'cloudflare-stream' ) . '</strong></p>';
-
 		if ( 'setup' === $context ) {
-			$this->echo_signing_key_form_button( 'confirm_constants', __( 'I have pasted this into wp-config.php', 'cloudflare-stream' ), 'primary' );
-			echo '<p class="description">' . esc_html__( 'Most secure. We check that the constants work, remove any database copy, and discard this temporary copy.', 'cloudflare-stream' ) . '</p>';
+			$this->echo_signing_key_form_button( 'confirm_constants', __( 'I have added this to wp-config.php', 'cloudflare-stream' ), 'primary' );
+			echo '<p class="description">' . esc_html__( 'Checks the lines work, then discards this temporary copy.', 'cloudflare-stream' ) . '</p>';
 
-			$this->echo_signing_key_form_button( 'store_db', __( 'Store in the WordPress database', 'cloudflare-stream' ), 'secondary' );
-			echo '<p class="description">' . esc_html__( 'Less secure. Saves the key in WordPress options so signed playback works without constants. You can move it to wp-config.php later.', 'cloudflare-stream' ) . '</p>';
+			$this->echo_signing_key_form_button( 'store_db', __( 'Save in the database instead', 'cloudflare-stream' ) );
+			echo '<p class="description">' . esc_html__( 'Signed playback works either way. You can move the key to wp-config.php later.', 'cloudflare-stream' ) . '</p>';
 		} else {
-			$this->echo_signing_key_form_button( 'confirm_moved', __( 'I moved it to wp-config.php', 'cloudflare-stream' ), 'primary' );
-			echo '<p class="description">' . esc_html__( 'Checks that the constants work, then removes the key from the database.', 'cloudflare-stream' ) . '</p>';
+			$this->echo_signing_key_form_button( 'confirm_moved', __( 'I have added this to wp-config.php', 'cloudflare-stream' ), 'primary' );
+			echo '<p class="description">' . esc_html__( 'Checks the lines work, then removes the database copy.', 'cloudflare-stream' ) . '</p>';
 
-			$this->echo_signing_key_form_button( 'dismiss', __( 'Keep in the database', 'cloudflare-stream' ), 'secondary' );
-			echo '<p class="description">' . esc_html__( 'Hides this snippet and leaves the key stored in WordPress options.', 'cloudflare-stream' ) . '</p>';
+			$this->echo_signing_key_form_button( 'dismiss', __( 'Keep it in the database', 'cloudflare-stream' ) );
+			echo '<p class="description">' . esc_html__( 'Hides these lines and leaves the key where it is.', 'cloudflare-stream' ) . '</p>';
 		}
 
 		echo '</div>';
@@ -460,69 +781,62 @@ class Cloudflare_Stream_Settings {
 	 * Callback for signing key status, setup panel, and action buttons (via form=).
 	 */
 	public function signing_key_cb() {
-		$api        = Cloudflare_Stream_API::instance();
-		$has_key    = $api->has_signing_key();
-		$from_const = $this->signing_key_from_constants();
-		$db_has     = $this->db_has_signing_key_options();
-		$key_id     = $api->get_signing_key_id();
-		$reveal     = $this->get_signing_key_reveal();
+		$api          = Cloudflare_Stream_API::instance();
+		$const_ready  = $this->constants_signing_key_ready();
+		$const_broken = ! $const_ready && $this->signing_key_from_constants();
+		$in_db        = $this->db_has_signing_key_options();
+		$reveal       = $this->get_signing_key_reveal();
 
-		if ( $has_key ) {
-			$source = $from_const
-				? __( 'from PHP constants', 'cloudflare-stream' )
-				: __( 'stored in WordPress options', 'cloudflare-stream' );
-			echo '<p><strong>' . esc_html__( 'Key on file', 'cloudflare-stream' ) . '</strong> (' . esc_html( $source ) . ')</p>';
-			if ( '' !== $key_id ) {
-				echo '<p><code>' . esc_html( $key_id ) . '</code></p>';
-			}
-			echo '<p class="description">' . esc_html__( 'Playback tokens are signed locally with RS256. The private key stays on the server and is never sent to the browser.', 'cloudflare-stream' ) . '</p>';
+		if ( $const_broken ) {
+			$this->echo_field_status( __( 'Set in wp-config.php, but not usable', 'cloudflare-stream' ) );
 		} else {
-			echo '<p><strong>' . esc_html__( 'No signing key configured (optional)', 'cloudflare-stream' ) . '</strong></p>';
-			echo '<p class="description">' . esc_html__( 'Without a key, signed playback still works via the Cloudflare /token API (one request per cache miss).', 'cloudflare-stream' ) . '</p>';
+			$this->echo_field_status( $this->storage_status_text( $const_ready, $in_db ) );
 		}
 
-		if ( $from_const && $db_has ) {
-			echo '<p class="notice notice-warning inline"><strong>' . esc_html__( 'Database still has a signing key copy.', 'cloudflare-stream' ) . '</strong> '
-				. esc_html__( 'Constants are active now, but if you remove them later the old database key will come back. Use Remove stored signing key below.', 'cloudflare-stream' ) . '</p>';
-		} elseif ( $from_const ) {
-			echo '<p class="description">' . esc_html__( 'Constants are set and override any database value. Change or remove them in wp-config.php to use a different key.', 'cloudflare-stream' ) . '</p>';
-		} elseif ( $db_has ) {
-			echo '<p class="description">' . esc_html__( 'Show a wp-config.php snippet to move the key out of the database, or remove the stored key.', 'cloudflare-stream' ) . '</p>';
-		} else {
-			echo '<p class="description">' . esc_html__( ' For production, we recommend generating the signing key and inserting it in wp-config.php.', 'cloudflare-stream' ) . '</p>';
-		}
-
-		// Pending setup owns the next step while a transient is set.
+		// Setup owns the next step while a short-lived copy of the key is pending.
 		if ( is_array( $reveal ) ) {
 			$this->render_signing_key_setup_panel( $reveal['id'], $reveal['pem'], $reveal['context'] );
 			return;
 		}
 
-		if ( $from_const && ! $db_has ) {
+		if ( $const_broken ) {
+			echo '<p class="notice notice-warning inline">'
+				. esc_html__( 'wp-config.php needs both CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY_PEM, with a private key that can be read. Until that is fixed, playback links are signed by Cloudflare instead.', 'cloudflare-stream' )
+				. '</p>';
+
+			if ( $in_db ) {
+				$this->echo_signing_key_form_button( 'clear', __( 'Remove the unused database copy', 'cloudflare-stream' ), 'delete' );
+			}
+
 			return;
 		}
+
+		$key_id = $api->get_signing_key_id();
+		if ( '' !== $key_id ) {
+			echo '<input type="text" class="regular-text" value="' . esc_attr( $key_id ) . '" disabled="disabled" autocomplete="off">';
+		}
+
+		if ( $const_ready ) {
+			echo '<p class="description">' . esc_html__( 'Set by CLOUDFLARE_STREAM_SIGNING_KEY_ID and CLOUDFLARE_STREAM_SIGNING_KEY_PEM in wp-config.php.', 'cloudflare-stream' ) . '</p>';
+			return;
+		}
+
+		if ( $in_db ) {
+			echo '<p class="description">' . esc_html__( 'Move the key to wp-config.php to keep it out of database backups.', 'cloudflare-stream' ) . '</p>';
+
+			echo '<div class="cloudflare-stream-signing-key-actions">';
+			$this->echo_signing_key_form_button( 'reveal', __( 'Show wp-config.php lines', 'cloudflare-stream' ) );
+			$this->echo_signing_key_form_button( 'clear', __( 'Remove signing key', 'cloudflare-stream' ), 'delete' );
+			echo '<p class="description">' . esc_html__( 'Removing it here does not revoke the key in Cloudflare.', 'cloudflare-stream' ) . '</p>';
+			echo '</div>';
+			return;
+		}
+
+		echo '<p class="description">' . esc_html__( 'Optional. Improves signed playback without calling Cloudflare on every page view.', 'cloudflare-stream' ) . '</p>';
 
 		echo '<div class="cloudflare-stream-signing-key-actions">';
-
-		if ( $from_const && $db_has ) {
-			$this->echo_signing_key_form_button( 'clear', __( 'Remove stored signing key', 'cloudflare-stream' ), 'delete' );
-			echo '<p class="description">' . esc_html__( 'Deletes the leftover key from WordPress options only. Constants keep working. Revoke the key in Cloudflare if it should stop working entirely.', 'cloudflare-stream' ) . '</p>';
-			echo '</div>';
-			return;
-		}
-
-		if ( $has_key && $db_has ) {
-			$this->echo_signing_key_form_button( 'reveal', __( 'Show wp-config snippet', 'cloudflare-stream' ), 'secondary' );
-			echo '<p class="description">' . esc_html__( 'Shows a ready-to-paste wp-config.php snippet for a short time so you can move the key out of the database.', 'cloudflare-stream' ) . '</p>';
-
-			$this->echo_signing_key_form_button( 'clear', __( 'Remove stored signing key', 'cloudflare-stream' ), 'delete' );
-			echo '<p class="description">' . esc_html__( 'Removes the key from WordPress options only. Revoke it in the Cloudflare dashboard if it should no longer work.', 'cloudflare-stream' ) . '</p>';
-			echo '</div>';
-			return;
-		}
-
-		$this->echo_signing_key_form_button( 'generate', __( 'Generate signing key', 'cloudflare-stream' ), 'secondary' );
-		echo '<p class="description">' . esc_html__( 'Creates a key via the Cloudflare API. The next step will detail how to save it.', 'cloudflare-stream' ) . '</p>';
+		$this->echo_signing_key_form_button( 'generate', __( 'Generate signing key', 'cloudflare-stream' ) );
+		echo '<p class="description">' . esc_html__( 'Creates a key in Cloudflare, then asks where to keep it.', 'cloudflare-stream' ) . '</p>';
 		echo '</div>';
 	}
 
@@ -543,21 +857,17 @@ class Cloudflare_Stream_Settings {
 			return;
 		}
 
-		$from_const = $this->signing_key_from_constants();
-		$db_has     = $this->db_has_signing_key_options();
-		$api        = Cloudflare_Stream_API::instance();
-		$has_key    = $api->has_signing_key();
+		$in_db = $this->db_has_signing_key_options();
 
-		if ( $from_const && ! $db_has ) {
+		// Constants win, so a leftover database copy is all that can be acted on.
+		if ( $this->signing_key_from_constants() ) {
+			if ( $in_db && ! $this->constants_signing_key_ready() ) {
+				$this->echo_signing_key_external_form( 'clear' );
+			}
 			return;
 		}
 
-		if ( $from_const && $db_has ) {
-			$this->echo_signing_key_external_form( 'clear' );
-			return;
-		}
-
-		if ( $has_key && $db_has ) {
+		if ( $in_db ) {
 			$this->echo_signing_key_external_form( 'reveal' );
 			$this->echo_signing_key_external_form( 'clear' );
 			return;
@@ -627,6 +937,11 @@ class Cloudflare_Stream_Settings {
 		}
 
 		if ( 'store_db' === $do ) {
+			// Constants added since setup started win, so nothing is written.
+			if ( $this->signing_key_from_constants() ) {
+				$this->redirect_signing_key_notice( 'constants' );
+			}
+
 			$pending = $this->get_signing_key_reveal();
 			if ( null === $pending || 'setup' !== $pending['context'] ) {
 				$this->redirect_signing_key_notice( 'store_failed' );
@@ -703,57 +1018,57 @@ class Cloudflare_Stream_Settings {
 		$code = sanitize_key( wp_unslash( $_GET['cfstream_sk_notice'] ) );
 
 		$messages = array(
-			'generated'          => array(
+			'generated'         => array(
 				'type' => 'success',
-				'text' => __( 'Signing key created. Copy the snippet below, then choose constants (preferred) or database storage. Nothing is saved in the database until you choose.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key created. Choose below where to keep it. Nothing is saved yet.', 'cloudflare-stream' ),
 			),
-			'reveal'             => array(
+			'reveal'            => array(
 				'type' => 'success',
-				'text' => __( 'wp-config.php snippet is shown below for a short time. After you paste it, confirm so the database copy can be removed.', 'cloudflare-stream' ),
+				'text' => __( 'The wp-config.php lines are shown below for a short time.', 'cloudflare-stream' ),
 			),
-			'constants_ok'       => array(
+			'constants_ok'      => array(
 				'type' => 'success',
-				'text' => __( 'Constants look good. Any database copy of the signing key was removed.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key is now read from wp-config.php.', 'cloudflare-stream' ),
 			),
-			'moved'              => array(
+			'moved'             => array(
 				'type' => 'success',
-				'text' => __( 'Constants look good. The signing key was removed from WordPress options.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key is now read from wp-config.php and the database copy was removed.', 'cloudflare-stream' ),
 			),
-			'stored'             => array(
+			'stored'            => array(
 				'type' => 'success',
-				'text' => __( 'Signing key stored in WordPress options. Constants in wp-config.php are still preferred for production.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key saved in the database.', 'cloudflare-stream' ),
 			),
-			'cleared'            => array(
+			'cleared'           => array(
 				'type' => 'success',
-				'text' => __( 'Stored signing key removed from WordPress options.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key removed from the database.', 'cloudflare-stream' ),
 			),
-			'dismissed'          => array(
+			'dismissed'         => array(
 				'type' => 'success',
-				'text' => __( 'Snippet hidden. The signing key remains stored in WordPress options.', 'cloudflare-stream' ),
+				'text' => __( 'Lines hidden. The signing key is still in the database.', 'cloudflare-stream' ),
 			),
-			'constants_missing'  => array(
+			'constants_missing' => array(
 				'type' => 'error',
-				'text' => __( 'Could not detect usable signing key constants yet. Add the defines to wp-config.php, reload PHP if needed, then try again. The setup snippet is still available for a short time.', 'cloudflare-stream' ),
+				'text' => __( 'The wp-config.php lines are not working yet. Check them, then try again. They are still shown below for a short time.', 'cloudflare-stream' ),
 			),
-			'generate_failed'    => array(
+			'generate_failed'   => array(
 				'type' => 'error',
-				'text' => __( 'Could not create a signing key. Check the API token and Account ID.', 'cloudflare-stream' ),
+				'text' => __( 'Could not create a signing key. Check the API token and account ID.', 'cloudflare-stream' ),
 			),
-			'invalid'            => array(
+			'invalid'           => array(
 				'type' => 'error',
-				'text' => __( 'That signing key could not be validated. Nothing was kept in the database.', 'cloudflare-stream' ),
+				'text' => __( 'That signing key could not be used. Nothing was saved.', 'cloudflare-stream' ),
 			),
-			'store_failed'       => array(
+			'store_failed'      => array(
 				'type' => 'error',
-				'text' => __( 'No pending signing key to store. Generate a key again.', 'cloudflare-stream' ),
+				'text' => __( 'There is no new signing key to save. Generate one again.', 'cloudflare-stream' ),
 			),
-			'reveal_failed'      => array(
+			'reveal_failed'     => array(
 				'type' => 'error',
-				'text' => __( 'No signing key is stored in WordPress options to show.', 'cloudflare-stream' ),
+				'text' => __( 'There is no signing key in the database to show.', 'cloudflare-stream' ),
 			),
-			'constants'          => array(
+			'constants'         => array(
 				'type' => 'error',
-				'text' => __( 'Signing key constants are already defined, so that action was skipped.', 'cloudflare-stream' ),
+				'text' => __( 'The signing key is set in wp-config.php, so that action was skipped.', 'cloudflare-stream' ),
 			),
 		);
 
@@ -817,7 +1132,7 @@ class Cloudflare_Stream_Settings {
 	public function poster_time_cb() {
 		$poster_time = get_option( self::OPTION_POSTER_TIME );
 		echo '<label for="cloudflare_stream_poster_time"><input type="number" class="regular-text" name="cloudflare_stream_poster_time" id="cloudflare_stream_poster_time" value="' . esc_attr( intval( $poster_time ) ) . '" autocomplete="off"> seconds</label>'
-		. '<small class="form-text text-muted">' . esc_html__( 'A default time in seconds, of where to reference the video thumbnail from in any given video. Can be overridden by shortcode argument postertime.  eg: postertime="10s".', 'cloudflare-stream' ) . '</small>';
+		. '<small class="form-text text-muted">' . esc_html__( 'A default time in seconds, of where to reference the video thumbnail from in any given video. Can be overridden by shortcode argument postertime. eg: postertime="10s".', 'cloudflare-stream' ) . '</small>';
 	}
 
 	/**
@@ -855,58 +1170,51 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Displays all messages registered to 'cloudflare-stream-settings'.
+	 * Notice on the plugins and settings screens when setup is incomplete or the credentials fail.
 	 */
 	public function onboarding_admin_notices() {
-		global $pagenow;
-
 		$screen = get_current_screen();
 
-		if ( ! in_array( $screen->id, array( 'plugins', 'settings_page_cloudflare-stream' ), true ) ) {
+		if ( ! $screen || ! in_array( $screen->id, array( 'plugins', 'settings_page_cloudflare-stream' ), true ) ) {
 			return;
 		}
 
-		if ( self::is_configured() ) {
-			if ( 'settings_page_cloudflare-stream' === $screen->id && false === self::test_api_keys() ) {
-				?>
-				<div class="notice notice-error is-dismissible">
-					<p>
-					<?php
-						printf(
-							wp_kses(
-								/* translators: %s: search term */
-								__( 'Cloudflare Stream API details are incorrect. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream' ),
-								array( 'a' => array( 'href' => array() ) )
-							),
-							esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) )
-						);
-					?>
-					</p>
-				</div>
-				<?php
-				return;
-			} else {
-				return;
+		$on_settings_page = ( 'settings_page_cloudflare-stream' === $screen->id );
+
+		if ( ! self::is_configured() ) {
+			if ( ! $on_settings_page ) {
+				$this->echo_onboarding_notice(
+					'warning',
+					/* translators: %s: settings page URL */
+					__( 'Cloudflare Stream is not configured. Visit the <a href="%s">settings page</a> to get started.', 'cloudflare-stream' )
+				);
 			}
 			return;
-		} elseif ( 'settings_page_cloudflare-stream' !== $screen->id ) {
-			?>
-			<div class="notice notice-warning is-dismissible">
-				<p>
-				<?php
-					printf(
-						wp_kses(
-							/* translators: %s: search term */
-							__( 'Cloudflare Stream is not configured. Visit the <a href="%s"/>settings page</a> to get started.', 'cloudflare-stream' ),
-							array( 'a' => array( 'href' => array() ) )
-						),
-						esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) )
-					);
-				?>
-				</p>
-			</div>
-			<?php
 		}
+
+		if ( $on_settings_page && ! self::test_api_keys() ) {
+			$this->echo_onboarding_notice(
+				'error',
+				__( 'Cloudflare Stream could not connect with these API details. Check the account ID and token below.', 'cloudflare-stream' )
+			);
+		}
+	}
+
+	/**
+		* Dismissible notice, with the settings page URL filled in for any %s placeholder.
+		*
+		* @param string $type    Notice type (warning, error).
+		* @param string $message Message, optionally with one %s for the settings page URL.
+		*/
+	private function echo_onboarding_notice( $type, $message ) {
+		printf(
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			esc_attr( $type ),
+			sprintf(
+				wp_kses( $message, array( 'a' => array( 'href' => array() ) ) ),
+				esc_url( admin_url( 'options-general.php?page=cloudflare-stream' ) )
+			)
+		);
 	}
 
 	/**
@@ -926,7 +1234,7 @@ class Cloudflare_Stream_Settings {
 	 * @since      1.0.9
 	 */
 	public function get_account_id() {
-		$api_token   = get_option( self::OPTION_API_TOKEN );
+		$api_token   = self::get_api_token();
 		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
 
 		if ( ! empty( $api_token ) && ! empty( $api_zone_id ) ) {
@@ -939,22 +1247,28 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Make a test call to an endpoint to test the API keys.
 	 *
+	 * The result is reused for the rest of the request.
+	 *
 	 * @since 1.0.0
 	 */
 	public function test_api_keys() {
+		if ( null !== self::$api_keys_work ) {
+			return self::$api_keys_work;
+		}
+
 		$api    = Cloudflare_Stream_API::instance();
 		$videos = $api->get_videos();
 
 		if ( ! is_object( $videos ) ) {
-			return false;
+			self::$api_keys_work = false;
+		} elseif ( isset( $videos->success ) ) {
+			// Successful list responses omit errors or return an empty list.
+			self::$api_keys_work = ! empty( $videos->success );
+		} else {
+			self::$api_keys_work = empty( $videos->errors );
 		}
 
-		// Successful list responses omit errors or return an empty list.
-		if ( isset( $videos->success ) ) {
-			return ! empty( $videos->success );
-		}
-
-		return empty( $videos->errors );
+		return self::$api_keys_work;
 	}
 	/**
 	 * Settings Page
@@ -992,8 +1306,8 @@ class Cloudflare_Stream_Settings {
 		echo '<p>';
 		printf(
 			wp_kses(
-				/* translators: %s: search term */
-				__( 'To use the Cloudflare Stream for WordPress plugin, enter your Cloudflare account information below. If you need help getting started, <a target="_blank" href="%s" title="Cloudflare Stream for WordPress README">click here.</a>', 'cloudflare-stream' ),
+				/* translators: %s: link to the plugin README */
+				__( 'Enter your Cloudflare account details below. If you need help getting started, <a target="_blank" href="%s" title="Cloudflare Stream for WordPress README">read the setup guide.</a>', 'cloudflare-stream' ),
 				array(
 					'a' => array(
 						'href'   => array(),
@@ -1004,6 +1318,7 @@ class Cloudflare_Stream_Settings {
 			esc_url( 'https://github.com/B-Interactive/cloudflare-stream-wordpress#readme' )
 		);
 		echo '</p>';
+		echo '<p>' . esc_html__( 'On production sites you can keep these secrets in wp-config.php instead of the database. Any value set there is used, the matching field becomes read only, and the database copy is removed for you. See the setup guide for the lines to add.', 'cloudflare-stream' ) . '</p>';
 	}
 
 	/**
@@ -1013,7 +1328,7 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function settings_section_player() {
 		echo '<p>';
-		echo esc_html__( 'Global settings for the player.  Some of these can be overridden on a per video basis with shortcode arguments.', 'cloudflare-stream' );
+		echo esc_html__( 'Global settings for the player. Some of these can be overridden on a per video basis with shortcode arguments.', 'cloudflare-stream' );
 		echo '</p>';
 	}
 
@@ -1021,10 +1336,7 @@ class Cloudflare_Stream_Settings {
 	 * Helper function for determining if the user has attempted to setup their API keys.
 	 */
 	public static function is_configured() {
-		$api_token   = get_option( self::OPTION_API_TOKEN );
-		$api_account = get_option( self::OPTION_API_ACCOUNT );
-
-		return ( $api_token && $api_account );
+		return ( self::get_api_token() && self::get_api_account() );
 	}
 }
 Cloudflare_Stream_Settings::instance();

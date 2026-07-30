@@ -51,6 +51,14 @@ The admin area has been completely revised from the official plugin. Instead of 
 
 - **Cloudflare** > [domain] > **Overview** > [scroll down to API section on the right and copy the Account ID].
 
+You can store the Account ID in Settings, or (preferred for production / env-injected config) define it in `wp-config.php`:
+
+```php
+define( 'CLOUDFLARE_STREAM_API_ACCOUNT', 'your-account-id' );
+```
+
+When the constant is set it is used instead of the database value, and the settings field becomes read only. Settings shows a one-line status: **Stored in wp-config.php**, **Stored in the database**, or **Not set**.
+
 ### API Token
 
 An API token must be created in your Cloudflare dashboard, for this plugin.
@@ -60,6 +68,20 @@ The created token should only be used for this plugin. I strongly recommend sett
 
 Only grant the API Token permissions necesarry for the plugin to work, to again improve the security of this API Token.
   Must have permission for: **Account - Stream:Edit**
+
+#### Recommended: PHP constant (production)
+
+Prefer defining the token in `wp-config.php` (or another file loaded before the plugin) so it is not stored in the database or included in DB backups:
+
+```php
+define( 'CLOUDFLARE_STREAM_API_TOKEN', 'your-api-token' );
+// Optional, often paired in env config:
+define( 'CLOUDFLARE_STREAM_API_ACCOUNT', 'your-account-id' );
+```
+
+Constants override any values stored in WordPress options. Each field shows a one-line status, and constant-backed fields are read only. The API token is never shown in the browser.
+
+To migrate an existing install: add the defines above “That’s all, stop editing!”, then open **Settings → Cloudflare Stream**. When a constant is set, the matching database copy is removed on that visit and a one-time notice lists what was removed. Without constants, the token and account ID can still be saved in Settings as before. Leaving the token field blank on save keeps the existing stored token.
 
 ### Use Signed URLs
 
@@ -90,30 +112,27 @@ define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'your-key-id' );
 define( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM', "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" );
 ```
 
-Constants override any key stored in the database.
+Both constants are needed together. When they are set and the private key can be read, they are used instead of any key in the database, and the database copy is removed the next time you open **Settings → Cloudflare Stream** (with a one-time notice). If only one is set, or the key cannot be read, Settings says so and signed playback falls back to Cloudflare.
 
 #### Settings UI
 
-On **Settings → Cloudflare Stream** you can:
+On **Settings → Cloudflare Stream** the Signing Key field shows a one-line status, the key ID when there is one, and only the actions that apply:
 
-- See whether a signing key is active (**Key on file**), from constants or options
-- **Generate signing key** via the Cloudflare API (does **not** write to the database yet)
-- On the short-lived setup panel: copy a ready-to-paste `wp-config.php` snippet, then choose either:
-  1. **I have pasted this into wp-config.php** (preferred) — checks constants work, deletes any DB copy, discards the temporary key
-  2. **Store in the WordPress database** (less secure) — saves id + PEM to options
-- **Show wp-config snippet** while the key is only in options, then confirm you moved it to constants (removes the DB copy) or keep it in the database
-- **Remove stored signing key** from WordPress options even when constants are active (clears leftover DB copies; does not revoke the key at Cloudflare)
+- **Generate signing key** when no key is set. This creates the key in Cloudflare but saves nothing yet
+- On the short-lived setup panel: copy the `wp-config.php` lines, then choose either **I have added this to wp-config.php** (checks the lines work, keeps no database copy) or **Save in the database instead**
+- **Show wp-config.php lines** and **Remove signing key** while the key is in the database
 
 #### Recommended generate flow
 
 1. Click **Generate signing key** in **Settings → Cloudflare Stream**.
-2. Copy the one-time `wp-config.php` snippet (both defines) into `wp-config.php`.
-3. Click **I have pasted this into wp-config.php**. If constants are not detected yet, add them and try again while the panel is still available.
-4. Confirm the settings page shows the key **from PHP constants**. No database copy is kept when you confirm constants.
+2. Copy both lines into `wp-config.php`, above “That’s all, stop editing!”.
+3. Click **I have added this to wp-config.php**. If they are not working yet, fix them and try again while the panel is still shown.
+4. Confirm the status reads **Stored in wp-config.php**.
 
-If you already stored a key in options, use **Show wp-config snippet**, paste into `wp-config.php`, then **I moved it to wp-config.php** so the DB copy is removed.
+If you already saved a key in the database, use **Show wp-config.php lines**, add them to `wp-config.php`, then confirm so the database copy is removed.
 
-Storing PEM in `wp_options` matches how the API token is stored today; constants are the better path for production secrets. Confirming constants does not keep a DB copy. Leftover DB keys can still be removed while constants are set. The private key is only shown on the admin settings page (`manage_options`), never in front-end or block editor JS.
+Saving the PEM in `wp_options` works, but `wp-config.php` keeps it out of database backups. Removing a key here does not revoke it at Cloudflare. The private key is only shown on the admin settings page (`manage_options`), never in front-end or block editor JS.
+
 ### Preferred Media Domain
 
 This option allows you to select from a small list of different Cloudflare media domains. This domain is used when delivering content to your users. The 3rd option is a unique subdomain specific to your Cloudflare account. This option will only be presented if you have at least one video already uploaded to your Cloudflare Stream account.

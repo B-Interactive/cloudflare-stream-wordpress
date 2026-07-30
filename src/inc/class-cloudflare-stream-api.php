@@ -127,7 +127,7 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	public function request( $endpoint, $args = array(), $return_headers = false, $api_type = 'accounts' ) {
-		$this->api_token = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$this->api_token = Cloudflare_Stream_Settings::get_api_token();
 		$this->api_id    = $this->get_api_id( $api_type );
 
 		$base_url        = 'https://api.cloudflare.com/client/v4/' . $api_type . '/' . $this->api_id . '/';
@@ -170,7 +170,7 @@ class Cloudflare_Stream_API {
 		if ( self::ZONES_API === $api_type ) {
 			$api_id = get_option( Cloudflare_Stream_Settings::OPTION_API_ZONE_ID );
 		} else {
-			$api_id = get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT );
+			$api_id = Cloudflare_Stream_Settings::get_api_account();
 
 			// If Account ID missing, try to use Zone ID to fetch it.
 			if ( empty( $api_id ) ) {
@@ -584,16 +584,43 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Trimmed string value of a PHP constant, or empty string when unusable.
+	 *
+	 * @param string $name Constant name.
+	 * @return string
+	 */
+	private function constant_string( $name ) {
+		if ( ! defined( $name ) ) {
+			return '';
+		}
+
+		$value = constant( $name );
+
+		return is_string( $value ) ? trim( $value ) : '';
+	}
+
+	/**
+	 * Whether either signing key constant is set, so wp-config.php is the source.
+	 *
+	 * A partly set or unreadable pair still hides any key stored in options.
+	 *
+	 * @return bool
+	 */
+	public function signing_key_constants_present() {
+		return '' !== $this->constant_string( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' )
+			|| '' !== $this->constant_string( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' );
+	}
+
+	/**
 	 * Signing key id from constant, then stored option.
+	 *
+	 * Constants and options are never mixed, so a half-set pair cannot sign with the wrong id.
 	 *
 	 * @return string
 	 */
 	public function get_signing_key_id() {
-		if ( defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) ) {
-			$id = CLOUDFLARE_STREAM_SIGNING_KEY_ID;
-			if ( is_string( $id ) && '' !== $id ) {
-				return sanitize_text_field( $id );
-			}
+		if ( $this->signing_key_constants_present() ) {
+			return sanitize_text_field( $this->constant_string( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) );
 		}
 
 		$id = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, '' );
@@ -609,20 +636,11 @@ class Cloudflare_Stream_API {
 	 * @return string Decoded PEM text, or empty string.
 	 */
 	public function get_signing_key_pem() {
-		$raw = '';
-
-		if ( defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) ) {
-			$constant = CLOUDFLARE_STREAM_SIGNING_KEY_PEM;
-			if ( is_string( $constant ) && '' !== $constant ) {
-				$raw = $constant;
-			}
-		}
-
-		if ( '' === $raw ) {
+		if ( $this->signing_key_constants_present() ) {
+			$raw = $this->constant_string( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' );
+		} else {
 			$option = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, '' );
-			if ( is_string( $option ) && '' !== $option ) {
-				$raw = $option;
-			}
+			$raw    = is_string( $option ) ? trim( $option ) : '';
 		}
 
 		if ( '' === $raw ) {
@@ -649,20 +667,14 @@ class Cloudflare_Stream_API {
 	 * @return bool
 	 */
 	public function has_signing_key_from_constants() {
-		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) || ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) ) {
+		$id  = $this->constant_string( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' );
+		$raw = $this->constant_string( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' );
+
+		if ( '' === $id || '' === $raw ) {
 			return false;
 		}
 
-		$id  = CLOUDFLARE_STREAM_SIGNING_KEY_ID;
-		$raw = CLOUDFLARE_STREAM_SIGNING_KEY_PEM;
-
-		if ( ! is_string( $id ) || '' === $id || ! is_string( $raw ) || '' === $raw ) {
-			return false;
-		}
-
-		$pem = $this->decode_signing_key_material( $raw );
-
-		return $this->is_valid_signing_key_pem( $pem );
+		return $this->is_valid_signing_key_pem( $this->decode_signing_key_material( $raw ) );
 	}
 
 	/**

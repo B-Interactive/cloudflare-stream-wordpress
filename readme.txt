@@ -2,7 +2,7 @@
 Plugin Name: Cloudflare Stream
 Plugin URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
 Description: Securely embeds videos hosted with Cloudflare Stream, in your WordPress website via shortcodes or the block editor.
-Version: 1.1.4
+Version: 1.1.5
 Author: B-Interactive
 Author URI: https://b-interactive.com.au/
 Contributors: cloudflare, stevenkword, davidpurdy
@@ -50,7 +50,12 @@ This plugin requires an account on Cloudflare.com to upload and stream videos. E
 2. Change your DNS settings to Cloudflare
 3. Enable Stream from the Cloudflare dashboard
 4. Install the Stream for WordPress plugin
-5. Add API exchange keys
+5. Add API exchange keys (Settings → Cloudflare Stream), or prefer PHP constants in wp-config.php for production:
+
+define( 'CLOUDFLARE_STREAM_API_TOKEN', 'your-api-token' );
+define( 'CLOUDFLARE_STREAM_API_ACCOUNT', 'your-account-id' ); // optional
+
+Constants are used instead of database options, so secrets stay out of DB backups. Each field shows whether it is stored in wp-config.php, stored in the database, or not set. When a constant is set, the matching database copy is removed the next time you open Settings → Cloudflare Stream, with a one-time notice. The API token is never sent to the browser.
 
 
 == Frequently Asked Questions ==
@@ -81,11 +86,15 @@ Signed tokens are written into the page HTML when a Stream video is rendered. If
 
 7) What is a signing key vs the /token API?
 
-A Stream signing key lets the plugin build RS256 playback JWTs on the server (OpenSSL) with no per-render call to POST .../stream/{uid}/token. Preferred setup: Generate signing key under Settings → Cloudflare Stream, copy the short-lived wp-config.php snippet (both defines), then choose "I have pasted this into wp-config.php". That checks the constants work and does not keep a database copy. You can instead store the key in WordPress options (less secure). If a key is already in options, use Show wp-config snippet and confirm after moving it to constants. Leftover DB keys can be removed with Remove stored signing key even when constants are set. Constants override stored options. The PEM is only shown on the admin settings page and is never sent to the browser. If no signing key is configured, signed playback still uses the Cloudflare /token API with a short cache.
+A Stream signing key lets the plugin build RS256 playback JWTs on the server (OpenSSL) with no per-render call to POST .../stream/{uid}/token. Preferred setup: Generate signing key under Settings → Cloudflare Stream, copy the short-lived wp-config.php lines (both defines), then choose "I have added this to wp-config.php". That checks the lines work and keeps no database copy. You can instead save the key in the database. If a key is already in the database, use Show wp-config.php lines and confirm after adding them. Both constants are needed together; when they work, the database copy is removed on the next settings page visit. The PEM is only shown on the admin settings page and is never sent to the browser. If no signing key is configured, signed playback still uses the Cloudflare /token API with a short cache.
 
 8) Does Use Signed URLs change videos in Cloudflare?
 
 For new uploads only: when Use Signed URLs is enabled, the plugin sets requireSignedURLs and allowedOrigins (site host from the WordPress home URL) on direct upload create. Existing videos are not bulk-updated; change those in the Cloudflare dashboard if needed. When the setting is off, new uploads are not forced private.
+
+9) Can I set the API token outside the database?
+
+Yes. Prefer CLOUDFLARE_STREAM_API_TOKEN (and optionally CLOUDFLARE_STREAM_API_ACCOUNT) in wp-config.php above "That's all, stop editing!". Constants are used instead of Settings options and keep the token out of database backups. Settings shows which one is in use. The matching database copy is removed when you open Settings → Cloudflare Stream with the constants set. Without constants, options still work; leave the token field blank on save to keep a stored token.
 
 == Screenshots ==
 

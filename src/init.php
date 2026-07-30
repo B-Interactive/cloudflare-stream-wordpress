@@ -71,7 +71,7 @@ function cloudflare_stream_block_editor_assets() {
 	// Only localise privileged Stream data for users who can manage options.
 	// Never send the API token to the browser; uploads use a server-made direct upload URL.
 	$can_manage_stream = current_user_can( 'manage_options' );
-	$api_account       = $can_manage_stream ? get_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT ) : '';
+	$api_account       = $can_manage_stream ? Cloudflare_Stream_Settings::get_api_account() : '';
 	$api_nonce         = $can_manage_stream ? wp_create_nonce( Cloudflare_Stream_Settings::NONCE ) : '';
 	$api               = Cloudflare_Stream_API::instance();
 	wp_localize_script(
