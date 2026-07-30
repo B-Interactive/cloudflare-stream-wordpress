@@ -4,11 +4,15 @@
  * @package cloudflare-stream
  */
 
-/* Necessary to use TUS protocol for uploads */
-import * as tus from 'tus-js-client';
-
 /* Common logic to generate stream URL */
 import { streamIframeSource } from './lib';
+
+/* Upload transport: direct-upload URL, TUS, encoding status */
+import {
+	fetchDirectUpload,
+	tusUploadFile,
+	checkUploadStatus,
+} from './stream-upload';
 
 /* global ajaxurl */
 /* global cloudflareStream */
@@ -199,70 +203,57 @@ class CloudflareStreamEdit extends Component {
 		);
 	}
 
+	/**
+	 * Progress bar nodes for this block instance.
+	 *
+	 * @return {{ bar: Object, label: Object }} jQuery collections.
+	 */
+	progressNodes() {
+		return {
+			bar: jQuery( '#progressbar-' + this.instanceId ),
+			label: jQuery( '.progress-label-' + this.instanceId ),
+		};
+	}
+
+	/**
+	 * Show a failed upload or processing message in the placeholder.
+	 *
+	 * @param {string} message User-facing error text.
+	 */
+	showUploadError( message ) {
+		const { bar } = this.progressNodes();
+
+		console.error( 'Error: ' + message );
+		bar.hide();
+		jQuery(
+			'.editor-media-placeholder .components-placeholder__instructions'
+		).html(
+			message ||
+				__(
+					'Upload Error: See the console for details.',
+					'cloudflare-stream'
+				)
+		);
+		jQuery( '.editor-media-placeholder__retry-button' ).show();
+	}
+
 	uploadFromFiles( file ) {
 		const block             = this;
 		const { setAttributes } = this.props;
-		const progressBar       = jQuery( '#progressbar-' + this.instanceId );
-		const progressLabel     = jQuery( '.progress-label-' + this.instanceId );
-		const val               = progressBar.progressbar( 'value' ) || 0;
+		const { bar, label }    = this.progressNodes();
+		const val               = bar.progressbar( 'value' ) || 0;
 
-		progressBar.progressbar( 'value', val );
+		bar.progressbar( 'value', val );
 
-		const showUploadError = ( message ) => {
-			console.error( 'Error: ' + message );
-			progressBar.hide();
-			jQuery(
-				'.editor-media-placeholder .components-placeholder__instructions'
-			).html(
-				message ||
-					__(
-						'Upload Error: See the console for details.',
-						'cloudflare-stream'
-					)
-			);
-			jQuery( '.editor-media-placeholder__retry-button' ).show();
-		};
-
-		// Ask WordPress for a one-time upload URL so the API token never hits the browser.
-		jQuery.ajax(
-			{
-				url: ajaxurl + '?action=query-cloudflare-stream-upload',
-				method: 'POST',
-				data: {
-					nonce: cloudflareStream.nonce,
-				},
-				success( response ) {
-					if (
-						! response.success ||
-						! response.data ||
-						! response.data.uploadURL ||
-						! response.data.uid
-					) {
-						const message =
-							response.data && response.data.message
-								? response.data.message
-								: __(
-									'Could not start upload.',
-									'cloudflare-stream'
-								);
-						showUploadError( message );
-						return;
-					}
-
-					const mediaId = response.data.uid;
-					const upload  = new tus.Upload(
+		fetchDirectUpload()
+			.then(
+				( { uploadURL, uid } ) => {
+					tusUploadFile(
 						file,
+						uploadURL,
 						{
-							removeFingerprintOnSuccess: true,
-							// Pre-created direct upload URL; no account API token needed.
-							uploadUrl: response.data.uploadURL,
-							retryDelays: [ 0, 1000, 3000, 5000 ],
-							metadata: {
-								name: file.name,
-								type: file.type,
-							},
 							onError( error ) {
-								showUploadError(
+								block.showUploadError(
 									__(
 										'Upload Error: See the console for details.',
 										'cloudflare-stream'
@@ -275,17 +266,17 @@ class CloudflareStreamEdit extends Component {
 									( bytesUploaded / bytesTotal ) * 100
 								);
 
-								progressLabel.text( percentage + '%' );
-								progressBar.progressbar(
+								label.text( percentage + '%' );
+								bar.progressbar(
 									'option',
 									'value',
 									percentage
 								);
 							},
-							onSuccess() {
+							onSuccess( upload ) {
 								setAttributes(
 									{
-										uid: mediaId,
+										uid,
 										fingerprint: upload.options.fingerprint(
 											upload.file,
 											upload.options
@@ -296,18 +287,19 @@ class CloudflareStreamEdit extends Component {
 							},
 						}
 					);
-
-					upload.start();
-				},
-				error( jqXHR, textStatus ) {
-					showUploadError( textStatus );
-				},
-			}
-		);
+				}
+			)
+			.catch(
+				( error ) => {
+					block.showUploadError(
+						error && error.message ? error.message : String( error )
+					);
+				}
+			);
 	}
 
 	switchToEncoding() {
-		const block                 = this;
+		const block = this;
 		block.setState(
 			{
 				editing: true,
@@ -316,10 +308,7 @@ class CloudflareStreamEdit extends Component {
 			},
 			() =>
 			{
-				const progressBar   = jQuery( '#progressbar-' + this.instanceId );
-				const progressLabel = jQuery(
-					'.progress-label-' + this.instanceId
-				);
+				const { bar, label } = this.progressNodes();
 				jQuery(
 					'.editor-media-placeholder .components-placeholder__instructions'
 				).html(
@@ -328,8 +317,8 @@ class CloudflareStreamEdit extends Component {
 						'cloudflare-stream'
 					)
 				);
-				progressLabel.text( '' );
-				progressBar.progressbar(
+				label.text( '' );
+				bar.progressbar(
 					{
 						value: false,
 					}
@@ -342,18 +331,12 @@ class CloudflareStreamEdit extends Component {
 	encode() {
 		const { attributes, setAttributes } = this.props;
 		const block                         = this;
-		const progressBar                   = jQuery( '#progressbar-' + this.instanceId );
-		const progressLabel                 = jQuery( '.progress-label-' + this.instanceId );
+		const { bar, label }                = this.progressNodes();
 		const { file }                      = this.props.attributes;
 
-		jQuery.ajax(
-			{
-				url: ajaxurl + '?action=cloudflare-stream-check-upload',
-				data: {
-					nonce: cloudflareStream.nonce,
-					uid: attributes.uid,
-				},
-				success( data ) {
+		checkUploadStatus( attributes.uid )
+			.then(
+				( data ) => {
 					if ( ! data.success ) {
 						console.error( 'Error: ' + data.data );
 						if ( block.state.resume === true ) {
@@ -372,7 +355,7 @@ class CloudflareStreamEdit extends Component {
 							);
 							block.uploadFromFiles( file );
 						} else {
-							progressBar.hide();
+							bar.hide();
 							jQuery(
 								'.editor-media-placeholder .components-placeholder__instructions'
 							).html(
@@ -416,8 +399,8 @@ class CloudflareStreamEdit extends Component {
 							);
 						}
 						if ( data.data.status.state === 'queued' ) {
-							progressLabel.text( '' );
-							progressBar.progressbar(
+							label.text( '' );
+							bar.progressbar(
 								{
 									value: false,
 								}
@@ -426,9 +409,9 @@ class CloudflareStreamEdit extends Component {
 							const progress = Math.round(
 								data.data.status.pctComplete
 							);
-							progressLabel.text( progress + '%' );
+							label.text( progress + '%' );
 
-							progressBar.progressbar(
+							bar.progressbar(
 								{
 									value: progress,
 								}
@@ -436,12 +419,18 @@ class CloudflareStreamEdit extends Component {
 						}
 						block.reload();
 					}
-				},
-				error( jqXHR, textStatus ) {
-					console.error( 'Error: ' + textStatus );
-				},
-			}
-		);
+				}
+			)
+			.catch(
+				( error ) => {
+					console.error(
+						'Error: ' +
+							( error && error.message
+								? error.message
+								: String( error ) )
+					);
+				}
+			);
 	}
 
 	render() {
@@ -512,11 +501,9 @@ class CloudflareStreamEdit extends Component {
 				},
 				() =>
 				{
-					const progressBar = jQuery(
-						'#progressbar-' + this.instanceId
-					);
+					const { bar } = this.progressNodes();
 
-					progressBar.progressbar(
+					bar.progressbar(
 						{
 							value: false,
 						}
