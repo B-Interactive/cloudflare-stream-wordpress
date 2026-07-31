@@ -714,7 +714,6 @@ class Cloudflare_Stream_API {
 			|| empty( $data->result->id )
 			|| empty( $data->result->pem )
 		) {
-			error_log( 'Cloudflare Stream: create signing key response was invalid or unsuccessful.' );
 			return false;
 		}
 
@@ -737,7 +736,6 @@ class Cloudflare_Stream_API {
 		$data = $this->decode_api_response( $this->delete( 'stream/keys/' . rawurlencode( $key_id ), array() ) );
 
 		if ( null === $data ) {
-			error_log( 'Cloudflare Stream: delete signing key failed with empty response.' );
 			return false;
 		}
 

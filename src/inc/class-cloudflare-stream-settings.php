@@ -770,6 +770,16 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
+	 * Encode a value as a string literal for paste-ready snippets.
+	 *
+	 * @param string $value Raw string.
+	 * @return string
+	 */
+	private function php_single_quoted_string( $value ) {
+		return "'" . str_replace( array( '\\', "'" ), array( '\\\\', "\\'" ), (string) $value ) . "'";
+	}
+
+	/**
 	 * Ready-to-paste wp-config.php / PHP constant defines for a signing key.
 	 *
 	 * @param string $key_id Signing key id.
@@ -777,8 +787,8 @@ class Cloudflare_Stream_Settings {
 	 * @return string
 	 */
 	private function build_signing_key_wpconfig_snippet( $key_id, $pem ) {
-		return 'define( \'CLOUDFLARE_STREAM_SIGNING_KEY_ID\', ' . var_export( (string) $key_id, true ) . " );\n"
-			. 'define( \'CLOUDFLARE_STREAM_SIGNING_KEY_PEM\', ' . var_export( (string) $pem, true ) . ' );';
+		return 'define( \'CLOUDFLARE_STREAM_SIGNING_KEY_ID\', ' . $this->php_single_quoted_string( $key_id ) . " );\n"
+			. 'define( \'CLOUDFLARE_STREAM_SIGNING_KEY_PEM\', ' . $this->php_single_quoted_string( $pem ) . ' );';
 	}
 
 	/**
