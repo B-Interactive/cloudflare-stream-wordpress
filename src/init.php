@@ -22,6 +22,10 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 function cloudflare_stream_block_assets() {
 	// Styles.
+	$style_path = plugin_dir_path( __DIR__ ) . 'dist/style-blocks.css';
+	if ( ! file_exists( $style_path ) ) {
+		return;
+	}
 	wp_enqueue_style(
 		'cloudflare-stream-block-style-css',
 		// Handle.
@@ -29,7 +33,7 @@ function cloudflare_stream_block_assets() {
 		// Block style CSS.
 		array( 'wp-block-library' ),
 		// Dependency to include the CSS after it.
-		filemtime( plugin_dir_path( __DIR__ ) . 'dist/style-blocks.css' )
+		filemtime( $style_path )
 		// Version: filemtime — Gets file modification time.
 	);
 } // End function cloudflare_stream_block_assets().
@@ -55,60 +59,66 @@ function cloudflare_stream_block_editor_assets() {
 	$current_user = wp_get_current_user();
 
 	// Scripts.
-	wp_enqueue_script(
-		'cloudflare-stream-block-js',
-		// Handle.
-		plugins_url( '/dist/blocks.build.js', __DIR__ ),
-		// Block.build.js: We register the block here. Built with Webpack.
-		array( 'wp-blocks', 'wp-i18n', 'wp-element' ),
-		// Dependencies, defined above.
-		filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.build.js' ),
-		// Version: filemtime — Gets file modification time.
-		true
-		// Enqueue the script in the footer.
-	);
+	$script_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.build.js';
+	if ( file_exists( $script_path ) ) {
+		wp_enqueue_script(
+			'cloudflare-stream-block-js',
+			// Handle.
+			plugins_url( '/dist/blocks.build.js', __DIR__ ),
+			// Block.build.js: We register the block here. Built with Webpack.
+			array( 'wp-blocks', 'wp-i18n', 'wp-element' ),
+			// Dependencies, defined above.
+			filemtime( $script_path ),
+			// Version: filemtime — Gets file modification time.
+			true
+			// Enqueue the script in the footer.
+		);
 
-	// Only localise privileged Stream data for users who can manage options.
-	// Never send the API token to the browser; uploads use a server-made direct upload URL.
-	$can_manage_stream = current_user_can( 'manage_options' );
-	$api_account       = $can_manage_stream ? Cloudflare_Stream_Settings::get_api_account() : '';
-	$api_nonce         = $can_manage_stream ? wp_create_nonce( Cloudflare_Stream_Settings::NONCE ) : '';
-	$api               = Cloudflare_Stream_API::instance();
-	wp_localize_script(
-		'cloudflare-stream-block-js',
-		'cloudflareStream',
-		array(
-			'nonce' => $api_nonce,
-			'api'   => array(
-				'account'        => $api_account,
-				'posts_per_page' => $api->api_limit,
-				'uid'            => md5( $current_user->user_login ),
-			),
-			// Playback hosts for editor preview iframes (mirrors PHP helpers).
-			'mediaDomain'     => $api->get_media_domain(),
-			'mediaAssetHost'  => $api->get_media_asset_host(),
-			'standardDomains' => Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS,
-			'media'           => array(
-				'view'  => array(),
-				'model' => array(),
-			),
-		)
-	);
+		// Only localise privileged Stream data for users who can manage options.
+		// Never send the API token to the browser; uploads use a server-made direct upload URL.
+		$can_manage_stream = current_user_can( 'manage_options' );
+		$api_account       = $can_manage_stream ? Cloudflare_Stream_Settings::get_api_account() : '';
+		$api_nonce         = $can_manage_stream ? wp_create_nonce( Cloudflare_Stream_Settings::NONCE ) : '';
+		$api               = Cloudflare_Stream_API::instance();
+		wp_localize_script(
+			'cloudflare-stream-block-js',
+			'cloudflareStream',
+			array(
+				'nonce'           => $api_nonce,
+				'api'             => array(
+					'account'        => $api_account,
+					'posts_per_page' => $api->api_limit,
+					'uid'            => md5( $current_user->user_login ),
+				),
+				// Playback hosts for editor preview iframes (mirrors PHP helpers).
+				'mediaDomain'     => $api->get_media_domain(),
+				'mediaAssetHost'  => $api->get_media_asset_host(),
+				'standardDomains' => Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS,
+				'media'           => array(
+					'view'  => array(),
+					'model' => array(),
+				),
+			)
+		);
+	}
 
 	// The jQuery UI progress bar.
 	wp_enqueue_script( 'jquery-ui-progressbar' );
 
 	// Styles.
-	wp_enqueue_style(
-		'cloudflare-stream-block-editor-css',
-		// Handle.
-		plugins_url( 'dist/blocks.css', __DIR__ ),
-		// Block editor CSS.
-		array( 'wp-edit-blocks' ),
-		// Dependency to include the CSS after it.
-		filemtime( plugin_dir_path( __DIR__ ) . 'dist/blocks.css' )
-		// Version: filemtime — Gets file modification time.
-	);
+	$editor_style_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.css';
+	if ( file_exists( $editor_style_path ) ) {
+		wp_enqueue_style(
+			'cloudflare-stream-block-editor-css',
+			// Handle.
+			plugins_url( 'dist/blocks.css', __DIR__ ),
+			// Block editor CSS.
+			array( 'wp-edit-blocks' ),
+			// Dependency to include the CSS after it.
+			filemtime( $editor_style_path )
+			// Version: filemtime — Gets file modification time.
+		);
+	}
 	wp_enqueue_style(
 		'progressbar',
 		plugins_url( 'src/css/jquery-ui.min.css', __DIR__ ),
@@ -402,8 +412,8 @@ function cloudflare_stream_ajax_update() {
 			'upload' => $upload,
 		),
 	);
-	$api  = Cloudflare_Stream_API::instance();
-	$data = $api->update_video_details( $uid, $args );
+	$api    = Cloudflare_Stream_API::instance();
+	$data   = $api->update_video_details( $uid, $args );
 
 	if ( ! is_object( $data ) || empty( $data->success ) ) {
 		wp_send_json_error( array( 'message' => __( 'Could not update video.', 'cloudflare-stream' ) ) );
