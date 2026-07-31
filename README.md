@@ -2,7 +2,7 @@
 
 ![latest-release](https://badgen.net//github/release/B-Interactive/cloudflare-stream-wordpress)
 ![license](https://badgen.net//github/license/B-Interactive/cloudflare-stream-wordpress)
-![blocks-build](https://github.com/B-Interactive/cloudflare-stream-wordpress/actions/workflows/node.js.yml/badge.svg)
+![blocks-build](https://github.com/B-Interactive/cloudflare-stream-wordpress/actions/workflows/build.yml/badge.svg)
 
 Upload, browse and embed [Cloudflare Stream](https://developers.cloudflare.com/stream/) videos in WordPress. This is a fork of the official Cloudflare Stream plugin 1.0.5 ([WordPress](https://wordpress.org/plugins/cloudflare-stream/) / [GitHub](https://github.com/cloudflare/stream-wordpress)), rebuilt to use a limited-scope API Token instead of the global API key, and to support optional signed (token-protected) playback.
 
