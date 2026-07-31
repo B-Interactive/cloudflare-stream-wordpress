@@ -460,14 +460,17 @@ class Cloudflare_Stream_API {
 
 		// Common markers checked by WP Super Cache, LiteSpeed, and similar plugins.
 		if ( ! defined( 'DONOTCACHEPAGE' ) ) {
+			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- Third-party cache plugin constant (WP Super Cache et al).
 			define( 'DONOTCACHEPAGE', true );
 		}
 
 		if ( ! defined( 'LSCACHE_NO_CACHE' ) ) {
+			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedConstantFound -- Third-party LiteSpeed Cache constant.
 			define( 'LSCACHE_NO_CACHE', true );
 		}
 
 		// LiteSpeed Cache listens for this when deciding whether to store the HTML.
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Third-party LiteSpeed Cache hook.
 		do_action( 'litespeed_control_set_nocache', 'cloudflare stream signed embed' );
 
 		// Send headers once even when the page has several Stream embeds.
