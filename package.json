@@ -39,6 +39,7 @@
     "lint:pkg-json": "wp-scripts lint-pkg-json",
     "packages-update": "wp-scripts packages-update",
     "zip": "wp-scripts plugin-zip",
-    "package": "wp-scripts build && wp-scripts plugin-zip"
+    "package": "wp-scripts build && wp-scripts plugin-zip",
+    "test:compat": "bin/compat.sh static"
   }
 }

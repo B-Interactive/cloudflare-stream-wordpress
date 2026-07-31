@@ -1,0 +1,151 @@
+# Static PHP compatibility checks.
+
+name: Compatibility
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    # Nightly; guard skips when main has no commits in the last 24h.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: Guard
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Decide whether to run
+        id: check
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "schedule" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          LAST=$(git log -1 --format=%ct)
+          NOW=$(date +%s)
+          AGE=$(( NOW - LAST ))
+          echo "Head commit age seconds=${AGE}"
+          if [ "$AGE" -lt 86400 ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  prepare:
+    name: Prepare matrix
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      php_min: ${{ steps.matrix.outputs.php_min }}
+      php_below_floor: ${{ steps.matrix.outputs.php_below_floor }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Build matrix JSON
+        id: matrix
+        run: |
+          set -euo pipefail
+          RAW=$(php bin/matrix.php)
+          echo "$RAW"
+          PHP_MIN=$(php -r 'echo json_decode(stream_get_contents(STDIN), true)["php_min"];' <<<"$RAW")
+          PHP_BELOW=$(php -r 'echo json_decode(stream_get_contents(STDIN), true)["php_below_floor"];' <<<"$RAW")
+          # strategy.matrix.include: list of {php, continue_on_error}
+          INCLUDE=$(php -r 'echo json_encode(json_decode(stream_get_contents(STDIN), true)["php_matrix"]["include"]);' <<<"$RAW")
+          echo "php_min=${PHP_MIN}" >> "$GITHUB_OUTPUT"
+          echo "php_below_floor=${PHP_BELOW}" >> "$GITHUB_OUTPUT"
+          {
+            echo "matrix<<MATRIX_EOF"
+            echo "${INCLUDE}"
+            echo "MATRIX_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  tier-a:
+    name: Static PHP ${{ matrix.php }}
+    needs: [guard, prepare]
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    continue-on-error: ${{ matrix.continue_on_error }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: php -l plugin sources
+        run: bin/compat.sh static --php=${{ matrix.php }}
+
+      - name: Fixture must parse at PHP_MIN
+        if: matrix.php == needs.prepare.outputs.php_min
+        run: php -l tests/fixtures/below-floor-syntax.php
+
+  # PHP one minor below the floor; only checks the fixture (expect php -l to fail).
+  fixture-below-floor:
+    name: Fixture expect-fail PHP ${{ needs.prepare.outputs.php_below_floor }}
+    needs: [guard, prepare]
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ needs.prepare.outputs.php_below_floor }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ needs.prepare.outputs.php_below_floor }}
+          coverage: none
+
+      - name: Fixture must fail php -l below floor
+        run: |
+          set -euo pipefail
+          FIXTURE=tests/fixtures/below-floor-syntax.php
+          echo "Expecting php -l failure on ${FIXTURE} under PHP ${{ needs.prepare.outputs.php_below_floor }}"
+          if php -l "$FIXTURE"; then
+            echo "::error::Fixture parsed on PHP below floor; expected syntax error"
+            exit 1
+          fi
+          echo "OK: fixture failed to parse below floor"

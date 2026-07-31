@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<!--
+  PHPCompatibilityWP ruleset. Default testVersion 7.4-; override at runtime.
+  bin/compat.sh static sets testVersion from readme Requires PHP.
+-->
+<ruleset name="CloudflareStreamCompat">
+    <description>PHPCompatibilityWP checks for Cloudflare Stream plugin PHP.</description>
+
+    <file>.</file>
+
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/dist/*</exclude-pattern>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/.git/*</exclude-pattern>
+    <exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+    <exclude-pattern>*/plans/*</exclude-pattern>
+    <exclude-pattern>\.wp-env\.json</exclude-pattern>
+    <exclude-pattern>\.wp-env\.override\.json</exclude-pattern>
+
+    <arg name="extensions" value="php"/>
+    <arg value="sp"/>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="parallel" value="8"/>
+
+    <config name="testVersion" value="7.4-"/>
+
+    <rule ref="PHPCompatibilityWP"/>
+</ruleset>
