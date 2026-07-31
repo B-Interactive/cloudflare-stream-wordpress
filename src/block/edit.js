@@ -25,15 +25,18 @@ const {
 	Disabled,
 	Button,
 	PanelBody,
-	Toolbar,
+	ToolbarGroup,
 	ToggleControl,
 	withNotices,
 	Placeholder,
 	FormFileUpload,
 }                     = wp.components;
-const { BlockControls, InspectorControls } = wp.editor;
-const { MediaUpload }                      = wp.blockEditor;
-const { Fragment, Component, createRef }   = wp.element;
+const {
+	BlockControls,
+	InspectorControls,
+	MediaUpload,
+} = wp.blockEditor;
+const { Fragment, Component, createRef } = wp.element;
 
 class CloudflareStreamEdit extends Component {
 	constructor( instanceId ) {
@@ -721,7 +724,7 @@ class CloudflareStreamEdit extends Component {
 			// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 			<Fragment>
 				<BlockControls>
-					<Toolbar>
+					<ToolbarGroup>
 						<Button
 							className="components-icon-button components-toolbar__control"
 							label={ __(
@@ -731,7 +734,7 @@ class CloudflareStreamEdit extends Component {
 							onClick={ switchToEditing }
 							icon="edit"
 						/>
-					</Toolbar>
+					</ToolbarGroup>
 				</BlockControls>
 				<InspectorControls>
 					<PanelBody
