@@ -6,6 +6,8 @@
  * Author: Cloudflare, B-Interactive, davidpurdy
  * Author URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
  * Version: 1.1.5
+ * Requires at least: 6.9
+ * Requires PHP: 7.4
  * License: GPL2+
  * License URI: http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain: cloudflare-stream

@@ -9,9 +9,9 @@ Contributors: cloudflare, stevenkword, davidpurdy
 Text Domain: cloudflare-stream
 License: GPL2
 Tags: video, streaming, cloudflare, stream, block
-Requires PHP: 7.1
-Requires at least: 5.0
-Tested up to: 7.0.2
+Requires PHP: 7.4
+Requires at least: 6.9
+Tested up to: 7.0
 Stable tag: 1.1.5
 
 Description: Securely embeds videos hosted with Cloudflare Stream, in your WordPress website via shortcodes or the block editor.
