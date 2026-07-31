@@ -195,7 +195,7 @@ class Cloudflare_Stream_Signing_Health {
 			|| ( intval( $previous['api_fail_count'] ) !== intval( $state['api_fail_count'] ) )
 			|| ( intval( $previous['api_fail_start'] ) !== intval( $state['api_fail_start'] ) )
 			|| ( intval( $previous['local_failures'] ) !== intval( $state['local_failures'] ) );
-		$stale = ( 0 === intval( $previous['saved_at'] ) )
+		$stale   = ( 0 === intval( $previous['saved_at'] ) )
 			|| ( ( $now - intval( $previous['saved_at'] ) ) >= self::WRITE_THROTTLE );
 
 		// $force and material changes always persist. Throttle and the
@@ -206,8 +206,8 @@ class Cloudflare_Stream_Signing_Health {
 			}
 		}
 
-		$state['saved_at']        = $now;
-		$this->state_cache        = $state;
+		$state['saved_at'] = $now;
+		$this->state_cache = $state;
 		update_option( self::OPTION_HEALTH, $state, false );
 		$this->wrote_this_request = true;
 	}
@@ -727,8 +727,8 @@ class Cloudflare_Stream_Signing_Health {
 			return $result;
 		}
 
-		$result['status'] = ( 'error' === $issue['severity'] ) ? 'critical' : 'recommended';
-		$result['label']  = ( 'error' === $issue['severity'] )
+		$result['status']      = ( 'error' === $issue['severity'] ) ? 'critical' : 'recommended';
+		$result['label']       = ( 'error' === $issue['severity'] )
 			? __( 'Cloudflare Stream signed playback is unavailable', 'cloudflare-stream' )
 			: $issue['title'];
 		$result['description'] = sprintf(

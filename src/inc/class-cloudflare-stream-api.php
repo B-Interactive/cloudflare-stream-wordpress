@@ -966,7 +966,7 @@ class Cloudflare_Stream_API {
 				$local_reason = $this->last_local_reason ? $this->last_local_reason : 'local_unknown';
 				$health->record_local_failure( $uid, $local_reason );
 			} else {
-				$local_reason = ! empty( $state['reason'] ) ? $state['reason'] : 'local_unknown';
+				$local_reason            = ! empty( $state['reason'] ) ? $state['reason'] : 'local_unknown';
 				$this->last_local_reason = $local_reason;
 			}
 

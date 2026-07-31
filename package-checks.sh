@@ -71,7 +71,7 @@ updateCloudflareStreamPHP() {
 }
 
 # Test PHP version compatibility
-versions=(7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4)
+versions=(7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5)
 
 incompatible_versions=()
 compatible_versions=()
@@ -138,9 +138,9 @@ if [[ $pluginVer =~ [0-9] ]]; then
     updateReadme "$lineMatch" "$pluginVer"
     updateCloudflareStreamPHP "$lineMatch" "$pluginVer"
 
-    # Update package.json and package-lock.json to match
-    sed -i "s/\"version\": \".*\"/\"version\": \"$pluginVer\"/" package.json
-    sed -i "s/\"version\": \".*\"/\"version\": \"$pluginVer\"/" package-lock.json
+    # Update package.json and package-lock.json root version only
+    # (npm version updates both without rewriting nested dependency versions)
+    npm version --no-git-tag-version "$pluginVer"
 else
     echo "Skipping..."
 fi

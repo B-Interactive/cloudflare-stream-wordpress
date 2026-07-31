@@ -32,23 +32,23 @@ class Cloudflare_Stream_Settings {
 	 */
 	private static $api_keys_work = null;
 
-	const NONCE                        = 'cloudflare-stream';
-	const SETTING_PAGE                 = 'cloudflare-stream';
-	const SETTING_GROUP                = 'cloudflare_stream';
-	const SETTING_SECTION_GENERAL      = 'cloudflare_stream_settings_general';
-	const SETTING_SECTION_PLAYER       = 'cloudflare_stream_settings_player';
-	const SETTING_SECTION_REPORTING    = 'cloudflare_stream_settings_reporting';
-	const OPTION_API_TOKEN             = 'cloudflare_stream_api_token';
-	const OPTION_API_ZONE_ID           = 'cloudflare_stream_api_zone_id'; // Deprecated.
-	const OPTION_API_KEY               = 'cloudflare_stream_api_key';
-	const OPTION_API_EMAIL             = 'cloudflare_stream_api_email';
-	const OPTION_API_ACCOUNT           = 'cloudflare_stream_api_account';
-	const OPTION_SIGNED_URLS           = 'cloudflare_stream_signed_urls';
-	const OPTION_SIGNED_URLS_DURATION  = 'cloudflare_stream_signed_urls_duration';
-	const OPTION_SIGNING_KEY_ID        = 'cloudflare_stream_signing_key_id';
-	const OPTION_SIGNING_KEY_PEM       = 'cloudflare_stream_signing_key_pem';
-	const OPTION_MEDIA_DOMAIN          = 'cloudflare_stream_media_domain';
-	const OPTION_POSTER_TIME           = 'cloudflare_stream_poster_time';
+	const NONCE                       = 'cloudflare-stream';
+	const SETTING_PAGE                = 'cloudflare-stream';
+	const SETTING_GROUP               = 'cloudflare_stream';
+	const SETTING_SECTION_GENERAL     = 'cloudflare_stream_settings_general';
+	const SETTING_SECTION_PLAYER      = 'cloudflare_stream_settings_player';
+	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
+	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
+	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id'; // Deprecated.
+	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
+	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
+	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
+	const OPTION_SIGNED_URLS          = 'cloudflare_stream_signed_urls';
+	const OPTION_SIGNED_URLS_DURATION = 'cloudflare_stream_signed_urls_duration';
+	const OPTION_SIGNING_KEY_ID       = 'cloudflare_stream_signing_key_id';
+	const OPTION_SIGNING_KEY_PEM      = 'cloudflare_stream_signing_key_pem';
+	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
+	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
 	// Standard iframe hosts (iframe.{domain}). Asset URLs always use videodelivery.net for these.
 	const STANDARD_MEDIA_DOMAINS       = array( 'cloudflarestream.com', 'videodelivery.net' );
 	const ADMIN_ACTION_SIGNING_KEY     = 'cloudflare_stream_signing_key';
@@ -976,7 +976,7 @@ class Cloudflare_Stream_Settings {
 		$severity = in_array( $issue['severity'], array( 'info', 'warning', 'error' ), true )
 			? $issue['severity']
 			: 'info';
-		$inline = ( 'settings' === $context ) ? ' inline' : '';
+		$inline   = ( 'settings' === $context ) ? ' inline' : '';
 
 		if ( 'admin' === $context ) {
 			$health       = Cloudflare_Stream_Signing_Health::instance();
@@ -1447,11 +1447,11 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-		* Dismissible notice, with the settings page URL filled in for any %s placeholder.
-		*
-		* @param string $type    Notice type (warning, error).
-		* @param string $message Message, optionally with one %s for the settings page URL.
-		*/
+	 * Dismissible notice, with the settings page URL filled in for any %s placeholder.
+	 *
+	 * @param string $type    Notice type (warning, error).
+	 * @param string $message Message, optionally with one %s for the settings page URL.
+	 */
 	private function echo_onboarding_notice( $type, $message ) {
 		printf(
 			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
