@@ -1,10 +1,15 @@
 {
+  "name": "b-interactive/cloudflare-stream-wordpress",
+  "description": "Cloudflare Stream plugin for WordPress (fork of the official plugin).",
+  "type": "wordpress-plugin",
+  "license": "GPL-2.0-or-later",
   "require-dev": {
     "squizlabs/php_codesniffer": "^3.8",
     "wp-coding-standards/wpcs": "^3.0"
   },
   "scripts": {
-    "phpcs": "phpcs"
+    "phpcs": "phpcs",
+    "lint": "phpcs"
   },
   "config": {
     "allow-plugins": {

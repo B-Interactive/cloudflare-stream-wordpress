@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<!--
+  PHPCS ruleset for the Cloudflare Stream plugin.
+  Scope: PHP files only (WPCS 3.0 removed JS support).
+  Baseline counts can be refreshed in CI; this ruleset does not require zero violations.
+-->
+<ruleset name="CloudflareStream">
+    <description>WordPress Coding Standards for Cloudflare Stream plugin (PHP only).</description>
+
+    <!-- What to scan -->
+    <file>.</file>
+
+    <!-- Paths excluded from scanning -->
+    <exclude-pattern>*/node_modules/*</exclude-pattern>
+    <exclude-pattern>*/dist/*</exclude-pattern>
+    <exclude-pattern>*/vendor/*</exclude-pattern>
+    <exclude-pattern>*/.git/*</exclude-pattern>
+    <exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+    <exclude-pattern>*/plans/*</exclude-pattern>
+    <exclude-pattern>\.wp-env\.json</exclude-pattern>
+    <exclude-pattern>\.wp-env\.override\.json</exclude-pattern>
+
+    <!-- PHP extensions only (WPCS 3.0 dropped JS sniffs) -->
+    <arg name="extensions" value="php"/>
+
+    <!-- Show progress and sniff codes -->
+    <arg value="sp"/>
+    <arg name="basepath" value="."/>
+    <arg name="colors"/>
+    <arg name="parallel" value="8"/>
+
+    <!-- Use WordPress standard -->
+    <rule ref="WordPress">
+        <!-- Relax filename rules for existing class layout; tighten later -->
+        <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
+        <exclude name="WordPress.Files.FileName.NotHyphenatedLowercase"/>
+    </rule>
+
+    <!-- Allow short array syntax (modern PHP) -->
+    <rule ref="Generic.Arrays.DisallowShortArraySyntax.Found">
+        <severity>0</severity>
+    </rule>
+
+    <!-- Set text domain for i18n checks -->
+    <rule ref="WordPress.WP.I18n">
+        <properties>
+            <property name="text_domain" type="array">
+                <element value="cloudflare-stream"/>
+            </property>
+        </properties>
+    </rule>
+
+    <!-- Minimum supported WordPress version for sniffs that use it -->
+    <config name="minimum_supported_wp" value="6.9"/>
+
+    <!--
+      Optional baseline workflow:
+      Generate a checkstyle snapshot in CI and reduce violations over time.
+      Example: vendor/bin/phpcs report=checkstyle (use double-dash report flag).
+      Optional later: vendor/bin/phpcs baseline=phpcs-baseline.xml (double-dash baseline flag).
+    -->
+</ruleset>

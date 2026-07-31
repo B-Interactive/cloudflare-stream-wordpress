@@ -1,6 +1,13 @@
+# WordPress Coding Standards (PHPCS) workflow.
+# Uses setup-php with PHP 8.2, Composer install from composer.lock,
+# and phpcs.xml.dist (PHP only). Reports findings without blocking the job
+# until a baseline ratchet is introduced.
+
 name: WordPress Coding Standards
+
 permissions:
   contents: read
+
 on:
   push:
     branches: [ "main" ]
@@ -12,21 +19,89 @@ jobs:
   phpcs:
     name: Run PHPCS (WordPress Coding Standards)
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+          tools: composer:v2
 
       - name: Validate composer.json and composer.lock
-        run: composer validate --no-check-publish
+        run: composer validate --strict
+
+      - name: Get composer cache directory
+        id: composercache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composercache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-
 
       - name: Install dependencies
-        run: composer install --prefer-dist --no-progress --no-suggest
+        run: composer install --prefer-dist --no-progress
 
+      # Record findings without blocking PRs. Exit code stays visible via continue-on-error.
       - name: Run PHPCS
-        run: vendor/bin/phpcs --standard=WordPress --extensions=php,js --ignore=.git/*,.github/*,node_modules/* --report=json --report-file=phpcs.json .
+        id: phpcs
+        continue-on-error: true
+        run: composer run lint -- --report=full --report-file=phpcs-report.txt
 
-      - name: Update summary
+      - name: Generate PHPCS JSON report (for summary)
+        if: always()
+        run: vendor/bin/phpcs --report=json --report-file=phpcs.json || true
+
+      - name: Record baseline summary counts
         if: always() && hashFiles('phpcs.json') != ''
         run: |
-            npm i -g github:10up/phpcs-json-to-md
-            phpcs-json-to-md --path ./phpcs.json --output ./phpcs.md
-            cat phpcs.md >> $GITHUB_STEP_SUMMARY
+          set -euo pipefail
+          php -r '
+            $j = json_decode(file_get_contents("phpcs.json"), true);
+            $totals = $j["totals"] ?? [];
+            $errors = (int) ($totals["errors"] ?? 0);
+            $warnings = (int) ($totals["warnings"] ?? 0);
+            $files = (int) ($totals["fix_count"] ?? count($j["files"] ?? []));
+            echo "PHPCS baseline snapshot (non-blocking)\n";
+            echo "files_with_issues={$files}\n";
+            echo "errors={$errors}\n";
+            echo "warnings={$warnings}\n";
+            file_put_contents(
+              "phpcs-baseline-counts.txt",
+              "errors={$errors}\nwarnings={$warnings}\nfiles={$files}\n"
+            );
+          '
+          {
+            echo "## PHPCS baseline (non-blocking)"
+            echo ""
+            cat phpcs-baseline-counts.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Update markdown summary
+        if: always() && hashFiles('phpcs.json') != ''
+        run: |
+          # SHA-pinned: 10up/phpcs-json-to-md@f6071d2a4c53f7806727ae6ed13e0f85ef17679f
+          npm i -g "github:10up/phpcs-json-to-md#f6071d2a4c53f7806727ae6ed13e0f85ef17679f"
+          phpcs-json-to-md --path ./phpcs.json --output ./phpcs.md || true
+          if [ -s ./phpcs.md ]; then
+            cat phpcs.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload PHPCS reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phpcs-reports
+          path: |
+            phpcs.json
+            phpcs-report.txt
+            phpcs-baseline-counts.txt
+          if-no-files-found: ignore
+          retention-days: 7

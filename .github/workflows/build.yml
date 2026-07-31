@@ -1,0 +1,76 @@
+# Build block assets and verify dist outputs.
+# Runs on push and pull request to main.
+# Node matrix: 22, 24, 26. Build is checked on all three.
+# Only the Node 24 (Active LTS) job uploads the dist artifact so downstream
+# jobs use one deterministic build.
+# Node 26 is continue-on-error so Current-line transitive breakage does not block PRs.
+
+name: Blocks Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22, 24, 26]
+
+    # Node 26 is non-blocking (Current-line transitive breakage).
+    continue-on-error: ${{ matrix.node-version == 26 }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          # npm cache is safe because package-lock.json is tracked.
+          cache: 'npm'
+
+      - name: Install dependencies (npm ci)
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify dist artifacts exist
+        run: |
+          set -euo pipefail
+          missing=0
+          for f in dist/style-blocks.css dist/blocks.build.js dist/blocks.css; do
+            if [ ! -f "$f" ]; then
+              echo "::error file=$f::Required build output '$f' is missing."
+              missing=1
+            else
+              echo "OK: $f ($(wc -c < "$f") bytes)"
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::One or more required dist files are missing. See above."
+            exit 1
+          fi
+
+      - name: Upload dist artifact (Node 24 only)
+        if: ${{ matrix.node-version == 24 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error

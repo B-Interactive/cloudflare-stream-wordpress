@@ -34,7 +34,7 @@ function cloudflare_stream_block_assets() {
 		array( 'wp-block-library' ),
 		// Dependency to include the CSS after it.
 		filemtime( $style_path )
-		// Version: filemtime — Gets file modification time.
+		// Version: filemtime gets file modification time.
 	);
 } // End function cloudflare_stream_block_assets().
 
@@ -69,7 +69,7 @@ function cloudflare_stream_block_editor_assets() {
 			array( 'wp-blocks', 'wp-i18n', 'wp-element' ),
 			// Dependencies, defined above.
 			filemtime( $script_path ),
-			// Version: filemtime — Gets file modification time.
+			// Version: filemtime gets file modification time.
 			true
 			// Enqueue the script in the footer.
 		);
@@ -116,7 +116,7 @@ function cloudflare_stream_block_editor_assets() {
 			array( 'wp-edit-blocks' ),
 			// Dependency to include the CSS after it.
 			filemtime( $editor_style_path )
-			// Version: filemtime — Gets file modification time.
+			// Version: filemtime gets file modification time.
 		);
 	}
 	wp_enqueue_style(

@@ -29,3 +29,16 @@ node_modules/
 /node_modules
 .DS_Store
 phpcs.json
+
+# WordPress environment overrides
+.wp-env.override.json
+
+# Test output directories
+/tests/_output/
+
+# PHPUnit cache
+.phpunit.result.cache
+
+# Composer vendor directory (but NOT composer.lock)
+/vendor
+composer.phar
