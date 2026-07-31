@@ -9,6 +9,11 @@
  * @since   1.1.5
  */
 
+// Exit if accessed directly.
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Cloudflare_Stream_Signing_Health
  */
