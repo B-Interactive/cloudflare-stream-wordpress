@@ -152,7 +152,14 @@ class Cloudflare_Stream_Settings {
 				'sanitize_callback' => array( $this, 'sanitize_api_token' ),
 			)
 		);
-		register_setting( self::SETTING_GROUP, self::OPTION_SIGNED_URLS );
+		register_setting(
+			self::SETTING_GROUP,
+			self::OPTION_SIGNED_URLS,
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array( $this, 'sanitize_signed_urls' ),
+			)
+		);
 		register_setting(
 			self::SETTING_GROUP,
 			self::OPTION_SIGNED_URLS_DURATION,
@@ -161,8 +168,22 @@ class Cloudflare_Stream_Settings {
 				'sanitize_callback' => array( $this, 'sanitize_signed_urls_duration' ),
 			)
 		);
-		register_setting( self::SETTING_GROUP, self::OPTION_MEDIA_DOMAIN );
-		register_setting( self::SETTING_GROUP, self::OPTION_POSTER_TIME );
+		register_setting(
+			self::SETTING_GROUP,
+			self::OPTION_MEDIA_DOMAIN,
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array( $this, 'sanitize_media_domain' ),
+			)
+		);
+		register_setting(
+			self::SETTING_GROUP,
+			self::OPTION_POSTER_TIME,
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => 'absint',
+			)
+		);
 
 		add_settings_section(
 			self::SETTING_SECTION_GENERAL,
@@ -592,6 +613,16 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
+	 * Normalize the signed URLs checkbox to a boolean on save.
+	 *
+	 * @param mixed $value Submitted option value.
+	 * @return bool
+	 */
+	public function sanitize_signed_urls( $value ) {
+		return (bool) $value;
+	}
+
+	/**
 	 * Clamp signed URL duration to 1..1440 minutes on save.
 	 *
 	 * @param mixed $value Submitted option value.
@@ -609,6 +640,36 @@ class Cloudflare_Stream_Settings {
 		}
 
 		return $minutes;
+	}
+
+	/**
+	 * Sanitize preferred media domain (standard hosts or customer subdomain).
+	 *
+	 * @param mixed $value Submitted option value.
+	 * @return string
+	 */
+	public function sanitize_media_domain( $value ) {
+		$value = sanitize_text_field( is_string( $value ) ? $value : '' );
+
+		if ( '' === $value ) {
+			return self::STANDARD_MEDIA_DOMAINS[0];
+		}
+
+		if ( in_array( $value, self::STANDARD_MEDIA_DOMAINS, true ) ) {
+			return $value;
+		}
+
+		// Customer subdomain option from the API (hostname only).
+		$value = strtolower( $value );
+		$value = preg_replace( '#^https?://#', '', $value );
+		$value = preg_replace( '#/.*$#', '', $value );
+		$value = sanitize_text_field( $value );
+
+		if ( '' === $value || false !== strpos( $value, ' ' ) ) {
+			return self::STANDARD_MEDIA_DOMAINS[0];
+		}
+
+		return $value;
 	}
 
 	/**
