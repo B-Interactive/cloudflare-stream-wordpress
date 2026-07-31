@@ -12,7 +12,8 @@
     <exclude-pattern>*/dist/*</exclude-pattern>
     <exclude-pattern>*/vendor/*</exclude-pattern>
     <exclude-pattern>*/.git/*</exclude-pattern>
-    <exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+    <exclude-pattern>*/tests/*</exclude-pattern>
+    <exclude-pattern>*/bin/*</exclude-pattern>
     <exclude-pattern>*/plans/*</exclude-pattern>
     <exclude-pattern>\.wp-env\.json</exclude-pattern>
     <exclude-pattern>\.wp-env\.override\.json</exclude-pattern>

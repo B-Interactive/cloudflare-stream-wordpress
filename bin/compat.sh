@@ -7,11 +7,14 @@ cd "$ROOT"
 
 PHPCS_BIN="${ROOT}/vendor/bin/phpcs"
 PHPCBF_BIN="${ROOT}/vendor/bin/phpcbf"
+PHPUNIT_BIN="${ROOT}/vendor/bin/phpunit"
 MATRIX_PHP="${ROOT}/bin/matrix.php"
 METADATA_PHP="${ROOT}/bin/check-metadata.php"
 FIXTURE="${ROOT}/tests/fixtures/below-floor-syntax.php"
 PHPCOMPAT_STD="${ROOT}/phpcompat.xml.dist"
 PHPCS_STD="${ROOT}/phpcs.xml.dist"
+DIST_JS="${ROOT}/dist/blocks.build.js"
+OUTPUT_DIR="${ROOT}/tests/_output"
 
 usage() {
 	cat <<'EOF'
@@ -23,6 +26,9 @@ Commands:
       and optional below-floor fixture self-test.
   lint [--fix]
       PHPCS WordPress standard (or phpcbf with --fix).
+  test [--wp=X.Y|trunk] [--php=X.Y] [--junit]
+      PHPUnit via wp-env. Skips with exit 0 when Docker is missing
+      locally; fails in CI if Docker is unavailable.
   matrix
       Print version matrix JSON from readme.txt.
   metadata
@@ -33,6 +39,7 @@ Commands:
 Environment:
   COMPAT_SELF_TEST_PHP  Below-floor PHP version for fixture expect-fail (e.g. 7.3)
   COMPAT_SELF_TEST_BIN  Optional path to a below-floor PHP binary
+  CI / GITHUB_ACTIONS   When set, missing Docker is a hard failure for test
 EOF
 }
 
@@ -54,7 +61,6 @@ require_matrix() {
 	command -v php >/dev/null 2>&1 || die "php CLI not found in PATH"
 }
 
-# Resolve matrix fields via bin/matrix.php.
 matrix_json() {
 	require_matrix
 	php "$MATRIX_PHP"
@@ -76,12 +82,12 @@ matrix_field() {
 	' "$key"
 }
 
-# List plugin PHP files for php -l (exclude vendor, node_modules, fixtures, plans).
+# Plugin PHP sources for php -l (excludes vendor, tests, plans).
 plugin_php_files() {
 	find "$ROOT" -type f -name '*.php' \
 		-not -path '*/vendor/*' \
 		-not -path '*/node_modules/*' \
-		-not -path '*/tests/fixtures/*' \
+		-not -path '*/tests/*' \
 		-not -path '*/plans/*' \
 		-not -path '*/.git/*' \
 		-print | sort
@@ -104,7 +110,7 @@ run_php_lint_files() {
 	echo "  OK: all plugin PHP files parse"
 }
 
-# Fixture must parse at PHP_MIN and above.
+# Fixture must parse at PHP_MIN+.
 fixture_must_pass() {
 	local php_bin="${1:-php}"
 	[[ -f "$FIXTURE" ]] || die "fixture missing: $FIXTURE"
@@ -115,8 +121,7 @@ fixture_must_pass() {
 	echo "  OK: fixture parses"
 }
 
-# Fixture must fail to parse below the floor.
-# Uses COMPAT_SELF_TEST_PHP or --self-test-fixture when a below-floor binary is available.
+# Fixture must fail php -l below the floor.
 fixture_must_fail() {
 	local php_bin="$1"
 	[[ -f "$FIXTURE" ]] || die "fixture missing: $FIXTURE"
@@ -125,6 +130,54 @@ fixture_must_fail() {
 		die "fixture parsed on ${php_bin}; expected syntax failure below PHP floor"
 	fi
 	echo "  OK: fixture fails to parse below floor (as required)"
+}
+
+docker_available() {
+	if ! command -v docker >/dev/null 2>&1; then
+		return 1
+	fi
+	if ! docker info >/dev/null 2>&1; then
+		return 1
+	fi
+	return 0
+}
+
+in_ci() {
+	[[ "${CI:-}" == "true" || "${GITHUB_ACTIONS:-}" == "true" ]]
+}
+
+ensure_dist() {
+	if [[ -f "$DIST_JS" && -s "$DIST_JS" ]]; then
+		return 0
+	fi
+	echo "dist/blocks.build.js missing or empty; running npm run build"
+	command -v npm >/dev/null 2>&1 || die "npm not found; cannot build dist/"
+	npm run build
+	[[ -f "$DIST_JS" && -s "$DIST_JS" ]] || die "build finished but ${DIST_JS} is still missing"
+}
+
+# Stable host ports from a WP version label (avoids local collisions).
+ports_for_wp() {
+	local wp="$1"
+	local base=8800
+	if [[ "$wp" == "trunk" ]]; then
+		base=8899
+	else
+		local major minor
+		major="$(echo "$wp" | cut -d. -f1)"
+		minor="$(echo "$wp" | cut -d. -f2)"
+		base=$((8000 + major * 100 + minor * 10))
+	fi
+	echo "${base} $((base + 1))"
+}
+
+wp_env_core_ref() {
+	local wp="$1"
+	if [[ "$wp" == "trunk" ]]; then
+		echo "WordPress/WordPress#master"
+	else
+		echo "WordPress/WordPress#${wp}"
+	fi
 }
 
 cmd_matrix() {
@@ -210,7 +263,6 @@ cmd_static() {
 	echo "PHPCompatibilityWP testVersion ${php_min}-"
 	"$PHPCS_BIN" --standard="$PHPCOMPAT_STD" --runtime-set testVersion "${php_min}-"
 
-	# Syntax lint with the current php binary when available.
 	if command -v php >/dev/null 2>&1; then
 		local current_php
 		current_php="$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;')"
@@ -220,7 +272,6 @@ cmd_static() {
 			echo "Skipping host php -l (host ${current_php} != --php=${php_filter})"
 		else
 			run_php_lint_files php
-			# At or above floor: fixture must parse on this interpreter.
 			if php -r "exit(version_compare('${current_php}', '${php_min}', '>=') ? 0 : 1);"; then
 				fixture_must_pass php
 			else
@@ -231,7 +282,7 @@ cmd_static() {
 		echo "php not in PATH; skipping php -l"
 	fi
 
-	# Below-floor fixture expect-fail (COMPAT_SELF_TEST_PHP or --self-test-fixture).
+	# Below-floor fixture expect-fail.
 	local self_php_ver="${COMPAT_SELF_TEST_PHP:-}"
 	if [[ "$self_test_fixture" -eq 1 && -z "$self_php_ver" ]]; then
 		self_php_ver="$php_below"
@@ -261,6 +312,123 @@ cmd_static() {
 	echo "static checks passed"
 }
 
+cmd_test() {
+	local wp=""
+	local php=""
+	local junit=0
+	local arg
+
+	for arg in "$@"; do
+		case "$arg" in
+			--wp=*)
+				wp="${arg#--wp=}"
+				;;
+			--php=*)
+				php="${arg#--php=}"
+				;;
+			--junit)
+				junit=1
+				;;
+			-h|--help)
+				usage
+				exit 0
+				;;
+			*)
+				die "unknown test option: $arg"
+				;;
+		esac
+	done
+
+	if ! docker_available; then
+		if in_ci; then
+			die "Docker is required for bin/compat.sh test in CI (CI/GITHUB_ACTIONS is set)"
+		fi
+		echo "skip: Docker is not available; PHPUnit tests were not run."
+		echo "Install and start Docker to run: bin/compat.sh test"
+		exit 0
+	fi
+
+	require_matrix
+	command -v npm >/dev/null 2>&1 || die "npm not found in PATH"
+	[[ -d "$ROOT/node_modules/@wordpress/env" ]] || die "@wordpress/env missing. Run: npm ci"
+	[[ -f "$ROOT/vendor/autoload.php" ]] || die "Composer vendor missing. Run: composer install"
+	[[ -x "$PHPUNIT_BIN" || -f "$ROOT/vendor/phpunit/phpunit/phpunit" ]] || die "phpunit not found. Run: composer install"
+
+	if [[ -z "$wp" ]]; then
+		wp="$(matrix_field wp_max)"
+	fi
+	if [[ -z "$php" ]]; then
+		php="8.3"
+	fi
+
+	ensure_dist
+	mkdir -p "$OUTPUT_DIR"
+
+	local core_ref port tests_port
+	core_ref="$(wp_env_core_ref "$wp")"
+	read -r port tests_port <<<"$(ports_for_wp "$wp")"
+
+	export WP_ENV_CORE="$core_ref"
+	export WP_ENV_PHP_VERSION="$php"
+	export WP_ENV_PORT="$port"
+	export WP_ENV_TESTS_PORT="$tests_port"
+
+	echo "PHPUnit: WP=${wp} PHP=${php}"
+	echo "  WP_ENV_CORE=${WP_ENV_CORE}"
+	echo "  WP_ENV_PHP_VERSION=${WP_ENV_PHP_VERSION}"
+	echo "  WP_ENV_PORT=${WP_ENV_PORT} WP_ENV_TESTS_PORT=${WP_ENV_TESTS_PORT}"
+
+	local wp_env=(npx wp-env)
+	echo "Starting wp-env (update images/core as needed)"
+	"${wp_env[@]}" start --update
+
+	local plugin_slug rel_phpunit
+	plugin_slug="$(basename "$ROOT")"
+	rel_phpunit="vendor/bin/phpunit"
+	if [[ ! -x "${ROOT}/${rel_phpunit}" ]]; then
+		rel_phpunit="vendor/phpunit/phpunit/phpunit"
+	fi
+
+	local junit_args=()
+	if [[ "$junit" -eq 1 ]]; then
+		local safe_wp safe_php
+		safe_wp="$(echo "$wp" | tr -c 'A-Za-z0-9' '_')"
+		safe_php="$(echo "$php" | tr -c 'A-Za-z0-9' '_')"
+		mkdir -p "${OUTPUT_DIR}"
+		junit_args=(--log-junit "tests/_output/junit-wp${safe_wp}-php${safe_php}.xml")
+	fi
+
+	local plugin_cwd="/var/www/html/wp-content/plugins/${plugin_slug}"
+
+	echo "Running PHPUnit via wp-env (cwd=${plugin_cwd})"
+	set +e
+	"${wp_env[@]}" run tests-cli --env-cwd="$plugin_cwd" \
+		"./${rel_phpunit}" -c phpunit.xml.dist "${junit_args[@]}"
+	local rc=$?
+	if [[ "$rc" -ne 0 ]]; then
+		echo "tests-cli run failed (exit ${rc}); retrying tests-wordpress"
+		"${wp_env[@]}" run tests-wordpress --env-cwd="$plugin_cwd" \
+			"./${rel_phpunit}" -c phpunit.xml.dist "${junit_args[@]}"
+		rc=$?
+	fi
+	if [[ "$rc" -ne 0 ]]; then
+		echo "Retrying with bash -lc and explicit cd"
+		local junit_joined=""
+		if [[ ${#junit_args[@]} -gt 0 ]]; then
+			junit_joined="${junit_args[*]}"
+		fi
+		"${wp_env[@]}" run tests-cli bash -lc \
+			"cd '${plugin_cwd}' && ./${rel_phpunit} -c phpunit.xml.dist ${junit_joined}"
+		rc=$?
+	fi
+	set -e
+	if [[ "$rc" -ne 0 ]]; then
+		die "PHPUnit failed (exit ${rc}) for WP=${wp} PHP=${php}"
+	fi
+
+	echo "test checks passed (WP=${wp} PHP=${php})"
+}
+
 main() {
 	if [[ $# -lt 1 ]]; then
 		usage
@@ -273,6 +441,7 @@ main() {
 	case "$cmd" in
 		static)   cmd_static "$@" ;;
 		lint)     cmd_lint "$@" ;;
+		test)     cmd_test "$@" ;;
 		matrix)   cmd_matrix "$@" ;;
 		metadata) cmd_metadata "$@" ;;
 		audit)    cmd_audit "$@" ;;

@@ -1,4 +1,4 @@
-# Static PHP compatibility checks.
+# Static PHP matrix and PHPUnit via wp-env.
 
 name: Compatibility
 
@@ -8,7 +8,7 @@ on:
   pull_request:
     branches: [ "main" ]
   schedule:
-    # Nightly; guard skips when main has no commits in the last 24h.
+    # Nightly; guard skips when main is idle 24h+.
     - cron: "0 3 * * *"
   workflow_dispatch:
 
@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Decide whether to run
+      - name: Guard schedule
         id: check
         run: |
           set -euo pipefail
@@ -58,6 +58,7 @@ jobs:
       matrix: ${{ steps.matrix.outputs.matrix }}
       php_min: ${{ steps.matrix.outputs.php_min }}
       php_below_floor: ${{ steps.matrix.outputs.php_below_floor }}
+      wp_php_matrix: ${{ steps.matrix.outputs.wp_php_matrix }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -80,8 +81,8 @@ jobs:
           echo "$RAW"
           PHP_MIN=$(php -r 'echo json_decode(stream_get_contents(STDIN), true)["php_min"];' <<<"$RAW")
           PHP_BELOW=$(php -r 'echo json_decode(stream_get_contents(STDIN), true)["php_below_floor"];' <<<"$RAW")
-          # strategy.matrix.include: list of {php, continue_on_error}
           INCLUDE=$(php -r 'echo json_encode(json_decode(stream_get_contents(STDIN), true)["php_matrix"]["include"]);' <<<"$RAW")
+          WP_PHP=$(php -r 'echo json_encode(json_decode(stream_get_contents(STDIN), true)["wp_php_matrix"]["include"]);' <<<"$RAW")
           echo "php_min=${PHP_MIN}" >> "$GITHUB_OUTPUT"
           echo "php_below_floor=${PHP_BELOW}" >> "$GITHUB_OUTPUT"
           {
@@ -89,6 +90,49 @@ jobs:
             echo "${INCLUDE}"
             echo "MATRIX_EOF"
           } >> "$GITHUB_OUTPUT"
+          {
+            echo "wp_php_matrix<<WP_PHP_EOF"
+            echo "${WP_PHP}"
+            echo "WP_PHP_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+  dist:
+    name: Build dist
+    needs: guard
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify dist artifacts
+        run: |
+          set -euo pipefail
+          for f in dist/style-blocks.css dist/blocks.build.js dist/blocks.css; do
+            test -s "$f" || { echo "::error::$f missing or empty"; exit 1; }
+            echo "OK: $f ($(wc -c < "$f") bytes)"
+          done
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 1
+          if-no-files-found: error
 
   tier-a:
     name: Static PHP ${{ matrix.php }}
@@ -115,14 +159,13 @@ jobs:
       - name: Install Composer dependencies
         run: composer install --prefer-dist --no-progress
 
-      - name: php -l plugin sources
+      - name: Static checks
         run: bin/compat.sh static --php=${{ matrix.php }}
 
-      - name: Fixture must parse at PHP_MIN
+      - name: Fixture parses at PHP_MIN
         if: matrix.php == needs.prepare.outputs.php_min
         run: php -l tests/fixtures/below-floor-syntax.php
 
-  # PHP one minor below the floor; only checks the fixture (expect php -l to fail).
   fixture-below-floor:
     name: Fixture expect-fail PHP ${{ needs.prepare.outputs.php_below_floor }}
     needs: [guard, prepare]
@@ -139,7 +182,7 @@ jobs:
           php-version: ${{ needs.prepare.outputs.php_below_floor }}
           coverage: none
 
-      - name: Fixture must fail php -l below floor
+      - name: Fixture fails below floor
         run: |
           set -euo pipefail
           FIXTURE=tests/fixtures/below-floor-syntax.php
@@ -149,3 +192,150 @@ jobs:
             exit 1
           fi
           echo "OK: fixture failed to parse below floor"
+
+  tier-b:
+    name: PHPUnit WP ${{ matrix.wp }} × PHP ${{ matrix.php }}
+    needs: [guard, prepare, dist]
+    if: needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.wp_php_matrix) }}
+    continue-on-error: ${{ matrix.continue_on_error }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+          extensions: mysqli, zip
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Cache wp-env
+        uses: actions/cache@v4
+        with:
+          path: ~/.wp-env
+          key: wp-env-${{ runner.os }}-${{ matrix.wp }}-${{ matrix.php }}-${{ hashFiles('.wp-env.json', 'package-lock.json') }}
+          restore-keys: |
+            wp-env-${{ runner.os }}-${{ matrix.wp }}-
+            wp-env-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Verify dist present
+        run: |
+          set -euo pipefail
+          for f in dist/blocks.build.js dist/blocks.css dist/style-blocks.css; do
+            test -s "$f" || { echo "::error::$f missing after download"; exit 1; }
+          done
+
+      - name: PHPUnit
+        env:
+          CI: "true"
+          GITHUB_ACTIONS: "true"
+        run: bin/compat.sh test --wp=${{ matrix.wp }} --php=${{ matrix.php }} --junit
+
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-wp${{ matrix.wp }}-php${{ matrix.php }}
+          path: tests/_output/*.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload debug.log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-log-wp${{ matrix.wp }}-php${{ matrix.php }}
+          path: |
+            **/debug.log
+            tests/_output/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  summary:
+    name: summary
+    needs: [guard, prepare, tier-a, fixture-below-floor, tier-b, dist]
+    if: always() && needs.guard.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          coverage: none
+
+      - name: Aggregate results
+        env:
+          TIER_A: ${{ needs.tier-a.result }}
+          FIXTURE: ${{ needs.fixture-below-floor.result }}
+          TIER_B: ${{ needs.tier-b.result }}
+          DIST: ${{ needs.dist.result }}
+          PREPARE: ${{ needs.prepare.result }}
+          WP_PHP_MATRIX: ${{ needs.prepare.outputs.wp_php_matrix }}
+        run: |
+          set -euo pipefail
+          {
+            echo "# Compatibility summary"
+            echo ""
+            echo "| Leg | Result |"
+            echo "|-----|--------|"
+            echo "| prepare | ${PREPARE} |"
+            echo "| dist | ${DIST} |"
+            echo "| static PHP matrix | ${TIER_A} |"
+            echo "| fixture-below-floor | ${FIXTURE} |"
+            echo "| PHPUnit WP×PHP | ${TIER_B} |"
+            echo ""
+            echo "## WP × PHP matrix"
+            echo ""
+            echo '```json'
+            echo "${WP_PHP_MATRIX}"
+            echo '```'
+            echo ""
+            echo "Trunk legs use continue-on-error and are non-blocking."
+            echo "Required check is this summary job."
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          fail=0
+          for r in "$PREPARE" "$DIST" "$TIER_A" "$FIXTURE" "$TIER_B"; do
+            case "$r" in
+              success|skipped) ;;
+              *)
+                echo "Blocking leg reported: $r"
+                fail=1
+                ;;
+            esac
+          done
+
+          # Matrix job result is success when blocking legs pass (continue-on-error may fail).
+          if [[ "$fail" -ne 0 ]]; then
+            echo "::error::One or more blocking compatibility legs failed"
+            exit 1
+          fi
+          echo "All blocking legs passed"

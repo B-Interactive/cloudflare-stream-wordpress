@@ -1,9 +1,4 @@
-# Build block assets and verify dist outputs.
-# Runs on push and pull request to main.
-# Node matrix: 22, 24, 26. Build is checked on all three.
-# Only the Node 24 (Active LTS) job uploads the dist artifact so downstream
-# jobs use one deterministic build.
-# Node 26 is continue-on-error so Current-line transitive breakage does not block PRs.
+# Build block assets; Node 24 uploads dist. Node 26 is non-blocking.
 
 name: Blocks Build
 
@@ -12,12 +7,17 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_call:
+    outputs:
+      artifact_name:
+        description: Name of the uploaded dist artifact
+        value: dist
 
 permissions:
   contents: read
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -29,7 +29,6 @@ jobs:
       matrix:
         node-version: [22, 24, 26]
 
-    # Node 26 is non-blocking (Current-line transitive breakage).
     continue-on-error: ${{ matrix.node-version == 26 }}
 
     steps:
@@ -40,16 +39,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-          # npm cache is safe because package-lock.json is tracked.
           cache: 'npm'
 
-      - name: Install dependencies (npm ci)
+      - name: Install dependencies
         run: npm ci
 
       - name: Build
         run: npm run build
 
-      - name: Verify dist artifacts exist
+      - name: Verify dist
         run: |
           set -euo pipefail
           missing=0
@@ -66,7 +64,7 @@ jobs:
             exit 1
           fi
 
-      - name: Upload dist artifact (Node 24 only)
+      - name: Upload dist
         if: ${{ matrix.node-version == 24 }}
         uses: actions/upload-artifact@v4
         with:

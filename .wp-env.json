@@ -1,0 +1,16 @@
+{
+  "core": null,
+  "phpVersion": "8.3",
+  "plugins": [ "." ],
+  "mappings": {
+    "wp-content/mu-plugins/cfstream-test-helpers.php": "./tests/mu-plugins/cfstream-test-helpers.php"
+  },
+  "config": {
+    "WP_DEBUG": true,
+    "WP_DEBUG_DISPLAY": false,
+    "WP_DEBUG_LOG": true,
+    "SCRIPT_DEBUG": true,
+    "CLOUDFLARE_STREAM_API_TOKEN": "test-token-not-real",
+    "CLOUDFLARE_STREAM_API_ACCOUNT": "test-account-not-real"
+  }
+}

@@ -24,15 +24,22 @@
     "cloudflare-stream.php"
   ],
   "main": "webpack.config.js",
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "tus-js-client": "^4.3.1"
   },
   "devDependencies": {
+    "@wordpress/env": "^10.39.0",
     "@wordpress/scripts": "^34.0.0"
   },
   "scripts": {
     "build": "wp-scripts build",
     "build:dev": "wp-scripts build  --env dev",
+    "env:start": "wp-env start",
+    "env:stop": "wp-env stop",
+    "env:clean": "wp-env destroy",
     "lint:css": "wp-scripts lint-style 'src/**/*.css'",
     "lint:css-fix": "wp-scripts lint-style 'src/**/*.css' --fix",
     "lint:md:docs": "wp-scripts lint-md-docs",
@@ -40,6 +47,7 @@
     "packages-update": "wp-scripts packages-update",
     "zip": "wp-scripts plugin-zip",
     "package": "wp-scripts build && wp-scripts plugin-zip",
-    "test:compat": "bin/compat.sh static"
+    "test:compat": "bin/compat.sh static",
+    "test:php": "bin/compat.sh test"
   }
 }

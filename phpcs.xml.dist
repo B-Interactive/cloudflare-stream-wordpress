@@ -10,6 +10,11 @@
     <exclude-pattern>*/vendor/*</exclude-pattern>
     <exclude-pattern>*/.git/*</exclude-pattern>
     <exclude-pattern>*/tests/fixtures/*</exclude-pattern>
+    <exclude-pattern>*/tests/phpunit/*</exclude-pattern>
+    <exclude-pattern>*/tests/smoke/*</exclude-pattern>
+    <exclude-pattern>*/tests/mu-plugins/*</exclude-pattern>
+    <exclude-pattern>*/tests/bootstrap\.php</exclude-pattern>
+    <exclude-pattern>*/tests/_output/*</exclude-pattern>
     <exclude-pattern>*/bin/*</exclude-pattern>
     <exclude-pattern>*/plans/*</exclude-pattern>
     <exclude-pattern>\.wp-env\.json</exclude-pattern>

@@ -84,7 +84,7 @@ if ( null === $php_min || null === $wp_min || null === $wp_max ) {
 	exit( 1 );
 }
 
-// Stable PHP versions at or above php_min.
+// PHP versions at or above php_min.
 $php_candidates = array( '7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5' );
 $php_versions   = array();
 foreach ( $php_candidates as $ver ) {
@@ -100,7 +100,7 @@ if ( ! $php_versions ) {
 
 $php_max = $php_versions[ count( $php_versions ) - 1 ];
 
-// Newest version may lag rulesets; CI may continue-on-error.
+// Newest line may lag rulesets; mark continue-on-error in CI.
 $php_continue_on_error = array();
 if ( in_array( '8.5', $php_versions, true ) ) {
 	$php_continue_on_error[] = '8.5';
@@ -114,7 +114,7 @@ foreach ( $php_versions as $ver ) {
 	);
 }
 
-// One minor below php_min for the fixture expect-fail check.
+// One minor below php_min for fixture expect-fail.
 $below_parts = array_map( 'intval', explode( '.', $php_min ) );
 if ( $below_parts[1] > 0 ) {
 	$php_below_floor = $below_parts[0] . '.' . ( $below_parts[1] - 1 );
@@ -122,16 +122,33 @@ if ( $below_parts[1] > 0 ) {
 	$php_below_floor = ( $below_parts[0] - 1 ) . '.0';
 }
 
-// Combined WP and PHP matrix pairs.
+// WP × PHP pairs for PHPUnit.
 $wp_php_matrix = array(
 	'include' => array(
 		array(
-			'wp'  => $wp_min,
-			'php' => $php_min,
+			'wp'                => $wp_min,
+			'php'               => $php_min,
+			'continue_on_error' => false,
 		),
 		array(
-			'wp'  => $wp_max,
-			'php' => '8.3',
+			'wp'                => $wp_min,
+			'php'               => '8.3',
+			'continue_on_error' => false,
+		),
+		array(
+			'wp'                => $wp_max,
+			'php'               => '8.3',
+			'continue_on_error' => false,
+		),
+		array(
+			'wp'                => $wp_max,
+			'php'               => $php_min,
+			'continue_on_error' => false,
+		),
+		array(
+			'wp'                => 'trunk',
+			'php'               => '8.4',
+			'continue_on_error' => true,
 		),
 	),
 );
