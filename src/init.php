@@ -205,7 +205,7 @@ function cloudflare_stream_verify_ajax_capability() {
  *
  * @since 1.0.0
  */
-function action_wp_ajax_query_cloudflare_stream_attachments() {
+function cloudflare_stream_ajax_query_attachments() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
 	cloudflare_stream_verify_ajax_capability();
 
@@ -287,14 +287,14 @@ function action_wp_ajax_query_cloudflare_stream_attachments() {
 	}
 	wp_send_json( $response, 200 );
 }
-add_action( 'wp_ajax_query-cloudflare-stream-attachments', 'action_wp_ajax_query_cloudflare_stream_attachments' );
+add_action( 'wp_ajax_query-cloudflare-stream-attachments', 'cloudflare_stream_ajax_query_attachments' );
 
 /**
  * AJAX method for checking the status of a video upload.
  *
  * @since 1.0.0
  */
-function action_wp_ajax_refresh_check_upload() {
+function cloudflare_stream_ajax_check_upload() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
 	cloudflare_stream_verify_ajax_capability();
 
@@ -314,7 +314,7 @@ function action_wp_ajax_refresh_check_upload() {
 	}
 	wp_send_json_error( $message );
 }
-add_action( 'wp_ajax_cloudflare-stream-check-upload', 'action_wp_ajax_refresh_check_upload' );
+add_action( 'wp_ajax_cloudflare-stream-check-upload', 'cloudflare_stream_ajax_check_upload' );
 
 /**
  * AJAX method for initializing a video upload.
@@ -324,7 +324,7 @@ add_action( 'wp_ajax_cloudflare-stream-check-upload', 'action_wp_ajax_refresh_ch
  *
  * @since 1.0.0
  */
-function action_wp_ajax_query_cloudflare_stream_upload() {
+function cloudflare_stream_ajax_query_upload() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
 	cloudflare_stream_verify_ajax_capability();
 
@@ -360,14 +360,14 @@ function action_wp_ajax_query_cloudflare_stream_upload() {
 		)
 	);
 }
-add_action( 'wp_ajax_query-cloudflare-stream-upload', 'action_wp_ajax_query_cloudflare_stream_upload' );
+add_action( 'wp_ajax_query-cloudflare-stream-upload', 'cloudflare_stream_ajax_query_upload' );
 
 /**
  * AJAX method for deleting a video.
  *
  * @since 1.0.0
  */
-function action_wp_ajax_cloudflare_stream_delete() {
+function cloudflare_stream_ajax_delete() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
 	cloudflare_stream_verify_ajax_capability();
 
@@ -381,14 +381,14 @@ function action_wp_ajax_cloudflare_stream_delete() {
 
 	wp_send_json_success( $data );
 }
-add_action( 'wp_ajax_cloudflare-stream-delete', 'action_wp_ajax_cloudflare_stream_delete' );
+add_action( 'wp_ajax_cloudflare-stream-delete', 'cloudflare_stream_ajax_delete' );
 
 /**
  * AJAX method for updating a video.
  *
  * @since 1.0.0
  */
-function action_wp_ajax_cloudflare_stream_update() {
+function cloudflare_stream_ajax_update() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
 	cloudflare_stream_verify_ajax_capability();
 
@@ -411,4 +411,4 @@ function action_wp_ajax_cloudflare_stream_update() {
 
 	wp_send_json_success( $data );
 }
-add_action( 'wp_ajax_cloudflare-stream-update', 'action_wp_ajax_cloudflare_stream_update' );
+add_action( 'wp_ajax_cloudflare-stream-update', 'cloudflare_stream_ajax_update' );
