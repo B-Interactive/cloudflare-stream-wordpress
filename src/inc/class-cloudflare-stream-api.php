@@ -63,6 +63,20 @@ class Cloudflare_Stream_API {
 	private static $signed_embed_nocache = false;
 
 	/**
+	 * Last local signing failure reason code for the current request.
+	 *
+	 * @var string
+	 */
+	private $last_local_reason = '';
+
+	/**
+	 * Last API token mint failure reason code for the current request.
+	 *
+	 * @var string
+	 */
+	private $last_api_reason = '';
+
+	/**
 	 * The accounts API.
 	 */
 	const ACCOUNTS_API = 'accounts';
@@ -728,64 +742,187 @@ class Cloudflare_Stream_API {
 	/**
 	 * Build a signed playback JWT locally with the signing key (RS256).
 	 *
+	 * Sets $this->last_local_reason on failure. Caller logs throttled via health.
+	 *
 	 * @param string $uid Video UID.
 	 * @param int    $exp Unix expiry timestamp.
 	 * @return string|false
 	 */
 	public function create_signed_token_local( $uid, $exp ) {
+		$this->last_local_reason = '';
+
 		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			// Content bug — not a local-signing degradation reason.
 			return false;
 		}
 
-		$key_id = $this->get_signing_key_id();
-		$pem    = $this->get_signing_key_pem();
+		try {
+			if ( ! function_exists( 'openssl_sign' ) ) {
+				$this->last_local_reason = 'local_openssl_missing';
+				return false;
+			}
 
-		if ( '' === $key_id || '' === $pem ) {
+			$key_id = $this->get_signing_key_id();
+			$pem    = $this->get_signing_key_pem();
+
+			if ( '' === $key_id || '' === $pem ) {
+				$this->last_local_reason = 'local_key_missing_at_sign';
+				return false;
+			}
+
+			$exp = intval( $exp );
+			if ( $exp <= time() ) {
+				$this->last_local_reason = 'local_exp_invalid';
+				return false;
+			}
+
+			// Cloudflare caps signed token life at 24 hours from signing.
+			$max_exp = time() + DAY_IN_SECONDS;
+			if ( $exp > $max_exp ) {
+				$exp = $max_exp;
+			}
+
+			$header = array(
+				'alg' => 'RS256',
+				'kid' => $key_id,
+			);
+
+			$payload = array(
+				'sub' => strtolower( $uid ),
+				'kid' => $key_id,
+				'exp' => $exp,
+			);
+
+			$header_json  = wp_json_encode( $header );
+			$payload_json = wp_json_encode( $payload );
+
+			if ( false === $header_json || false === $payload_json ) {
+				$this->last_local_reason = 'local_json_encode';
+				return false;
+			}
+
+			$header_b64    = $this->base64url_encode( $header_json );
+			$payload_b64   = $this->base64url_encode( $payload_json );
+			$signing_input = $header_b64 . '.' . $payload_b64;
+
+			$signature = '';
+			$ok        = openssl_sign( $signing_input, $signature, $pem, OPENSSL_ALGO_SHA256 );
+
+			if ( ! $ok || '' === $signature ) {
+				$this->last_local_reason = 'local_openssl_sign';
+				return false;
+			}
+
+			return $signing_input . '.' . $this->base64url_encode( $signature );
+		} catch ( Throwable $e ) {
+			$this->last_local_reason = 'local_exception';
+			return false;
+		}
+	}
+
+	/**
+	 * Record a negative API mint result (reason + per-uid fail cache + breaker).
+	 *
+	 * @param Cloudflare_Stream_Signing_Health $health   Health tracker.
+	 * @param string                           $fail_key Negative cache key.
+	 * @param string                           $reason   API reason code.
+	 * @return false
+	 */
+	private function note_api_fail( $health, $fail_key, $reason ) {
+		$this->last_api_reason = $reason;
+		set_transient( $fail_key, 1, Cloudflare_Stream_Signing_Health::NEGATIVE_CACHE_TTL );
+		$health->record_api_failure_only( $reason );
+		return false;
+	}
+
+	/**
+	 * Mint a signed playback token via Cloudflare POST stream/{uid}/token.
+	 *
+	 * Uses positive token cache, per-uid negative cache, and the global API breaker.
+	 * Sets $this->last_api_reason on failure. Does not write local-signing degradation
+	 * state (caller decides when a key is configured).
+	 *
+	 * @param string $uid  Unique Video ID.
+	 * @param int    $exp  Unix expiry timestamp.
+	 * @param array  $args Additional API arguments.
+	 * @return string|false Token string on success, false on failure.
+	 */
+	private function mint_token_via_api( $uid, $exp, $args = array() ) {
+		$this->last_api_reason = '';
+
+		$health = Cloudflare_Stream_Signing_Health::instance();
+
+		if ( $health->is_api_breaker_open() ) {
+			$this->last_api_reason = 'api_breaker_open';
 			return false;
 		}
 
-		$exp = intval( $exp );
-		if ( $exp <= time() ) {
+		$token_api = Cloudflare_Stream_Settings::get_api_token();
+		$account   = Cloudflare_Stream_Settings::get_api_account();
+		if ( '' === $token_api || '' === $account ) {
+			$this->last_api_reason = 'api_credentials_missing';
 			return false;
 		}
 
-		// Cloudflare caps signed token life at 24 hours from signing.
-		$max_exp = time() + DAY_IN_SECONDS;
-		if ( $exp > $max_exp ) {
-			$exp = $max_exp;
+		$duration_minutes = $this->get_signed_url_duration_minutes();
+		$cache_key        = 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
+		$fail_key         = 'cfstream_token_fail_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
+
+		$cached_token = get_transient( $cache_key );
+		if ( is_string( $cached_token ) && '' !== $cached_token ) {
+			return $cached_token;
 		}
 
-		$header = array(
-			'alg' => 'RS256',
-			'kid' => $key_id,
+		if ( false !== get_transient( $fail_key ) ) {
+			$this->last_api_reason = 'api_token_failed';
+			return false;
+		}
+
+		$args['body'] = wp_json_encode(
+			array(
+				'exp' => intval( $exp ),
+			)
 		);
 
-		$payload = array(
-			'sub' => strtolower( $uid ),
-			'kid' => $key_id,
-			'exp' => $exp,
-		);
+		$response_text = $this->post( 'stream/' . rawurlencode( $uid ) . '/token', $args, false );
 
-		$header_b64  = $this->base64url_encode( wp_json_encode( $header ) );
-		$payload_b64 = $this->base64url_encode( wp_json_encode( $payload ) );
-		$signing_input = $header_b64 . '.' . $payload_b64;
-
-		$signature = '';
-		$ok        = openssl_sign( $signing_input, $signature, $pem, OPENSSL_ALGO_SHA256 );
-
-		if ( ! $ok || '' === $signature ) {
-			error_log( 'Cloudflare Stream: local RS256 signing failed.' );
-			return false;
+		// Transport / WP_Error path returns a string message from request().
+		if ( ! is_string( $response_text ) || '' === $response_text ) {
+			return $this->note_api_fail( $health, $fail_key, 'api_http_error' );
 		}
 
-		return $signing_input . '.' . $this->base64url_encode( $signature );
+		// Non-JSON error string from wp_remote_request failure.
+		$data = $this->decode_api_response( $response_text );
+		if ( null === $data ) {
+			return $this->note_api_fail( $health, $fail_key, 'api_http_error' );
+		}
+
+		if (
+			empty( $data->success )
+			|| ! isset( $data->result )
+			|| ! is_object( $data->result )
+			|| empty( $data->result->token )
+			|| ! is_string( $data->result->token )
+		) {
+			return $this->note_api_fail( $health, $fail_key, 'api_token_failed' );
+		}
+
+		$token = $data->result->token;
+
+		// Cache for half the token life so renders reuse a still-valid token.
+		$cache_ttl = (int) max( 30, floor( ( $duration_minutes * MINUTE_IN_SECONDS ) / 2 ) );
+		set_transient( $cache_key, $token, $cache_ttl );
+		delete_transient( $fail_key );
+
+		return $token;
 	}
 
 	/**
 	 * Mint a signed playback token for a video.
 	 *
-	 * Prefers a local RS256 JWT when a signing key is configured; otherwise
-	 * falls back to POST stream/{uid}/token and short-lived transient cache.
+	 * Prefers a local RS256 JWT when a signing key is configured. On local failure,
+	 * falls back to POST stream/{uid}/token (still signed). Without a key, uses the
+	 * API path as normal (not degraded).
 	 *
 	 * @param string $uid Unique Video ID.
 	 * @param array  $args Additional API arguments.
@@ -796,59 +933,51 @@ class Cloudflare_Stream_API {
 	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
 		unset( $return_headers );
 
+		$this->last_local_reason = '';
+		$this->last_api_reason   = '';
+
 		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
 			error_log( 'Cloudflare Stream: refused signed token request for invalid video uid.' );
 			return false;
 		}
 
 		$duration_minutes = $this->get_signed_url_duration_minutes();
 		$exp              = time() + ( $duration_minutes * MINUTE_IN_SECONDS );
+		$health           = Cloudflare_Stream_Signing_Health::instance();
+		$state            = $health->get_state();
 
-		// Sign locally when a key is on file (no per-render API call).
+		// Sign locally when a key is on file (no per-render API call on success).
 		if ( $this->has_signing_key() ) {
-			$token = $this->create_signed_token_local( $uid, $exp );
+			$local_reason = '';
+
+			if ( ! $health->is_local_breaker_open( $state ) ) {
+				$token = $this->create_signed_token_local( $uid, $exp );
+				if ( is_string( $token ) && '' !== $token ) {
+					$health->record_local_success();
+					return $token;
+				}
+				$local_reason = $this->last_local_reason ? $this->last_local_reason : 'local_unknown';
+				$health->record_local_failure( $uid, $local_reason );
+			} else {
+				$local_reason = ! empty( $state['reason'] ) ? $state['reason'] : 'local_unknown';
+				$this->last_local_reason = $local_reason;
+			}
+
+			$token = $this->mint_token_via_api( $uid, $exp, $args );
 			if ( is_string( $token ) && '' !== $token ) {
+				$health->record_outcome( $uid, $local_reason );
 				return $token;
 			}
-			error_log( 'Cloudflare Stream: local signing failed; not falling back to API token mint while a key is configured.' );
+
+			$api_reason = $this->last_api_reason ? $this->last_api_reason : 'api_token_failed';
+			$health->record_outcome( $uid, $local_reason, $api_reason );
 			return false;
 		}
 
-		$cache_key    = 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
-		$cached_token = get_transient( $cache_key );
-
-		if ( is_string( $cached_token ) && '' !== $cached_token ) {
-			return $cached_token;
-		}
-
-		$args['body'] = wp_json_encode(
-			array(
-				'exp' => $exp,
-			)
-		);
-
-		$response_text = $this->post( 'stream/' . rawurlencode( $uid ) . '/token', $args, false );
-		$data          = $this->decode_api_response( $response_text );
-
-		if (
-			null === $data
-			|| empty( $data->success )
-			|| ! isset( $data->result )
-			|| ! is_object( $data->result )
-			|| empty( $data->result->token )
-			|| ! is_string( $data->result->token )
-		) {
-			error_log( 'Cloudflare Stream: signed token response was invalid or unsuccessful.' );
-			return false;
-		}
-
-		$token = $data->result->token;
-
-		// Cache for half the token life so renders reuse a still-valid token.
-		$cache_ttl = (int) max( 30, floor( ( $duration_minutes * MINUTE_IN_SECONDS ) / 2 ) );
-		set_transient( $cache_key, $token, $cache_ttl );
-
-		return $token;
+		// No local key — normal API mode, no degradation writes.
+		$token = $this->mint_token_via_api( $uid, $exp, $args );
+		return ( is_string( $token ) && '' !== $token ) ? $token : false;
 	}
 
 	/**

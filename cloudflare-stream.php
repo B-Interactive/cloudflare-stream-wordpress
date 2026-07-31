@@ -29,6 +29,11 @@ require_once plugin_dir_path( __FILE__ ) . 'src/inc/class-cloudflare-stream-sett
 require_once plugin_dir_path( __FILE__ ) . 'src/inc/class-cloudflare-stream-api.php';
 
 /**
+ * Cloudflare Stream signing health / degradation diagnostics
+ */
+require_once plugin_dir_path( __FILE__ ) . 'src/inc/class-cloudflare-stream-signing-health.php';
+
+/**
  * Cloudflare Stream Shortcode
  */
 require_once plugin_dir_path( __FILE__ ) . 'src/inc/class-cloudflare-stream-shortcode.php';

@@ -165,6 +165,14 @@ function cloudflare_stream_render_block( $block_attributes, $content ) {
 	$api   = Cloudflare_Stream_API::instance();
 	$embed = $api->get_video_embed( $attributes['uid'], $attributes );
 
+	// Editor-only diagnostic when signed embed is empty (total failure).
+	if ( '' === $embed && class_exists( 'Cloudflare_Stream_Signing_Health' ) ) {
+		$comment = Cloudflare_Stream_Signing_Health::instance()->get_editor_failure_comment();
+		if ( '' !== $comment ) {
+			$embed = $comment;
+		}
+	}
+
 	return '<figure class="wp-block-cloudflare-stream-block-video">' . $embed . '</figure>';
 }
 

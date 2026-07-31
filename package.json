@@ -25,7 +25,7 @@
   ],
   "main": "webpack.config.js",
   "dependencies": {
-    "@wordpress/scripts": "^33.0.0",
+    "@wordpress/scripts": "^34.0.0",
     "tus-js-client": "^4.3.1"
   },
   "scripts": {

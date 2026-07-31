@@ -97,6 +97,29 @@ class Cloudflare_Stream_Settings {
 		add_action( 'admin_post_' . self::ADMIN_ACTION_SIGNING_KEY, array( $this, 'handle_signing_key_action' ) );
 		// Drop leftover DB secrets when matching PHP constants are the live source.
 		add_action( 'load-settings_page_cloudflare-stream', array( $this, 'maybe_auto_clean_constant_secrets' ) );
+		// Clear signing breakers when signed URL options or key material change.
+		$clear_opts = array(
+			self::OPTION_SIGNED_URLS,
+			self::OPTION_SIGNED_URLS_DURATION,
+			self::OPTION_SIGNING_KEY_ID,
+			self::OPTION_SIGNING_KEY_PEM,
+		);
+		foreach ( $clear_opts as $opt ) {
+			foreach ( array( 'update_option_', 'add_option_', 'delete_option_' ) as $prefix ) {
+				add_action( $prefix . $opt, array( $this, 'clear_signing_health_hot_state' ), 10, 0 );
+			}
+		}
+	}
+
+	/**
+	 * Drop signing breakers so a fix is picked up immediately.
+	 *
+	 * @return void
+	 */
+	public function clear_signing_health_hot_state() {
+		if ( class_exists( 'Cloudflare_Stream_Signing_Health' ) ) {
+			Cloudflare_Stream_Signing_Health::instance()->clear_breakers();
+		}
 	}
 
 	/**
@@ -209,6 +232,7 @@ class Cloudflare_Stream_Settings {
 		add_action( 'admin_notices', array( $this, 'settings_errors_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'onboarding_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'signing_key_admin_notices' ) );
+		add_action( 'admin_notices', array( $this, 'signing_health_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'secrets_auto_clean_admin_notices' ) );
 
 		// When a constant is active, do not rewrite the matching option from the settings form.
@@ -794,6 +818,11 @@ class Cloudflare_Stream_Settings {
 			$this->echo_field_status( $this->storage_status_text( $const_ready, $in_db ) );
 		}
 
+		// Health panel after status; not shown for broken-constants (existing copy path).
+		if ( ! $const_broken ) {
+			$this->echo_signing_health_panel();
+		}
+
 		// Setup owns the next step while a short-lived copy of the key is pending.
 		if ( is_array( $reveal ) ) {
 			$this->render_signing_key_setup_panel( $reveal['id'], $reveal['pem'], $reveal['context'] );
@@ -839,6 +868,115 @@ class Cloudflare_Stream_Settings {
 		$this->echo_signing_key_form_button( 'generate', __( 'Generate signing key', 'cloudflare-stream' ) );
 		echo '<p class="description">' . esc_html__( 'Creates a key in Cloudflare, then asks where to keep it.', 'cloudflare-stream' ) . '</p>';
 		echo '</div>';
+	}
+
+	/**
+	 * Inline signing health / degradation panel under Signing Key status.
+	 *
+	 * @return void
+	 */
+	private function echo_signing_health_panel() {
+		if ( ! class_exists( 'Cloudflare_Stream_Signing_Health' ) ) {
+			return;
+		}
+
+		$health = Cloudflare_Stream_Signing_Health::instance();
+		$issue  = $health->get_issue();
+		if ( null === $issue ) {
+			return;
+		}
+
+		$this->render_signing_health_notice( $issue, 'settings' );
+	}
+
+	/**
+	 * Render a signing-health issue notice (settings panel or admin banner).
+	 *
+	 * @param array  $issue   Issue from get_issue().
+	 * @param string $context 'settings' or 'admin'.
+	 * @return void
+	 */
+	private function render_signing_health_notice( array $issue, $context = 'settings' ) {
+		$severity = in_array( $issue['severity'], array( 'info', 'warning', 'error' ), true )
+			? $issue['severity']
+			: 'info';
+		$inline = ( 'settings' === $context ) ? ' inline' : '';
+
+		if ( 'admin' === $context ) {
+			$health       = Cloudflare_Stream_Signing_Health::instance();
+			$settings_url = admin_url( 'options-general.php?page=cloudflare-stream' );
+			$dismiss_url  = $health->get_dismiss_url();
+			if ( 'error' === $severity ) {
+				$body = __( 'Cloudflare Stream signed playback is unavailable (local signing and API token mint both failed). Embeds are empty on purpose. Review the Signing Key status on the settings page.', 'cloudflare-stream' );
+			} else {
+				$body = __( 'Cloudflare Stream is serving signed playback via the API because local signing failed. Playback still works; see Signing Key status for details.', 'cloudflare-stream' );
+			}
+
+			printf(
+				'<div class="notice notice-%1$s"><p>%2$s <a href="%3$s">%4$s</a> | <a href="%5$s">%6$s</a></p></div>',
+				esc_attr( $severity ),
+				esc_html( $body ),
+				esc_url( $settings_url ),
+				esc_html__( 'Cloudflare Stream settings', 'cloudflare-stream' ),
+				esc_url( $dismiss_url ),
+				esc_html__( 'Dismiss', 'cloudflare-stream' )
+			);
+			return;
+		}
+
+		echo '<div class="notice notice-' . esc_attr( $severity ) . esc_attr( $inline ) . '">';
+		if ( ! empty( $issue['title'] ) && ! in_array( $issue['code'], array( 'recovered', 'api_mode' ), true ) ) {
+			echo '<p><strong>' . esc_html( $issue['title'] ) . '</strong></p>';
+		}
+		if ( ! empty( $issue['body'] ) ) {
+			echo '<p>' . esc_html( $issue['body'] ) . '</p>';
+		}
+		if ( ! empty( $issue['detail'] ) ) {
+			echo '<p>' . esc_html( $issue['detail'] ) . '</p>';
+		}
+		if ( ! empty( $issue['label'] ) ) {
+			echo '<p>' . esc_html( $issue['label'] ) . '</p>';
+		}
+		if ( ! empty( $issue['tips'] ) && is_array( $issue['tips'] ) ) {
+			echo '<p><strong>' . esc_html__( 'What to try:', 'cloudflare-stream' ) . '</strong></p><ul>';
+			foreach ( $issue['tips'] as $tip ) {
+				echo '<li>' . esc_html( $tip ) . '</li>';
+			}
+			echo '</ul>';
+		}
+		echo '</div>';
+	}
+
+	/**
+	 * Dismissible admin notice when local signing is degraded or failed.
+	 *
+	 * @return void
+	 */
+	public function signing_health_admin_notices() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		if ( ! class_exists( 'Cloudflare_Stream_Signing_Health' ) ) {
+			return;
+		}
+
+		$screen = get_current_screen();
+		if ( ! $screen || ! in_array( $screen->id, array( 'dashboard', 'plugins', 'settings_page_cloudflare-stream' ), true ) ) {
+			return;
+		}
+
+		$health = Cloudflare_Stream_Signing_Health::instance();
+		$issue  = $health->get_issue();
+		if ( null === $issue || ! in_array( $issue['severity'], array( 'warning', 'error' ), true ) ) {
+			return;
+		}
+
+		if ( $health->is_notice_dismissed_for_user() ) {
+			return;
+		}
+
+		$this->render_signing_health_notice( $issue, 'admin' );
 	}
 
 	/**
@@ -933,6 +1071,7 @@ class Cloudflare_Stream_Settings {
 		if ( 'clear' === $do ) {
 			$this->delete_db_signing_key_options();
 			$this->clear_signing_key_reveal();
+			$this->clear_signing_health_hot_state();
 			$this->redirect_signing_key_notice( 'cleared' );
 		}
 
@@ -948,6 +1087,7 @@ class Cloudflare_Stream_Settings {
 
 			$this->delete_db_signing_key_options();
 			$this->clear_signing_key_reveal();
+			$this->clear_signing_health_hot_state();
 			$this->redirect_signing_key_notice( 'confirm_constants' === $do ? 'constants_ok' : 'moved' );
 		}
 
@@ -971,6 +1111,7 @@ class Cloudflare_Stream_Settings {
 			}
 
 			$this->clear_signing_key_reveal();
+			$this->clear_signing_health_hot_state();
 			$this->redirect_signing_key_notice( 'stored' );
 		}
 

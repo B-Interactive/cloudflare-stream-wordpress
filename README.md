@@ -4,7 +4,7 @@
 ![license](https://badgen.net//github/license/B-Interactive/cloudflare-stream-wordpress)
 ![blocks-build](https://github.com/B-Interactive/cloudflare-stream-wordpress/actions/workflows/node.js.yml/badge.svg)
 
-Upload, browse and embed [Cloudflare Stream](https://developers.cloudflare.com/stream/) videos in WordPress. This is a fork of the official Cloudflare Stream plugin 1.0.5 ([WordPress](https://wordpress.org/plugins/cloudflare-stream/) / [GitHub](https://github.com/cloudflare/stream-wordpress)), rebuilt to use a limited-scope API Token instead of the global API key, and to support optional signed (token-protected) playback. Current version: 1.1.5.
+Upload, browse and embed [Cloudflare Stream](https://developers.cloudflare.com/stream/) videos in WordPress. This is a fork of the official Cloudflare Stream plugin 1.0.5 ([WordPress](https://wordpress.org/plugins/cloudflare-stream/) / [GitHub](https://github.com/cloudflare/stream-wordpress)), rebuilt to use a limited-scope API Token instead of the global API key, and to support optional signed (token-protected) playback.
 
 ## Features
 
@@ -56,7 +56,7 @@ Plugin settings, at **Settings → Cloudflare Stream** in the WordPress admin:
 - **Use Signed URLs** (default: on) — render embeds as signed URLs rather than plain video IDs.
 - **Signed URL Expiration** (default: 60 minutes, range 1–1440) — how long each playback token stays valid, and therefore how long its signed URL works. Keep this longer than your longest video.
 
-Playback tokens are minted locally with OpenSSL when a signing key is configured. Without a key, the plugin asks Cloudflare's `/token` endpoint for them instead. If a key is configured but local signing fails, the plugin fails closed and no embed is output.
+Playback tokens are minted locally with OpenSSL when a signing key is configured. Without a key, the plugin asks Cloudflare's `/token` endpoint for them instead. If a key is configured but local signing fails, the plugin falls back to that same Cloudflare `/token` API so playback stays signed, and surfaces the issue in Settings, an admin notice, Site Health, and an editor-only HTML comment. If both local signing and the API fail, embeds are left empty (unsigned playback is never used while Use Signed URLs is on).
 
 To set up a key, click **Generate signing key** on the plugin settings page (the plugin creates it at Cloudflare for you), copy the two lines it shows into `wp-config.php` above "That's all, stop editing!", then click **I have added this to wp-config.php** so the plugin verifies them and keeps no database copy:
 

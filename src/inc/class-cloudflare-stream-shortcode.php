@@ -90,6 +90,14 @@ class Cloudflare_Stream_Shortcode {
 		$stream_api    = Cloudflare_Stream_API::instance();
 		$response_text = $stream_api->get_video_embed( $attributes['uid'], $attributes );
 
+		// Editors viewing the front end see a diagnostic comment when signed embed is empty.
+		if ( ( ! is_string( $response_text ) || '' === $response_text ) && class_exists( 'Cloudflare_Stream_Signing_Health' ) ) {
+			$comment = Cloudflare_Stream_Signing_Health::instance()->get_editor_failure_comment();
+			if ( '' !== $comment ) {
+				return $comment;
+			}
+		}
+
 		return $response_text;
 	}
 }
