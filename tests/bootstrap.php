@@ -112,14 +112,16 @@ if ( ! defined( 'WP_TESTS_CONFIG_FILE_PATH' ) ) {
 require_once $_tests_dir . '/includes/functions.php';
 
 /**
- * Load plugin and test MU helpers before full WP bootstrap.
+ * Load the plugin and test helpers before full WP bootstrap.
+ *
+ * Skip helpers if the wp-env MU-plugin already loaded them (same file, two paths).
  */
 function cfstream_manually_load_plugin() {
 	$root = dirname( __DIR__ );
 
 	$mu = $root . '/tests/mu-plugins/cfstream-test-helpers.php';
-	if ( is_readable( $mu ) ) {
-		require $mu;
+	if ( is_readable( $mu ) && ! function_exists( 'cfstream_test_get_http_attempts' ) ) {
+		require_once $mu;
 	}
 
 	require $root . '/cloudflare-stream.php';
