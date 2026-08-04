@@ -383,32 +383,36 @@ cmd_test() {
 	"${wp_env[@]}" start --update
 
 	local plugin_slug rel_phpunit
+	# wp-env mounts plugins["."] using the host directory basename.
 	plugin_slug="$(basename "$ROOT")"
 	rel_phpunit="vendor/bin/phpunit"
-	if [[ ! -x "${ROOT}/${rel_phpunit}" ]]; then
+	if [[ ! -f "${ROOT}/${rel_phpunit}" ]]; then
 		rel_phpunit="vendor/phpunit/phpunit/phpunit"
 	fi
+	[[ -f "${ROOT}/${rel_phpunit}" ]] || die "phpunit binary missing under vendor/"
+	[[ -d "${ROOT}/vendor/yoast/phpunit-polyfills" ]] || die "yoast/phpunit-polyfills missing. Run: composer install"
 
 	local junit_args=()
 	if [[ "$junit" -eq 1 ]]; then
 		local safe_wp safe_php
-		safe_wp="$(echo "$wp" | tr -c 'A-Za-z0-9' '_')"
-		safe_php="$(echo "$php" | tr -c 'A-Za-z0-9' '_')"
+		safe_wp="$(echo "$wp" | tr -c 'A-Za-z0-9._-' '_')"
+		safe_php="$(echo "$php" | tr -c 'A-Za-z0-9._-' '_')"
 		mkdir -p "${OUTPUT_DIR}"
 		junit_args=(--log-junit "tests/_output/junit-wp${safe_wp}-php${safe_php}.xml")
 	fi
 
 	local plugin_cwd="/var/www/html/wp-content/plugins/${plugin_slug}"
 
+	# Prefer tests-cli (WP_TESTS_DIR + DB). Use -- so phpunit flags are not parsed by wp-env.
 	echo "Running PHPUnit via wp-env (cwd=${plugin_cwd})"
 	set +e
-	"${wp_env[@]}" run tests-cli --env-cwd="$plugin_cwd" \
-		"./${rel_phpunit}" -c phpunit.xml.dist "${junit_args[@]}"
+	"${wp_env[@]}" run tests-cli --env-cwd="$plugin_cwd" -- \
+		php "./${rel_phpunit}" -c phpunit.xml.dist "${junit_args[@]}"
 	local rc=$?
 	if [[ "$rc" -ne 0 ]]; then
 		echo "tests-cli run failed (exit ${rc}); retrying tests-wordpress"
-		"${wp_env[@]}" run tests-wordpress --env-cwd="$plugin_cwd" \
-			"./${rel_phpunit}" -c phpunit.xml.dist "${junit_args[@]}"
+		"${wp_env[@]}" run tests-wordpress --env-cwd="$plugin_cwd" -- \
+			php "./${rel_phpunit}" -c phpunit.xml.dist "${junit_args[@]}"
 		rc=$?
 	fi
 	if [[ "$rc" -ne 0 ]]; then
@@ -417,8 +421,8 @@ cmd_test() {
 		if [[ ${#junit_args[@]} -gt 0 ]]; then
 			junit_joined="${junit_args[*]}"
 		fi
-		"${wp_env[@]}" run tests-cli bash -lc \
-			"cd '${plugin_cwd}' && ./${rel_phpunit} -c phpunit.xml.dist ${junit_joined}"
+		"${wp_env[@]}" run tests-cli --env-cwd="$plugin_cwd" -- bash -lc \
+			"cd '${plugin_cwd}' && php ./${rel_phpunit} -c phpunit.xml.dist ${junit_joined}"
 		rc=$?
 	fi
 	set -e

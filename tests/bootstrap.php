@@ -7,16 +7,32 @@
 
 $cfstream_root = dirname( __DIR__ );
 
-// Composer autoload.
+// Composer autoload (plugin deps + PHPUnit Polyfills when installed via Composer).
 $autoload = $cfstream_root . '/vendor/autoload.php';
 if ( is_readable( $autoload ) ) {
 	require_once $autoload;
 }
 
+// WP core test bootstrap requires Yoast PHPUnit Polyfills (WP 5.9+ / 6.x / 7.x).
+// Load explicitly so the path is correct even if only the package tree is present.
+if ( ! class_exists( '\Yoast\PHPUnitPolyfills\Autoload', false ) ) {
+	$polyfills_autoload = $cfstream_root . '/vendor/yoast/phpunit-polyfills/phpunitpolyfills-autoload.php';
+	if ( is_readable( $polyfills_autoload ) ) {
+		require_once $polyfills_autoload;
+	}
+}
+
+if ( ! defined( 'WP_TESTS_PHPUNIT_POLYFILLS_PATH' ) ) {
+	$polyfills_root = $cfstream_root . '/vendor/yoast/phpunit-polyfills';
+	if ( is_dir( $polyfills_root ) ) {
+		define( 'WP_TESTS_PHPUNIT_POLYFILLS_PATH', $polyfills_root );
+	}
+}
+
 /**
  * Locate the WordPress tests library.
  *
- * Order: WP_TESTS_DIR, WP_PHPUNIT__DIR, then common wp-env paths.
+ * Order: WP_TESTS_DIR (wp-env sets this), WP_PHPUNIT__DIR, then common paths.
  */
 function cfstream_locate_wp_tests_dir() {
 	$candidates = array();
@@ -31,6 +47,7 @@ function cfstream_locate_wp_tests_dir() {
 		$candidates[] = WP_PHPUNIT__DIR;
 	}
 
+	// wp-env mounts the suite here in tests-cli / tests-wordpress.
 	$candidates[] = '/wordpress-phpunit';
 	$candidates[] = '/var/www/html/wordpress-develop/tests/phpunit';
 	$candidates[] = '/wordpress-develop/tests/phpunit';
@@ -58,7 +75,16 @@ if ( ! $_tests_dir ) {
 	fwrite(
 		STDERR,
 		"Could not locate WordPress test library.\n" .
-		"Set WP_TESTS_DIR, or run via: npx wp-env run tests-wordpress ...\n"
+		"Set WP_TESTS_DIR, or run via: npx wp-env run tests-cli ...\n"
+	);
+	exit( 1 );
+}
+
+if ( ! class_exists( '\Yoast\PHPUnitPolyfills\Autoload', false ) ) {
+	fwrite(
+		STDERR,
+		"yoast/phpunit-polyfills is required for the WordPress PHPUnit suite.\n" .
+		"Run: composer install\n"
 	);
 	exit( 1 );
 }
@@ -67,17 +93,17 @@ if ( ! $_tests_dir ) {
 putenv( 'WP_TESTS_DIR=' . $_tests_dir );
 $_SERVER['WP_TESTS_DIR'] = $_tests_dir;
 
-// Prefer a readable wp-tests-config when unset.
-if ( ! getenv( 'WP_PHPUNIT__TESTS_CONFIG' ) ) {
+// Point WP core bootstrap at wp-env's generated config when present.
+// Prefer WP_TESTS_CONFIG_FILE_PATH (core) over the non-standard WP_PHPUNIT__* name.
+if ( ! defined( 'WP_TESTS_CONFIG_FILE_PATH' ) ) {
 	$config_candidates = array(
-		$cfstream_root . '/tests/wp-tests-config.php',
 		'/wordpress-phpunit/wp-tests-config.php',
 		$_tests_dir . '/wp-tests-config.php',
+		$cfstream_root . '/tests/wp-tests-config.php',
 	);
 	foreach ( $config_candidates as $config ) {
 		if ( is_readable( $config ) ) {
-			// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited
-			putenv( 'WP_PHPUNIT__TESTS_CONFIG=' . $config );
+			define( 'WP_TESTS_CONFIG_FILE_PATH', $config );
 			break;
 		}
 	}
