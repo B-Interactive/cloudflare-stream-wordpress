@@ -34,10 +34,16 @@ class Test_CFStream_Registration extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Setting group constant matches production.
+	 * Setting group and option name constants match production strings.
 	 */
 	public function test_setting_group_constant() {
 		$this->assertSame( 'cloudflare_stream', Cloudflare_Stream_Settings::SETTING_GROUP );
 		$this->assertSame( 'cloudflare-stream', Cloudflare_Stream_Settings::SETTING_PAGE );
+		$this->assertSame( 'cloudflare_stream_api_account', Cloudflare_Stream_Settings::OPTION_API_ACCOUNT );
+		$this->assertSame( 'cloudflare_stream_api_token', Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$this->assertSame( 'cloudflare_stream_signed_urls', Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+		$this->assertSame( 'cloudflare_stream_signed_urls_duration', Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION );
+		$this->assertSame( 'cloudflare_stream_media_domain', Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
+		$this->assertSame( 'cloudflare_stream_poster_time', Cloudflare_Stream_Settings::OPTION_POSTER_TIME );
 	}
 }

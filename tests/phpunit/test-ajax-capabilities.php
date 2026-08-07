@@ -70,7 +70,7 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 		$subscriber_id = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		wp_set_current_user( $subscriber_id );
 
-		// wp_send_json_* may send headers and leave buffers open outside _handleAjax.
+		// Direct call may send headers and leave buffers open outside _handleAjax.
 		$level        = ob_get_level();
 		$rejected     = false;
 		$prev_handler = null;

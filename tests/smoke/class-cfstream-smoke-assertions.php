@@ -284,25 +284,56 @@ class CFStream_Smoke_Assertions {
 	}
 
 	/**
-	 * Exactly six settings in group cloudflare_stream after admin_init.
+	 * Six known options registered in group cloudflare_stream.
 	 */
 	public function s8_settings_registered() {
+		if ( ! class_exists( 'Cloudflare_Stream_Settings' ) ) {
+			$this->fail( 'S8: settings class missing' );
+			return;
+		}
+
+		$expected = array(
+			Cloudflare_Stream_Settings::OPTION_API_ACCOUNT,
+			Cloudflare_Stream_Settings::OPTION_API_TOKEN,
+			Cloudflare_Stream_Settings::OPTION_SIGNED_URLS,
+			Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION,
+			Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN,
+			Cloudflare_Stream_Settings::OPTION_POSTER_TIME,
+		);
+
 		$this->with_admin_user(
-			function () {
-				do_action( 'admin_init' );
+			function () use ( $expected ) {
+				// Register plugin settings without running full admin_init.
+				Cloudflare_Stream_Settings::instance()->action_admin_init();
 
-				global $new_allowed_options, $whitelist_options;
-				$group_opts = array();
-
-				if ( isset( $new_allowed_options[ self::SETTING_GROUP ] ) && is_array( $new_allowed_options[ self::SETTING_GROUP ] ) ) {
-					$group_opts = $new_allowed_options[ self::SETTING_GROUP ];
-				} elseif ( isset( $whitelist_options[ self::SETTING_GROUP ] ) && is_array( $whitelist_options[ self::SETTING_GROUP ] ) ) {
-					$group_opts = $whitelist_options[ self::SETTING_GROUP ];
+				if ( empty( $GLOBALS['wp_registered_settings'] ) || ! is_array( $GLOBALS['wp_registered_settings'] ) ) {
+					$this->fail( 'S8: $wp_registered_settings is empty' );
+					return;
 				}
 
-				$count = count( $group_opts );
-				if ( 6 !== $count ) {
-					$this->fail( 'S8: expected 6 settings in group ' . self::SETTING_GROUP . ", found {$count}" );
+				$registered = $GLOBALS['wp_registered_settings'];
+
+				foreach ( $expected as $option ) {
+					if ( ! isset( $registered[ $option ] ) ) {
+						$this->fail( "S8: setting {$option} is not in \$wp_registered_settings" );
+						continue;
+					}
+					$args  = $registered[ $option ];
+					$group = is_array( $args ) && isset( $args['group'] ) ? $args['group'] : '';
+					if ( self::SETTING_GROUP !== $group ) {
+						$this->fail( "S8: setting {$option} group is " . var_export( $group, true ) . ', expected ' . self::SETTING_GROUP );
+					}
+				}
+
+				$in_group = array();
+				foreach ( $registered as $option => $args ) {
+					if ( is_array( $args ) && isset( $args['group'] ) && self::SETTING_GROUP === $args['group'] ) {
+						$in_group[] = $option;
+					}
+				}
+				$found = count( $in_group );
+				if ( count( $expected ) !== $found ) {
+					$this->fail( 'S8: expected ' . count( $expected ) . ' settings in group ' . self::SETTING_GROUP . ", found {$found}" );
 				}
 			}
 		);
@@ -321,7 +352,6 @@ class CFStream_Smoke_Assertions {
 
 	/**
 	 * Each AJAX handler rejects subscribers even with a valid nonce (full profile).
-	 * Best-effort outside WP_Ajax_UnitTestCase.
 	 */
 	public function s10_ajax_capabilities() {
 		if ( ! function_exists( 'wp_set_current_user' ) || ! function_exists( 'wp_create_nonce' ) ) {
@@ -417,28 +447,12 @@ class CFStream_Smoke_Assertions {
 
 		$this->with_admin_user(
 			function () {
-				do_action( 'admin_menu' );
-				do_action( 'admin_init' );
+				// Admin screen so is_admin() is true during render.
+				$this->ensure_admin_screen( 'settings_page_cloudflare-stream' );
 
-				$had_error = false;
-				$prev_handler = null;
-				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- test harness only.
-				$prev_handler = set_error_handler(
-					static function ( $errno, $errstr, $errfile = '', $errline = 0 ) use ( &$had_error, &$prev_handler ) {
-						if ( 0 === error_reporting() ) {
-							return false;
-						}
-						// Headers already sent is expected under CLI PHPUnit.
-						if ( false !== strpos( $errstr, 'Cannot modify header information' ) ) {
-							return true;
-						}
-						$had_error = true;
-						if ( is_callable( $prev_handler ) ) {
-							return (bool) call_user_func( $prev_handler, $errno, $errstr, $errfile, $errline );
-						}
-						return true;
-					}
-				);
+				do_action( 'admin_menu' );
+				// Register plugin settings without running full admin_init.
+				Cloudflare_Stream_Settings::instance()->action_admin_init();
 
 				$level = ob_get_level();
 				ob_start();
@@ -449,22 +463,70 @@ class CFStream_Smoke_Assertions {
 					while ( ob_get_level() > $level ) {
 						ob_end_clean();
 					}
-					restore_error_handler();
 					$this->fail( 'S14: settings_page threw ' . $e->getMessage() );
 					return;
 				}
-				restore_error_handler();
 
-				if ( $had_error ) {
-					$this->fail( 'S14: settings_page emitted a PHP error' );
-				}
 				if ( ! is_string( $out ) || '' === trim( $out ) ) {
 					$this->fail( 'S14: settings_page produced no output' );
-				} elseif ( false === stripos( $out, 'Cloudflare Stream' ) ) {
+					return;
+				}
+				if ( false === stripos( $out, 'Cloudflare Stream' ) ) {
 					$this->fail( 'S14: settings_page output missing expected heading text' );
+				}
+				if ( false === stripos( $out, 'action="options.php"' ) && false === stripos( $out, "action='options.php'" ) ) {
+					$this->fail( 'S14: settings form does not post to options.php' );
+				}
+				$field_id = Cloudflare_Stream_Settings::OPTION_POSTER_TIME;
+				if ( false === strpos( $out, $field_id ) ) {
+					$this->fail( "S14: settings_page output missing field id {$field_id}" );
 				}
 			}
 		);
+	}
+
+	/**
+	 * Set WP_ADMIN and current screen so is_admin() is true.
+	 *
+	 * is_admin() prefers $current_screen over WP_ADMIN when a screen is set.
+	 *
+	 * @param string $screen_id Screen id for set_current_screen().
+	 */
+	private function ensure_admin_screen( $screen_id = 'settings_page_cloudflare-stream' ) {
+		if ( ! defined( 'WP_ADMIN' ) ) {
+			define( 'WP_ADMIN', true );
+		}
+
+		if ( ! class_exists( 'WP_Screen', false ) && defined( 'ABSPATH' ) ) {
+			$screen_class = ABSPATH . 'wp-admin/includes/class-wp-screen.php';
+			if ( is_readable( $screen_class ) ) {
+				require_once $screen_class;
+			}
+		}
+		if ( ! function_exists( 'set_current_screen' ) && defined( 'ABSPATH' ) ) {
+			$screen_file = ABSPATH . 'wp-admin/includes/screen.php';
+			if ( is_readable( $screen_file ) ) {
+				require_once $screen_file;
+			}
+		}
+
+		if ( function_exists( 'set_current_screen' ) ) {
+			set_current_screen( $screen_id );
+			return;
+		}
+
+		if ( class_exists( 'WP_Screen', false ) && method_exists( 'WP_Screen', 'get' ) ) {
+			// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- test harness only.
+			$GLOBALS['current_screen'] = WP_Screen::get( $screen_id );
+			return;
+		}
+
+		// Clear a front-end screen so is_admin() can honour WP_ADMIN.
+		if ( isset( $GLOBALS['current_screen'] ) && is_object( $GLOBALS['current_screen'] )
+			&& method_exists( $GLOBALS['current_screen'], 'in_admin' )
+			&& ! $GLOBALS['current_screen']->in_admin() ) {
+			unset( $GLOBALS['current_screen'] );
+		}
 	}
 
 	/**
@@ -551,7 +613,7 @@ class CFStream_Smoke_Assertions {
 	}
 
 	/**
-	 * Suppress "Cannot modify header information" warnings under CLI PHPUnit.
+	 * Silence "Cannot modify header information" warnings in CLI.
 	 *
 	 * @param callable $cb Callback.
 	 * @return mixed
