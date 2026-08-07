@@ -248,7 +248,7 @@ class CloudflareStreamEdit extends Component {
 
 		bar.progressbar( 'value', val );
 
-		fetchDirectUpload()
+		fetchDirectUpload( file )
 			.then(
 				( { uploadURL, uid } ) => {
 					tusUploadFile(

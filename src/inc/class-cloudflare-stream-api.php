@@ -149,11 +149,26 @@ class Cloudflare_Stream_API {
 		$this->api_token = Cloudflare_Stream_Settings::get_api_token();
 		$this->api_id    = $this->get_api_id( $api_type );
 
-		$base_url        = 'https://api.cloudflare.com/client/v4/' . $api_type . '/' . $this->api_id . '/';
-		$args['headers'] = array(
-			'Authorization' => 'Bearer ' . $this->api_token,
-			'Content-Type'  => 'application/json',
+		$base_url = 'https://api.cloudflare.com/client/v4/' . $api_type . '/' . $this->api_id . '/';
+
+		$custom_headers = array();
+		if ( isset( $args['headers'] ) && is_array( $args['headers'] ) ) {
+			$custom_headers = $args['headers'];
+		}
+
+		$headers = array_merge(
+			array(
+				'Authorization' => 'Bearer ' . $this->api_token,
+			),
+			$custom_headers
 		);
+
+		// JSON is the default for non-empty bodies; TUS create sends headers only.
+		if ( ! isset( $headers['Content-Type'] ) && ! empty( $args['body'] ) ) {
+			$headers['Content-Type'] = 'application/json';
+		}
+
+		$args['headers'] = $headers;
 
 		// Keep outbound API calls from hanging the page render.
 		if ( empty( $args['timeout'] ) ) {
@@ -164,15 +179,24 @@ class Cloudflare_Stream_API {
 		$endpoint    .= $query_string;
 		$route        = $base_url . $endpoint;
 
-		// Get remote HTML file.
 		$response = wp_remote_request( $route, $args );
 
-		// Check for error.
 		if ( is_wp_error( $response ) ) {
 			return $response->get_error_message();
-		} elseif ( 'headers' === $return_headers ) {
+		}
+
+		if ( 'response' === $return_headers ) {
+			return array(
+				'code'    => wp_remote_retrieve_response_code( $response ),
+				'headers' => wp_remote_retrieve_headers( $response ),
+				'body'    => wp_remote_retrieve_body( $response ),
+			);
+		}
+
+		if ( true === $return_headers || 'headers' === $return_headers ) {
 			return wp_remote_retrieve_headers( $response );
 		}
+
 		return wp_remote_retrieve_body( $response );
 	}
 
@@ -1042,32 +1066,142 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Create a one-time direct upload URL for browser TUS uploads.
+	 * Read a single HTTP header value from a wp_remote_* header set.
 	 *
-	 * When Use Signed URLs is enabled, new videos get requireSignedURLs and
-	 * allowedOrigins (site host) at creation time.
-	 *
-	 * @param array $args Optional body fields for the Cloudflare direct_upload endpoint.
-	 * @since 1.0.0
-	 * @return object|null Decoded API response, or null on transport failure.
+	 * @param mixed  $headers Header array or case-insensitive object.
+	 * @param string $name    Header name.
+	 * @return string Header value, or empty string when missing.
 	 */
-	public function create_direct_upload( $args = array() ) {
-		$defaults = array_merge(
-			array(
-				'maxDurationSeconds' => 21600,
-			),
-			$this->get_default_video_security_args()
+	private function get_response_header( $headers, $name ) {
+		if ( is_array( $headers ) ) {
+			foreach ( $headers as $key => $value ) {
+				if ( 0 === strcasecmp( (string) $key, $name ) ) {
+					return is_array( $value ) ? (string) reset( $value ) : (string) $value;
+				}
+			}
+			return '';
+		}
+
+		if ( is_object( $headers ) && isset( $headers[ $name ] ) ) {
+			$value = $headers[ $name ];
+			return is_array( $value ) ? (string) reset( $value ) : (string) $value;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Build a tus Upload-Metadata header value (comma-separated key/value pairs).
+	 *
+	 * Keys are plain text. Values are base64. Flag keys omit the value.
+	 *
+	 * @param array $pairs Map of metadata key => string value, or null for flags.
+	 * @return string Upload-Metadata header value.
+	 */
+	private function build_tus_upload_metadata( $pairs ) {
+		$parts = array();
+
+		foreach ( $pairs as $key => $value ) {
+			$key = strtolower( preg_replace( '/[^a-z0-9]/i', '', (string) $key ) );
+			if ( '' === $key ) {
+				continue;
+			}
+
+			if ( null === $value ) {
+				$parts[] = $key;
+				continue;
+			}
+
+			// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- tus Upload-Metadata values are base64 by protocol.
+			$parts[] = $key . ' ' . base64_encode( (string) $value );
+		}
+
+		return implode( ',', $parts );
+	}
+
+	/**
+	 * Create a one-time TUS direct-upload URL for browser uploads.
+	 *
+	 * Uses POST /stream?direct_user=true so the API token stays on the server.
+	 * Cloudflare returns the upload URL in Location and the video id in
+	 * stream-media-id. When Use Signed URLs is on, requiresignedurls and
+	 * allowedorigins are set via Upload-Metadata at creation time.
+	 *
+	 * @param int   $upload_length Byte length of the file (required by tus).
+	 * @param array $file_meta     Optional keys: name, filetype.
+	 * @since 1.0.0
+	 * @return object|null Object with uploadURL and uid, or null on failure.
+	 */
+	public function create_direct_upload( $upload_length, $file_meta = array() ) {
+		$upload_length = absint( $upload_length );
+		if ( $upload_length < 1 ) {
+			return null;
+		}
+
+		$metadata = array(
+			'maxdurationseconds' => '21600',
 		);
 
-		$body = wp_parse_args( $args, $defaults );
+		if ( ! empty( $file_meta['name'] ) && is_string( $file_meta['name'] ) ) {
+			$metadata['name'] = $file_meta['name'];
+		}
+
+		if ( ! empty( $file_meta['filetype'] ) && is_string( $file_meta['filetype'] ) ) {
+			$metadata['filetype'] = $file_meta['filetype'];
+		}
+
+		$security = $this->get_default_video_security_args();
+		if ( ! empty( $security['requireSignedURLs'] ) ) {
+			$metadata['requiresignedurls'] = null;
+		}
+		if ( ! empty( $security['allowedOrigins'] ) && is_array( $security['allowedOrigins'] ) ) {
+			$origins = array_values(
+				array_filter(
+					array_map( 'strval', $security['allowedOrigins'] )
+				)
+			);
+			if ( ! empty( $origins ) ) {
+				$metadata['allowedorigins'] = implode( ',', $origins );
+			}
+		}
 
 		$request_args = array(
-			'body' => wp_json_encode( $body ),
+			'headers' => array(
+				'Tus-Resumable'   => '1.0.0',
+				'Upload-Length'   => (string) $upload_length,
+				'Upload-Metadata' => $this->build_tus_upload_metadata( $metadata ),
+			),
+			'query'   => 'direct_user=true',
+			'body'    => '',
+			'timeout' => 30,
 		);
 
-		$response_text = $this->post( 'stream/direct_upload', $request_args );
+		$response = $this->post( 'stream', $request_args, 'response' );
 
-		return $this->decode_api_response( $response_text );
+		if ( ! is_array( $response ) ) {
+			return null;
+		}
+
+		$code = isset( $response['code'] ) ? (int) $response['code'] : 0;
+		if ( $code < 200 || $code >= 300 ) {
+			return null;
+		}
+
+		$headers    = isset( $response['headers'] ) ? $response['headers'] : array();
+		$upload_url = $this->get_response_header( $headers, 'Location' );
+		$uid        = $this->get_response_header( $headers, 'stream-media-id' );
+
+		if ( '' === $upload_url || '' === $uid ) {
+			return null;
+		}
+
+		// uploadURL matches the Cloudflare / browser contract (camelCase).
+		$result = new stdClass();
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+		$result->uploadURL = $upload_url;
+		$result->uid       = $uid;
+
+		return $result;
 	}
 
 	/**

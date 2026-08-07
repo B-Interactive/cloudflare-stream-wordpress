@@ -345,10 +345,11 @@ function cloudflare_stream_ajax_query_upload() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
 	cloudflare_stream_verify_ajax_capability();
 
-	$api  = Cloudflare_Stream_API::instance();
-	$data = $api->create_direct_upload();
+	$upload_length = isset( $_REQUEST['uploadLength'] )
+		? absint( wp_unslash( $_REQUEST['uploadLength'] ) )
+		: 0;
 
-	if ( empty( $data ) || ! is_object( $data ) ) {
+	if ( $upload_length < 1 ) {
 		wp_send_json_error(
 			array(
 				'message' => __( 'Could not create upload URL.', 'cloudflare-stream' ),
@@ -356,24 +357,31 @@ function cloudflare_stream_ajax_query_upload() {
 		);
 	}
 
-	if ( empty( $data->success ) || empty( $data->result->uploadURL ) || empty( $data->result->uid ) ) {
-		$message = __( 'Could not create upload URL.', 'cloudflare-stream' );
+	$file_meta = array();
+	if ( isset( $_REQUEST['name'] ) ) {
+		$file_meta['name'] = sanitize_text_field( wp_unslash( $_REQUEST['name'] ) );
+	}
+	if ( isset( $_REQUEST['filetype'] ) ) {
+		$file_meta['filetype'] = sanitize_text_field( wp_unslash( $_REQUEST['filetype'] ) );
+	}
 
-		if ( ! empty( $data->errors[0]->message ) ) {
-			$message = sanitize_text_field( $data->errors[0]->message );
-		}
+	$api  = Cloudflare_Stream_API::instance();
+	$data = $api->create_direct_upload( $upload_length, $file_meta );
 
+	// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Cloudflare uploadURL field.
+	if ( empty( $data ) || ! is_object( $data ) || empty( $data->uploadURL ) || empty( $data->uid ) ) {
 		wp_send_json_error(
 			array(
-				'message' => $message,
+				'message' => __( 'Could not create upload URL.', 'cloudflare-stream' ),
 			)
 		);
 	}
 
 	wp_send_json_success(
 		array(
-			'uploadURL' => esc_url_raw( $data->result->uploadURL ),
-			'uid'       => sanitize_text_field( $data->result->uid ),
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Cloudflare uploadURL field.
+			'uploadURL' => esc_url_raw( $data->uploadURL ),
+			'uid'       => sanitize_text_field( $data->uid ),
 		)
 	);
 }
