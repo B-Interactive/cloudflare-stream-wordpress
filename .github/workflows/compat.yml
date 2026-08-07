@@ -27,7 +27,7 @@ jobs:
       should_run: ${{ steps.check.outputs.should_run }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -61,7 +61,7 @@ jobs:
       wp_php_matrix: ${{ steps.matrix.outputs.wp_php_matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -104,10 +104,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
@@ -127,7 +127,7 @@ jobs:
           done
 
       - name: Upload dist
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -147,7 +147,7 @@ jobs:
     continue-on-error: ${{ matrix.continue_on_error }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
@@ -174,7 +174,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PHP ${{ needs.prepare.outputs.php_below_floor }}
         uses: shivammathur/setup-php@v2
@@ -206,7 +206,7 @@ jobs:
     continue-on-error: ${{ matrix.continue_on_error }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
@@ -217,13 +217,13 @@ jobs:
           extensions: mysqli, zip
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: npm
 
       - name: Cache wp-env
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.wp-env
           key: wp-env-${{ runner.os }}-${{ matrix.wp }}-${{ matrix.php }}-${{ hashFiles('.wp-env.json', 'package-lock.json') }}
@@ -258,7 +258,7 @@ jobs:
 
       - name: Upload JUnit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: junit-wp${{ matrix.wp }}-php${{ matrix.php }}
           path: tests/_output/*.xml
@@ -267,7 +267,7 @@ jobs:
 
       - name: Upload debug.log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: debug-log-wp${{ matrix.wp }}-php${{ matrix.php }}
           path: |
@@ -283,7 +283,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
