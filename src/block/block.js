@@ -17,13 +17,19 @@ import edit from './edit';
 import { deprecated_108 } from './deprecated_108';
 import { deprecated_iframe } from './deprecated_iframe';
 
-const { __ }                = wp.i18n; // Import __() from wp.i18n.
-const { registerBlockType } = wp.blocks; // Import registerBlockType() from wp.blocks.
+/* global cloudflareStream */
+
+/**
+ * WordPress dependencies
+ */
+import { __ } from '@wordpress/i18n';
+import { registerBlockType } from '@wordpress/blocks';
+import { createElement } from '@wordpress/element';
 
 /**
  * Cloudflare Stream SVG path icon
  */
-cloudflareStream.icon = wp.element.createElement(
+cloudflareStream.icon = createElement(
 	'svg',
 	{
 		width: 20,
@@ -31,13 +37,13 @@ cloudflareStream.icon = wp.element.createElement(
 		viewBox: '0 0 68.66 49.14',
 		className: 'cls-1 dashicon',
 	},
-	wp.element.createElement(
+	createElement(
 		'path',
 		{
 			d: 'M61.05,42.28H1.75A.76.76,0,0,1,1,41.52V1.73A.75.75,0,0,1,1.75,1h59.3a.75.75,0,0,1,.76.75V41.52A.76.76,0,0,1,61.05,42.28ZM2.51,40.77H60.3V2.49H2.51Z',
 		}
 	),
-	wp.element.createElement(
+	createElement(
 		'path',
 		{
 			d: 'M45.6,26.09,31.44,17.91a1.17,1.17,0,0,0-1.19-.09,1.19,1.19,0,0,0-.51,1.07V35.25a1.17,1.17,0,0,0,.51,1.06.91.91,0,0,0,.48.13,1.41,1.41,0,0,0,.71-.21L45.6,28.05a1.05,1.05,0,0,0,0-2ZM65.13,48.14H7.86a2.52,2.52,0,0,1-2.52-2.52V7.86A2.52,2.52,0,0,1,7.86,5.34H65.13a2.52,2.52,0,0,1,2.53,2.52V45.62A2.52,2.52,0,0,1,65.13,48.14Zm-56.77-3H64.63V8.36H8.36Z',

@@ -20,8 +20,8 @@ import {
 /**
  * WordPress dependencies
  */
-const { sprintf, __ } = wp.i18n; // Import __() from wp.i18n.
-const {
+import { sprintf, __ } from '@wordpress/i18n';
+import {
 	Disabled,
 	Button,
 	PanelBody,
@@ -30,13 +30,13 @@ const {
 	withNotices,
 	Placeholder,
 	FormFileUpload,
-}                     = wp.components;
-const {
+} from '@wordpress/components';
+import {
 	BlockControls,
 	InspectorControls,
 	MediaUpload,
-} = wp.blockEditor;
-const { Fragment, Component, createRef } = wp.element;
+} from '@wordpress/block-editor';
+import { Fragment, Component, createRef } from '@wordpress/element';
 
 class CloudflareStreamEdit extends Component {
 	constructor( instanceId ) {

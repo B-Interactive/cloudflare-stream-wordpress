@@ -4,6 +4,8 @@
  * @package cloudflare-stream
  */
 
+import { createElement } from '@wordpress/element';
+
 // phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
 const attributes = {
 	alignment: {
@@ -67,14 +69,14 @@ const save = function ( props ) {
 		props.attributes;
 	if ( uid !== false ) {
 		// Create block UI using WordPress createElement.
-		return wp.element.createElement(
+		return createElement(
 			'figure',
 			{
 				className,
 				key: uid,
 			},
 			[
-				wp.element.createElement(
+				createElement(
 					'stream',
 					{
 						src: uid,
@@ -84,13 +86,13 @@ const save = function ( props ) {
 						muted,
 					}
 				),
-				wp.element.createElement(
+				createElement(
 					'div',
 					{
 					className: 'target',
 					}
 				),
-				wp.element.createElement(
+				createElement(
 					'script',
 					{
 						'data-cfasync': false,
@@ -105,7 +107,7 @@ const save = function ( props ) {
 		);
 	}
 
-	return wp.element.createElement(
+	return createElement(
 		'figure',
 		{
 			className,

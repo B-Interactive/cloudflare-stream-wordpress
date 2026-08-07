@@ -6,6 +6,7 @@
  * @package cloudflare-stream
  */
 
+import { createElement } from '@wordpress/element';
 import { streamIframeSource } from './lib';
 
 // phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
@@ -60,20 +61,20 @@ const supports = {
 const save = function ( props ) {
 	const { uid, className } = props.attributes;
 	if ( uid !== false ) {
-		return wp.element.createElement(
+		return createElement(
 			'figure',
 			{
 				className,
 				key: uid,
 			},
 			[
-				wp.element.createElement(
+				createElement(
 					'div',
 					{
 						className: 'player-wrapper',
 					},
 					[
-						wp.element.createElement(
+						createElement(
 							'iframe',
 							{
 								className: 'player-frame',
@@ -88,7 +89,7 @@ const save = function ( props ) {
 		);
 	}
 
-	return wp.element.createElement(
+	return createElement(
 		'figure',
 		{
 			className,

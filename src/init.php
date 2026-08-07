@@ -61,15 +61,22 @@ function cloudflare_stream_block_editor_assets() {
 	// Scripts.
 	$script_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.build.js';
 	if ( file_exists( $script_path ) ) {
+		$asset_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.build.asset.php';
+		$asset      = file_exists( $asset_path )
+			? require $asset_path
+			: array(
+				'dependencies' => array(),
+				'version'      => filemtime( $script_path ),
+			);
+
 		wp_enqueue_script(
 			'cloudflare-stream-block-js',
 			// Handle.
 			plugins_url( '/dist/blocks.build.js', __DIR__ ),
 			// Block.build.js: We register the block here. Built with Webpack.
-			array( 'wp-blocks', 'wp-i18n', 'wp-element' ),
-			// Dependencies, defined above.
-			filemtime( $script_path ),
-			// Version: filemtime gets file modification time.
+			// media-views is required by the Stream media frame (wp.media global).
+			array_merge( $asset['dependencies'], array( 'media-views' ) ),
+			$asset['version'],
 			true
 			// Enqueue the script in the footer.
 		);
