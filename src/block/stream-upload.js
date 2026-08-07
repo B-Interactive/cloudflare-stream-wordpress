@@ -8,9 +8,12 @@
  */
 
 import * as tus from 'tus-js-client';
+import { streamAjax } from '../lib/ajax';
 
-/* global ajaxurl */
-/* global cloudflareStream */
+/**
+ * 50 MiB — multiple of 256 KiB, within Cloudflare's recommended chunk range.
+ */
+const CHUNK_SIZE = 52428800;
 
 /**
  * Ask WordPress for a one-time Stream direct-upload URL.
@@ -19,54 +22,41 @@ import * as tus from 'tus-js-client';
  * @return {Promise<{ uploadURL: string, uid: string }>} Upload target and video id.
  */
 export function fetchDirectUpload() {
-	return new Promise( ( resolve, reject ) => {
-		jQuery.ajax(
-			{
-				url: ajaxurl + '?action=query-cloudflare-stream-upload',
-				method: 'POST',
-				data: {
-					nonce: cloudflareStream.nonce,
-				},
-				success( response ) {
-					if (
-						! response.success ||
-						! response.data ||
-						! response.data.uploadURL ||
-						! response.data.uid
-					) {
-						const message =
-							response.data && response.data.message
-								? response.data.message
-								: 'Could not start upload.';
-						reject( new Error( message ) );
-						return;
-					}
+	return streamAjax( 'query-cloudflare-stream-upload' ).then( ( response ) => {
+		if (
+			! response.success ||
+			! response.data ||
+			! response.data.uploadURL ||
+			! response.data.uid
+		) {
+			const message =
+				response.data && response.data.message
+					? response.data.message
+					: 'Could not start upload.';
+			throw new Error( message );
+		}
 
-					resolve(
-						{
-							uploadURL: response.data.uploadURL,
-							uid: response.data.uid,
-						}
-					);
-				},
-				error( jqXHR, textStatus ) {
-					reject( new Error( textStatus ) );
-				},
-			}
-		);
+		return {
+			uploadURL: response.data.uploadURL,
+			uid: response.data.uid,
+		};
 	} );
 }
 
 /**
  * Upload a file to a pre-created Stream direct-upload URL via TUS.
  *
- * @param {File}     file               Browser file object.
- * @param {string}   uploadURL          One-time direct upload URL.
- * @param {Object}   handlers           Progress and completion handlers.
- * @param {Function} handlers.onError   Called with the error value.
+ * The caller owns the returned Upload instance and may call abort() to cancel.
+ * With uploadUrl set, tus resumes against that same URL; Cloudflare direct
+ * upload URLs are single-use and time-boxed, so a long pause can make resume fail.
+ *
+ * @param {File}     file                Browser file object.
+ * @param {string}   uploadURL           One-time direct upload URL.
+ * @param {Object}   handlers            Progress and completion handlers.
+ * @param {Function} handlers.onError    Called with the error value.
  * @param {Function} handlers.onProgress Called with bytesUploaded, bytesTotal.
- * @param {Function} handlers.onSuccess Called with the tus Upload instance.
- * @return {Object} tus Upload instance.
+ * @param {Function} handlers.onSuccess  Called with the tus Upload instance.
+ * @return {Object} tus Upload instance. Caller owns the handle.
  */
 export function tusUploadFile( file, uploadURL, handlers ) {
 	const upload = new tus.Upload(
@@ -75,6 +65,7 @@ export function tusUploadFile( file, uploadURL, handlers ) {
 			removeFingerprintOnSuccess: true,
 			// Pre-created direct upload URL; no account API token needed.
 			uploadUrl: uploadURL,
+			chunkSize: CHUNK_SIZE,
 			retryDelays: [ 0, 1000, 3000, 5000 ],
 			metadata: {
 				name: file.name,
@@ -105,25 +96,12 @@ export function tusUploadFile( file, uploadURL, handlers ) {
 /**
  * Poll Stream processing status for a video id.
  *
+ * Returns the raw { success, data } envelope from WordPress so callers can
+ * branch on both success and data.data.status / readyToStream.
+ *
  * @param {string} uid Stream video id.
  * @return {Promise<Object>} AJAX response body from WordPress.
  */
 export function checkUploadStatus( uid ) {
-	return new Promise( ( resolve, reject ) => {
-		jQuery.ajax(
-			{
-				url: ajaxurl + '?action=cloudflare-stream-check-upload',
-				data: {
-					nonce: cloudflareStream.nonce,
-					uid,
-				},
-				success( data ) {
-					resolve( data );
-				},
-				error( jqXHR, textStatus ) {
-					reject( new Error( textStatus ) );
-				},
-			}
-		);
-	} );
+	return streamAjax( 'cloudflare-stream-check-upload', { uid } );
 }
