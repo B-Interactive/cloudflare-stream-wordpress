@@ -70,8 +70,27 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 		$subscriber_id = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		wp_set_current_user( $subscriber_id );
 
-		$rejected = false;
+		// wp_send_json_* may send headers and leave buffers open outside _handleAjax.
+		$level        = ob_get_level();
+		$rejected     = false;
+		$prev_handler = null;
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- test harness only.
+		$prev_handler = set_error_handler(
+			static function ( $errno, $errstr, $errfile = '', $errline = 0 ) use ( &$prev_handler ) {
+				if ( 0 === error_reporting() ) {
+					return false;
+				}
+				if ( false !== strpos( $errstr, 'Cannot modify header information' ) ) {
+					return true;
+				}
+				if ( is_callable( $prev_handler ) ) {
+					return (bool) call_user_func( $prev_handler, $errno, $errstr, $errfile, $errline );
+				}
+				return false;
+			}
+		);
 		try {
+			ob_start();
 			cloudflare_stream_verify_ajax_capability();
 		} catch ( WPAjaxDieStopException $e ) {
 			$rejected = true;
@@ -82,6 +101,11 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 		} catch ( WPAjaxDieContinueException $e ) {
 			$rejected = true;
 			unset( $e );
+		} finally {
+			restore_error_handler();
+			while ( ob_get_level() > $level ) {
+				ob_end_clean();
+			}
 		}
 
 		$this->assertTrue( $rejected, 'cloudflare_stream_verify_ajax_capability must stop subscribers' );

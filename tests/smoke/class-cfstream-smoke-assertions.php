@@ -421,19 +421,34 @@ class CFStream_Smoke_Assertions {
 				do_action( 'admin_init' );
 
 				$had_error = false;
-				set_error_handler(
-					function () use ( &$had_error ) {
+				$prev_handler = null;
+				// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- test harness only.
+				$prev_handler = set_error_handler(
+					static function ( $errno, $errstr, $errfile = '', $errline = 0 ) use ( &$had_error, &$prev_handler ) {
+						if ( 0 === error_reporting() ) {
+							return false;
+						}
+						// Headers already sent is expected under CLI PHPUnit.
+						if ( false !== strpos( $errstr, 'Cannot modify header information' ) ) {
+							return true;
+						}
 						$had_error = true;
+						if ( is_callable( $prev_handler ) ) {
+							return (bool) call_user_func( $prev_handler, $errno, $errstr, $errfile, $errline );
+						}
 						return true;
 					}
 				);
 
+				$level = ob_get_level();
 				ob_start();
 				try {
 					Cloudflare_Stream_Settings::instance()->settings_page();
 					$out = ob_get_clean();
 				} catch ( Throwable $e ) {
-					ob_end_clean();
+					while ( ob_get_level() > $level ) {
+						ob_end_clean();
+					}
 					restore_error_handler();
 					$this->fail( 'S14: settings_page threw ' . $e->getMessage() );
 					return;
@@ -525,9 +540,59 @@ class CFStream_Smoke_Assertions {
 		}
 		wp_set_current_user( $admin_id );
 		try {
-			$cb();
+			$this->with_silenced_header_errors(
+				function () use ( $cb ) {
+					$this->run_buffered( $cb );
+				}
+			);
 		} finally {
 			wp_set_current_user( $previous );
+		}
+	}
+
+	/**
+	 * Suppress "Cannot modify header information" warnings under CLI PHPUnit.
+	 *
+	 * @param callable $cb Callback.
+	 * @return mixed
+	 */
+	private function with_silenced_header_errors( $cb ) {
+		$previous = null;
+		// phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_set_error_handler -- test harness only.
+		$previous = set_error_handler(
+			static function ( $errno, $errstr, $errfile = '', $errline = 0 ) use ( &$previous ) {
+				if ( 0 === error_reporting() ) {
+					return false;
+				}
+				if ( false !== strpos( $errstr, 'Cannot modify header information' ) ) {
+					return true;
+				}
+				if ( is_callable( $previous ) ) {
+					return (bool) call_user_func( $previous, $errno, $errstr, $errfile, $errline );
+				}
+				return false;
+			}
+		);
+		try {
+			return $cb();
+		} finally {
+			restore_error_handler();
+		}
+	}
+
+	/**
+	 * @param callable $cb Callback.
+	 * @return mixed
+	 */
+	private function run_buffered( $cb ) {
+		$level = ob_get_level();
+		ob_start();
+		try {
+			return $cb();
+		} finally {
+			while ( ob_get_level() > $level ) {
+				ob_end_clean();
+			}
 		}
 	}
 
