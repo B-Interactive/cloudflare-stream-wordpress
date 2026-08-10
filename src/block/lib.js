@@ -1,5 +1,5 @@
 /**
- * Lib
+ * Stream playback URL helpers.
  *
  * @package cloudflare-stream
  */
@@ -36,29 +36,6 @@ const getMediaDomain = function () {
 	}
 
 	return 'cloudflarestream.com';
-};
-
-/**
- * Host for media assets such as thumbnails.
- *
- * Standard iframe domains use videodelivery.net for assets.
- *
- * @return {string} Asset host.
- */
-const getMediaAssetHost = function () {
-	if (
-		typeof cloudflareStream !== 'undefined' &&
-		cloudflareStream.mediaAssetHost
-	) {
-		return cloudflareStream.mediaAssetHost;
-	}
-
-	const domain = getMediaDomain();
-	if ( getStandardDomains().indexOf( domain ) !== -1 ) {
-		return 'videodelivery.net';
-	}
-
-	return domain;
 };
 
 /**
@@ -103,27 +80,4 @@ export const streamIframeSource = function ( attributes ) {
 	}
 
 	return 'https://' + domain + '/' + idPath + '/iframe' + queryString;
-};
-
-/**
- * Build a thumbnail URL for a video id or signed token.
- *
- * @param {string} id   Video UID or token.
- * @param {string} time Optional time with unit, e.g. "0s".
- * @return {string} Poster URL.
- */
-export const streamPosterUrl = function ( id, time ) {
-	const host = getMediaAssetHost();
-	const cleanId = String( id || '' ).split( '?' )[ 0 ];
-	let url =
-		'https://' + host + '/' + cleanId + '/thumbnails/thumbnail.jpg';
-
-	if ( time ) {
-		url +=
-			( url.indexOf( '?' ) === -1 ? '?' : '&' ) +
-			'time=' +
-			encodeURIComponent( time );
-	}
-
-	return url;
 };

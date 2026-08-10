@@ -1,19 +1,15 @@
 /**
- * Edit
+ * Block edit interface for the Cloudflare Stream Video block.
  *
  * @package cloudflare-stream
  */
 
-/* Common logic to generate stream URL */
 import { streamIframeSource } from './lib';
-
-/* Upload transport: direct-upload URL, TUS, encoding status */
 import {
 	fetchDirectUpload,
 	tusUploadFile,
 	checkUploadStatus,
 } from './stream-upload';
-
 import { streamAjax } from '../lib/ajax';
 
 /* global cloudflareStream */
@@ -39,7 +35,6 @@ import {
 	useBlockProps,
 } from '@wordpress/block-editor';
 import {
-	Fragment,
 	useCallback,
 	useEffect,
 	useLayoutEffect,
@@ -1073,16 +1068,9 @@ function CloudflareStreamEdit( {
 		const progressAndActions = (
 			<>
 				{ showProgress && (
-					<div className="cloudflare-stream-progress-wrap">
-						<ProgressBar
-							value={ progress }
-							className="cloudflare-stream-progress"
-						/>
-						{ null !== progress && (
-							<p className="cloudflare-stream-progress__label">
-								{ progress }%
-							</p>
-						) }
+					<div className="cloudflare-stream-progress">
+						<ProgressBar value={ progress } />
+						{ null !== progress && <p>{ progress }%</p> }
 					</div>
 				) }
 				{ showRetry && (
@@ -1161,7 +1149,7 @@ function CloudflareStreamEdit( {
 	}
 
 	return (
-		<Fragment>
+		<>
 			<BlockControls group="other">
 				<ToolbarButton
 					icon="edit"
@@ -1221,7 +1209,7 @@ function CloudflareStreamEdit( {
 					></iframe>
 				</Disabled>
 			</figure>
-		</Fragment>
+		</>
 	);
 }
 

@@ -1,10 +1,9 @@
 /**
- * Block
+ * Cloudflare Stream Video block registration.
  *
  * @package cloudflare-stream
  */
 
-// Import CSS.
 import './style.scss';
 import './editor.scss';
 
@@ -12,8 +11,6 @@ import './editor.scss';
  * Internal dependencies
  */
 import edit from './edit';
-
-/* Deprecated versions of block */
 import { deprecated_108 } from './deprecated_108';
 import { deprecated_iframe } from './deprecated_iframe';
 
@@ -27,7 +24,7 @@ import { registerBlockType } from '@wordpress/blocks';
 import { createElement } from '@wordpress/element';
 
 /**
- * Cloudflare Stream SVG path icon
+ * Cloudflare Stream icon, shared by the inserter and the block placeholder.
  */
 cloudflareStream.icon = createElement(
 	'svg',
@@ -51,26 +48,12 @@ cloudflareStream.icon = createElement(
 	)
 );
 
-/**
- * Register: aa Gutenberg Block.
- *
- * Registers a new block provided a unique name and an object defining its
- * behavior. Once registered, the block is made editor as an option to any
- * editor interface where blocks are implemented.
- *
- * @link https://wordpress.org/gutenberg/handbook/block-api/
- * @param {string} name     Block name.
- * @param {Object} settings Block settings.
- * @return {?WPBlock}          The block, if it has been successfully
- *                             registered; otherwise `undefined`.
- */
 registerBlockType(
 	'cloudflare-stream/block-video',
 	{
 		apiVersion: 2,
 		title: __( 'Cloudflare Stream Video', 'cloudflare-stream' ),
 		icon: cloudflareStream.icon,
-		render_callback: 'cloudflare_stream_render_block',
 		category: 'embed',
 		keywords: [
 			__( 'Cloudflare', 'cloudflare-stream' ),
@@ -120,23 +103,14 @@ registerBlockType(
 			align: true,
 		},
 
-		/**
-		* The edit function describes the structure of your block in the context of the editor.
-		* This represents what the editor will render when the block is used.
-		*
-		* The "edit" property must be a valid function.
-		*
-		* @link https://wordpress.org/gutenberg/handbook/block-api/block-edit-save/
-		*/
 		edit,
 
 		/**
-		* Dynamic block: nothing is stored in post content except attributes.
-		* Front-end markup comes from the PHP render_callback.
-		*
-		* @link https://wordpress.org/gutenberg/handbook/block-api/block-edit-save/
-		* @return {null} Null save output for dynamic rendering.
-		*/
+		 * Dynamic block: nothing is stored in post content except attributes.
+		 * Front-end markup comes from the PHP render callback.
+		 *
+		 * @return {null} Null save output for dynamic rendering.
+		 */
 		save() {
 			return null;
 		},

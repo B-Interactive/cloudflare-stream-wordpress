@@ -1,32 +1,24 @@
 /**
- * #.# Styles
- *
- * CSS for both Frontend+Backend.
+ * Block styles, loaded in the editor and on the front end.
  */
 .wp-block-cloudflare-stream-block-video {
-	// Remove the left and right margin the figure is born with.
+	/* The figure is born with left and right margin; drop it. */
 	margin-left: 0;
 	margin-right: 0;
 	margin-bottom: 1em;
-
 	min-width: 50%;
-
-	stream {
-		max-width: 100%;
-	}
-
-	@supports (position: sticky) {
-
-		[poster] {
-			object-fit: cover;
-		}
-	}
 
 	&.aligncenter {
 		text-align: center;
 	}
 
-	// player layout
+	/* Player element written by older saved posts. */
+	/* stylelint-disable-next-line selector-type-no-unknown */
+	stream {
+		max-width: 100%;
+	}
+
+	/* Player fills a 16:9 box. */
 	.player-wrapper {
 		position: relative;
 		padding-top: 56.25%;

@@ -1,8 +1,5 @@
 /**
- * #.# Editor Styles
- *
- * CSS for just Backend enqueued after style.scss
- * which makes it higher in priority.
+ * Editor styles, loaded after style.scss so they take priority.
  */
 .wp-block-cloudflare-stream-block-video {
 	margin: 0;
@@ -25,22 +22,22 @@
 	min-width: 50%;
 }
 
-.cloudflare-stream-progress-wrap {
-	width: 100%;
-	margin-bottom: 8px;
-}
-
 .cloudflare-stream-progress {
 	width: 100%;
+	margin-bottom: 8px;
+
+	progress {
+		width: 100%;
+	}
+
+	p {
+		margin: 4px 0 0;
+		text-align: center;
+		font-weight: 700;
+	}
 }
 
-.cloudflare-stream-progress__label {
-	margin: 4px 0 0;
-	width: 100%;
-	text-align: center;
-	font-weight: 700;
-}
-
+/* Stream library sidebar: fields the Cloudflare library does not use. */
 label[data-setting="url"],
 label[data-setting="caption"],
 label[data-setting="description"] {
