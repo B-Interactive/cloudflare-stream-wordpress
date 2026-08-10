@@ -113,9 +113,13 @@ That means you will be working in two separate places, and the steps below say w
 
 ### Block
 
-Insert the **Cloudflare Stream Video** block (`cloudflare-stream/block-video`), then either upload a video file or open **Stream Library** to browse and select an existing video. The block inspector offers **Autoplay**, **Loop**, **Muted** and **Playback Controls**.
+Insert the **Cloudflare Stream Video** block (`cloudflare-stream/block-video`), then either drop a video file onto the placeholder, choose **Upload**, or open **Stream Library** to browse and select a video already in your account. Uploads go straight to Cloudflare in resumable chunks, with a progress bar while transferring and again while Cloudflare processes the video; **Cancel** stops an upload, and **Retry** reappears if one fails. No WordPress media attachment is created. Once a video is ready, the block toolbar's **Replace video** button swaps it for another.
+
+The block inspector offers **Autoplay**, **Loop**, **Muted** and **Playback Controls**, and the block supports the standard alignment controls.
 
 The block renders dynamically on the front end, so it uses the same signed embed path as the shortcode. There is no block UI for `preload`, `postertime` or `posterurl` — use the shortcode when you need those. Blocks saved by older versions (static iframe or the old `<stream>` tag) keep working in a deprecated form, but will not get signed playback until the block is updated or converted.
+
+Uploading and browsing the Stream library require the `manage_options` capability.
 
 ### Shortcode
 
@@ -142,6 +146,8 @@ Example:
 
 ## Developers
 
+The block editor interface is built with WordPress block editor components; `tus-js-client` is the only production dependency. Node 22 or newer is required.
+
 Clone the repository, then from the project directory:
 
 ```bash
@@ -149,6 +155,14 @@ npm install
 npm run build:dev   # development build, easier browser debugging
 npm run build       # production build
 npm run package     # production build plus plugin ZIP
+```
+
+Checks:
+
+```bash
+npm run lint:css     # stylelint
+npm run test:compat  # PHPCompatibility and PHPCS
+npm run test:php     # PHPUnit via wp-env, skipped when Docker is unavailable
 ```
 
 ## Licence
