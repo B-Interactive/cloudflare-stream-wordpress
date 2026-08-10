@@ -9,7 +9,6 @@
 import { createElement } from '@wordpress/element';
 import { streamIframeSource } from './lib';
 
-// phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
 const attributes = {
 	alignment: {
 		type: 'string',

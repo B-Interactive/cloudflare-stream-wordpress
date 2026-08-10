@@ -6,7 +6,6 @@
 
 import { createElement } from '@wordpress/element';
 
-// phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
 const attributes = {
 	alignment: {
 		type: 'string',

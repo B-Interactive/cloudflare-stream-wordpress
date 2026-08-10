@@ -181,7 +181,8 @@ function cloudflare_stream_render_block( $block_attributes, $content ) {
 		}
 	}
 
-	return '<figure class="wp-block-cloudflare-stream-block-video">' . $embed . '</figure>';
+	// Wrapper carries supports.align classes to match the editor block props.
+	return '<figure ' . get_block_wrapper_attributes() . '>' . $embed . '</figure>';
 }
 
 /**

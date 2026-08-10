@@ -14,7 +14,8 @@ import {
 	checkUploadStatus,
 } from './stream-upload';
 
-/* global ajaxurl */
+import { streamAjax } from '../lib/ajax';
+
 /* global cloudflareStream */
 
 /**
@@ -35,18 +36,25 @@ import {
 import {
 	BlockControls,
 	InspectorControls,
-	MediaUpload,
+	useBlockProps,
 } from '@wordpress/block-editor';
-import { Fragment, Component, createRef } from '@wordpress/element';
+import {
+	Fragment,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from '@wordpress/element';
 
 /** Transient poll failures before surfacing an error. */
 const ENCODE_POLL_MAX_ATTEMPTS = 3;
 
 /**
- * Resolve the initial UI status from block attributes.
+ * Resolve the UI status from block attributes.
  *
  * @param {Object} attributes Block attributes.
- * @return {'idle'|'encoding'|'ready'} Initial status.
+ * @return {'idle'|'encoding'|'ready'} Derived status.
  */
 function statusFromAttributes( attributes ) {
 	if ( ! attributes.uid ) {
@@ -95,12 +103,69 @@ function normaliseErrorMessage( value ) {
 }
 
 /**
+ * HTTP status from a thrown apiFetch / WP error payload, if present.
+ *
+ * @param {*} value Raw error value.
+ * @return {number|null} Status code or null.
+ */
+function errorHttpStatus( value ) {
+	if ( ! value || typeof value !== 'object' ) {
+		return null;
+	}
+	if ( typeof value.status === 'number' ) {
+		return value.status;
+	}
+	if ( typeof value.statusCode === 'number' ) {
+		return value.statusCode;
+	}
+	if ( value.data && typeof value.data.status === 'number' ) {
+		return value.data.status;
+	}
+	return null;
+}
+
+/**
+ * Machine-readable error code from a WP-style payload, if present.
+ *
+ * @param {*} value Raw error value.
+ * @return {string} Error code or empty string.
+ */
+function errorCode( value ) {
+	if ( ! value || typeof value !== 'object' ) {
+		return '';
+	}
+	if ( typeof value.code === 'string' ) {
+		return value.code;
+	}
+	if ( value.data && typeof value.data.code === 'string' ) {
+		return value.data.code;
+	}
+	return '';
+}
+
+/**
  * Whether a failure is a hard auth/permission problem (no auto-retry).
  *
  * @param {*} value Raw error value or message.
  * @return {boolean} True when retrying the same request is pointless.
  */
 function isNonRetryableFailure( value ) {
+	const status = errorHttpStatus( value );
+	if ( status === 401 || status === 403 ) {
+		return true;
+	}
+
+	const code = errorCode( value ).toLowerCase();
+	if (
+		code === 'rest_forbidden' ||
+		code === 'rest_cookie_invalid_nonce' ||
+		code.indexOf( 'forbidden' ) !== -1 ||
+		code.indexOf( 'nonce' ) !== -1 ||
+		code.indexOf( 'unauthorized' ) !== -1
+	) {
+		return true;
+	}
+
 	const text = normaliseErrorMessage( value ).toLowerCase();
 	if ( ! text ) {
 		return false;
@@ -133,182 +198,80 @@ function snapshotReadyAttributes( attributes ) {
 	};
 }
 
-class CloudflareStreamEdit extends Component {
-	constructor( props ) {
-		super( props );
+/**
+ * Block edit UI for Cloudflare Stream videos.
+ *
+ * @param {Object}    props                  Block edit props.
+ * @param {Object}    props.attributes       Block attributes.
+ * @param {Function}  props.setAttributes    Attribute updater.
+ * @param {WPElement} props.noticeUI         Notice list from withNotices.
+ * @param {Object}    props.noticeOperations Notice helpers from withNotices.
+ * @return {WPElement} Edit interface.
+ */
+function CloudflareStreamEdit( {
+	attributes,
+	setAttributes,
+	noticeUI,
+	noticeOperations,
+} ) {
+	const { autoplay, controls, loop, muted } = attributes;
+	const blockProps = useBlockProps();
+	const canManage = Boolean(
+		typeof cloudflareStream !== 'undefined' && cloudflareStream.nonce
+	);
 
-		this.state = {
-			// status: 'idle' | 'uploading' | 'encoding' | 'ready' | 'error'
-			status: statusFromAttributes( props.attributes ),
-			progress: null,
-			errorMessage: '',
-		};
+	const [ status, setStatus ] = useState( () =>
+		statusFromAttributes( attributes )
+	);
+	const [ progress, setProgress ] = useState( null );
+	const [ errorMessage, setErrorMessage ] = useState( '' );
 
-		this.streamPlayer = createRef();
-		this.encodingPoller = null;
-		this.upload = null;
-		this.selectedFile = null;
-		this.retried = false;
-		this.uploadGeneration = 0;
-		this.encodePollAttempts = 0;
-		// Ready video attrs before replace; restored if the replace is cancelled.
-		this.readySnapshot = snapshotReadyAttributes( props.attributes );
+	const encodingPollerRef = useRef( null );
+	const uploadRef = useRef( null );
+	const selectedFileRef = useRef( null );
+	const retriedRef = useRef( false );
+	const uploadGenerationRef = useRef( 0 );
+	const encodePollAttemptsRef = useRef( 0 );
+	const readySnapshotRef = useRef( snapshotReadyAttributes( attributes ) );
+	const mediaFrameRef = useRef( null );
 
-		this.toggleAttribute = this.toggleAttribute.bind( this );
-		this.open = this.open.bind( this );
-		this.select = this.select.bind( this );
-		this.delete = this.delete.bind( this );
-		this.cancel = this.cancel.bind( this );
-		this.retry = this.retry.bind( this );
-		this.onFileChange = this.onFileChange.bind( this );
-		this.switchToEditing = this.switchToEditing.bind( this );
-	}
+	// Async upload/encode callbacks read the latest props via refs.
+	const attributesRef = useRef( attributes );
+	const setAttributesRef = useRef( setAttributes );
+	const noticeOperationsRef = useRef( noticeOperations );
+	const selectAttachmentRef = useRef( () => {} );
+	const deleteAttachmentRef = useRef( () => {} );
+	const encodeRef = useRef( () => {} );
+	const uploadFromFilesRef = useRef( () => {} );
 
-	componentDidMount() {
-		const { attributes } = this.props;
+	const invalidateUploadGeneration = useCallback( () => {
+		uploadGenerationRef.current += 1;
+	}, [] );
 
-		if ( attributes.uid && ! attributes.thumbnail ) {
-			this.switchToEncoding();
+	const clearEncodingPoller = useCallback( () => {
+		if ( encodingPollerRef.current ) {
+			clearTimeout( encodingPollerRef.current );
+			encodingPollerRef.current = null;
 		}
-	}
+	}, [] );
 
-	componentWillUnmount() {
-		this.invalidateUploadGeneration();
-		this.clearEncodingPoller();
-		this.abortUpload();
-	}
-
-	/**
-	 * Bump the upload generation so in-flight callbacks become no-ops.
-	 */
-	invalidateUploadGeneration() {
-		this.uploadGeneration += 1;
-	}
-
-	/**
-	 * Stop the encoding status poller if it is running.
-	 */
-	clearEncodingPoller() {
-		if ( this.encodingPoller ) {
-			clearTimeout( this.encodingPoller );
-			this.encodingPoller = null;
+	const abortUpload = useCallback( () => {
+		if ( uploadRef.current && typeof uploadRef.current.abort === 'function' ) {
+			// tus-js-client v4 may return a Promise from abort().
+			Promise.resolve( uploadRef.current.abort() ).catch( () => {} );
 		}
-	}
+		uploadRef.current = null;
+	}, [] );
 
-	/**
-	 * Abort an in-flight TUS upload, if any.
-	 */
-	abortUpload() {
-		if ( this.upload && typeof this.upload.abort === 'function' ) {
-			try {
-				this.upload.abort();
-			} catch ( error ) {
-				// Upload may already be finished or torn down.
-			}
+	const isCurrentGeneration = useCallback( ( generation ) => {
+		return generation === uploadGenerationRef.current;
+	}, [] );
+
+	const clearNotices = useCallback( () => {
+		if ( noticeOperationsRef.current ) {
+			noticeOperationsRef.current.removeAllNotices();
 		}
-		this.upload = null;
-	}
-
-	/**
-	 * True when the given generation still owns the active upload/encode work.
-	 *
-	 * @param {number} generation Generation captured when work started.
-	 * @return {boolean} Whether callbacks may update UI/attributes.
-	 */
-	isCurrentGeneration( generation ) {
-		return generation === this.uploadGeneration;
-	}
-
-	toggleAttribute( attribute ) {
-		const { setAttributes } = this.props;
-		return ( newValue ) => {
-			setAttributes( {
-				[ attribute ]: newValue,
-			} );
-		};
-	}
-
-	open() {
-		const block = this;
-
-		this.mediaFrame = this.mediaFrame || new cloudflareStream.media.view.MediaFrame(
-			this.select
-		);
-		this.mediaFrame.open();
-
-		this.mediaFrame.on( 'delete', function ( attachment ) {
-			block.delete( attachment );
-		} );
-		this.mediaFrame.on( 'select', function () {
-			block.select();
-		} );
-	}
-
-	select( attachment ) {
-		const { setAttributes } = this.props;
-
-		// Drops any pending direct-upload / TUS work for a library pick.
-		this.invalidateUploadGeneration();
-		this.clearEncodingPoller();
-		this.abortUpload();
-		this.selectedFile = null;
-		this.retried = false;
-		this.encodePollAttempts = 0;
-
-		setAttributes( {
-			uid: attachment.uid,
-			fingerprint: false,
-			thumbnail: attachment.thumb.src,
-		} );
-
-		this.readySnapshot = {
-			uid: attachment.uid,
-			fingerprint: false,
-			thumbnail: attachment.thumb.src,
-		};
-
-		this.setState( {
-			status: 'ready',
-			progress: null,
-			errorMessage: '',
-		} );
-	}
-
-	delete( attachment ) {
-		jQuery.ajax( {
-			url: ajaxurl + '?action=cloudflare-stream-delete',
-			data: {
-				nonce: cloudflareStream.nonce,
-				uid: attachment.uid,
-			},
-			success() {
-				jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
-			},
-			error( jqXHR, textStatus ) {
-				console.error( 'Error: ' + textStatus );
-			},
-		} );
-	}
-
-	/**
-	 * User-facing instruction text for the current status.
-	 *
-	 * @return {string} Placeholder instructions.
-	 */
-	getInstructions() {
-		const { status, errorMessage } = this.state;
-		const instructions = {
-			idle: __( 'Select a file from your library.', 'cloudflare-stream' ),
-			uploading: __( 'Uploading your video.', 'cloudflare-stream' ),
-			encoding: __(
-				'Upload complete. Processing video.',
-				'cloudflare-stream'
-			),
-			error: errorMessage,
-		};
-
-		return instructions[ status ] || instructions.idle;
-	}
+	}, [] );
 
 	/**
 	 * Surface a failed upload or processing message via editor notices.
@@ -316,8 +279,7 @@ class CloudflareStreamEdit extends Component {
 	 * @param {string} message User-facing error text.
 	 * @param {*}      [cause] Optional raw error for the console.
 	 */
-	showUploadError( message, cause ) {
-		const { noticeOperations } = this.props;
+	const showUploadError = useCallback( ( message, cause ) => {
 		const text =
 			normaliseErrorMessage( message ) ||
 			__(
@@ -331,70 +293,208 @@ class CloudflareStreamEdit extends Component {
 			console.error( text );
 		}
 
-		if ( noticeOperations ) {
-			noticeOperations.removeAllNotices();
-			noticeOperations.createErrorNotice( text );
+		if ( noticeOperationsRef.current ) {
+			noticeOperationsRef.current.removeAllNotices();
+			noticeOperationsRef.current.createErrorNotice( text );
 		}
 
-		this.setState( {
-			status: 'error',
-			progress: null,
-			errorMessage: text,
-		} );
-	}
+		setStatus( 'error' );
+		setProgress( null );
+		setErrorMessage( text );
+	}, [] );
+
+	const toggleAttribute = useCallback(
+		( attribute ) => ( newValue ) => {
+			setAttributes( {
+				[ attribute ]: newValue,
+			} );
+		},
+		[ setAttributes ]
+	);
+
+	/**
+	 * Remove a video from the Stream library.
+	 *
+	 * @param {Object} attachment Selected library attachment.
+	 */
+	const deleteAttachment = useCallback(
+		( attachment ) => {
+			const deletedUid = attachment && attachment.uid;
+
+			streamAjax( 'cloudflare-stream-delete', { uid: deletedUid } ).catch(
+				( error ) => {
+					console.error( error );
+				}
+			);
+
+			// Drop block binding when the embedded asset is removed.
+			const current = attributesRef.current;
+			if ( ! deletedUid || ! current.uid || deletedUid !== current.uid ) {
+				return;
+			}
+
+			invalidateUploadGeneration();
+			clearEncodingPoller();
+			abortUpload();
+			selectedFileRef.current = null;
+			retriedRef.current = false;
+			encodePollAttemptsRef.current = 0;
+			readySnapshotRef.current = null;
+			clearNotices();
+
+			setAttributes( {
+				uid: false,
+				fingerprint: false,
+				thumbnail: false,
+			} );
+			setStatus( 'idle' );
+			setProgress( null );
+			setErrorMessage( '' );
+		},
+		[
+			abortUpload,
+			clearEncodingPoller,
+			clearNotices,
+			invalidateUploadGeneration,
+			setAttributes,
+		]
+	);
+
+	/**
+	 * Apply a library selection to the block.
+	 *
+	 * @param {Object} attachment Selected library attachment.
+	 */
+	const selectAttachment = useCallback(
+		( attachment ) => {
+			invalidateUploadGeneration();
+			clearEncodingPoller();
+			abortUpload();
+			selectedFileRef.current = null;
+			retriedRef.current = false;
+			encodePollAttemptsRef.current = 0;
+			clearNotices();
+
+			setAttributes( {
+				uid: attachment.uid,
+				fingerprint: false,
+				thumbnail: attachment.thumb.src,
+			} );
+
+			readySnapshotRef.current = {
+				uid: attachment.uid,
+				fingerprint: false,
+				thumbnail: attachment.thumb.src,
+			};
+
+			setStatus( 'ready' );
+			setProgress( null );
+			setErrorMessage( '' );
+		},
+		[
+			abortUpload,
+			clearEncodingPoller,
+			clearNotices,
+			invalidateUploadGeneration,
+			setAttributes,
+		]
+	);
+
+	/**
+	 * Open the Stream library frame (created once per block instance).
+	 */
+	const open = useCallback( () => {
+		if ( ! mediaFrameRef.current ) {
+			mediaFrameRef.current = new cloudflareStream.media.view.MediaFrame(
+				( attachment ) => {
+					selectAttachmentRef.current( attachment );
+				}
+			);
+			mediaFrameRef.current.on( 'delete', ( attachment ) => {
+				deleteAttachmentRef.current( attachment );
+			} );
+		}
+		mediaFrameRef.current.open();
+	}, [] );
+
+	const instructions =
+		status === 'error'
+			? errorMessage
+			: {
+					idle: __(
+						'Select a file from your library.',
+						'cloudflare-stream'
+					),
+					uploading: __(
+						'Uploading your video.',
+						'cloudflare-stream'
+					),
+					encoding: __(
+						'Upload complete. Processing video.',
+						'cloudflare-stream'
+					),
+			  }[ status ] ||
+			  __( 'Select a file from your library.', 'cloudflare-stream' );
 
 	/**
 	 * Return to the empty/edit placeholder so the user can pick another file.
 	 */
-	retry() {
-		const { noticeOperations } = this.props;
+	const retry = useCallback( () => {
+		invalidateUploadGeneration();
+		clearEncodingPoller();
+		abortUpload();
+		selectedFileRef.current = null;
+		retriedRef.current = false;
+		encodePollAttemptsRef.current = 0;
+		clearNotices();
 
-		this.invalidateUploadGeneration();
-		this.clearEncodingPoller();
-		this.abortUpload();
-		this.retried = false;
-		this.encodePollAttempts = 0;
-
-		if ( noticeOperations ) {
-			noticeOperations.removeAllNotices();
+		// Drop failed in-flight attrs; keep a replace snapshot if present.
+		if ( readySnapshotRef.current ) {
+			setAttributes( {
+				uid: readySnapshotRef.current.uid,
+				fingerprint: readySnapshotRef.current.fingerprint,
+				thumbnail: readySnapshotRef.current.thumbnail,
+			} );
+		} else {
+			setAttributes( {
+				uid: false,
+				fingerprint: false,
+				thumbnail: false,
+			} );
 		}
 
-		this.setState( {
-			status: 'idle',
-			progress: null,
-			errorMessage: '',
-		} );
-	}
+		setStatus( 'idle' );
+		setProgress( null );
+		setErrorMessage( '' );
+	}, [
+		abortUpload,
+		clearEncodingPoller,
+		clearNotices,
+		invalidateUploadGeneration,
+		setAttributes,
+	] );
 
 	/**
 	 * Stop upload/encoding work and restore a ready video or a clean idle state.
 	 */
-	cancel() {
-		const { setAttributes } = this.props;
-		const { noticeOperations } = this.props;
+	const cancel = useCallback( () => {
+		invalidateUploadGeneration();
+		clearEncodingPoller();
+		abortUpload();
+		selectedFileRef.current = null;
+		retriedRef.current = false;
+		encodePollAttemptsRef.current = 0;
+		clearNotices();
 
-		this.invalidateUploadGeneration();
-		this.clearEncodingPoller();
-		this.abortUpload();
-		this.selectedFile = null;
-		this.retried = false;
-		this.encodePollAttempts = 0;
-
-		if ( noticeOperations ) {
-			noticeOperations.removeAllNotices();
-		}
-
-		if ( this.readySnapshot ) {
+		if ( readySnapshotRef.current ) {
 			setAttributes( {
-				uid: this.readySnapshot.uid,
-				fingerprint: this.readySnapshot.fingerprint,
-				thumbnail: this.readySnapshot.thumbnail,
+				uid: readySnapshotRef.current.uid,
+				fingerprint: readySnapshotRef.current.fingerprint,
+				thumbnail: readySnapshotRef.current.thumbnail,
 			} );
-			this.setState( {
-				status: 'ready',
-				progress: null,
-				errorMessage: '',
-			} );
+			setStatus( 'ready' );
+			setProgress( null );
+			setErrorMessage( '' );
 			return;
 		}
 
@@ -404,193 +504,29 @@ class CloudflareStreamEdit extends Component {
 			fingerprint: false,
 			thumbnail: false,
 		} );
-		this.setState( {
-			status: 'idle',
-			progress: null,
-			errorMessage: '',
-		} );
-	}
+		setStatus( 'idle' );
+		setProgress( null );
+		setErrorMessage( '' );
+	}, [
+		abortUpload,
+		clearEncodingPoller,
+		clearNotices,
+		invalidateUploadGeneration,
+		setAttributes,
+	] );
 
 	/**
 	 * Open the edit placeholder (replace video).
 	 */
-	switchToEditing() {
-		const { attributes } = this.props;
-		const { noticeOperations } = this.props;
-
-		// Keep a restore point while the user picks a replacement.
-		this.readySnapshot = snapshotReadyAttributes( attributes );
-
-		if ( noticeOperations ) {
-			noticeOperations.removeAllNotices();
-		}
-
-		this.setState( {
-			status: 'idle',
-			progress: null,
-			errorMessage: '',
-		} );
-	}
-
-	/**
-	 * Handle a file chosen via the upload control.
-	 *
-	 * @param {Event} event Change event from the file input.
-	 */
-	onFileChange( event ) {
-		const input = event.currentTarget;
-		const file =
-			input && input.files && input.files.length ? input.files[ 0 ] : null;
-
-		if ( ! file ) {
-			return;
-		}
-
-		this.selectedFile = file;
-		this.retried = false;
-		this.startUpload( file );
-	}
-
-	/**
-	 * Begin a TUS upload for the given file.
-	 *
-	 * @param {File} file Browser file object.
-	 */
-	startUpload( file ) {
-		const { noticeOperations } = this.props;
-
-		if ( noticeOperations ) {
-			noticeOperations.removeAllNotices();
-		}
-
-		this.invalidateUploadGeneration();
-		this.clearEncodingPoller();
-		this.abortUpload();
-		this.encodePollAttempts = 0;
-
-		this.setState(
-			{
-				status: 'uploading',
-				progress: null,
-				errorMessage: '',
-			},
-			() => {
-				this.uploadFromFiles( file );
-			}
+	const switchToEditing = useCallback( () => {
+		readySnapshotRef.current = snapshotReadyAttributes(
+			attributesRef.current
 		);
-	}
-
-	/**
-	 * Request a direct-upload URL and transfer the file with TUS.
-	 *
-	 * @param {File} file Browser file object.
-	 */
-	uploadFromFiles( file ) {
-		const block = this;
-		const { setAttributes } = this.props;
-
-		if ( ! file ) {
-			block.showUploadError(
-				__(
-					'Upload Error: See the console for details.',
-					'cloudflare-stream'
-				)
-			);
-			return;
-		}
-
-		// Own this attempt; cancel/select/unmount bumps generation past it.
-		block.uploadGeneration += 1;
-		const generation = block.uploadGeneration;
-
-		fetchDirectUpload( file )
-			.then( ( { uploadURL, uid } ) => {
-				if ( ! block.isCurrentGeneration( generation ) ) {
-					return;
-				}
-
-				block.upload = tusUploadFile( file, uploadURL, {
-					onError( error ) {
-						if ( ! block.isCurrentGeneration( generation ) ) {
-							return;
-						}
-						block.upload = null;
-						block.showUploadError(
-							__(
-								'Upload Error: See the console for details.',
-								'cloudflare-stream'
-							),
-							error
-						);
-					},
-					onProgress( bytesUploaded, bytesTotal ) {
-						if ( ! block.isCurrentGeneration( generation ) ) {
-							return;
-						}
-						const percentage = parseInt(
-							( bytesUploaded / bytesTotal ) * 100,
-							10
-						);
-						block.setState( { progress: percentage } );
-					},
-					onSuccess( upload ) {
-						if ( ! block.isCurrentGeneration( generation ) ) {
-							return;
-						}
-
-						const fingerprint =
-							upload.options &&
-							typeof upload.options.fingerprint === 'function'
-								? upload.options.fingerprint(
-										upload.file,
-										upload.options
-								  )
-								: undefined;
-
-						block.upload = null;
-						setAttributes( {
-							uid,
-							fingerprint,
-							thumbnail: false,
-						} );
-						block.switchToEncoding( generation );
-					},
-				} );
-			} )
-			.catch( ( error ) => {
-				if ( ! block.isCurrentGeneration( generation ) ) {
-					return;
-				}
-				block.showUploadError(
-					error && error.message ? error.message : String( error ),
-					error
-				);
-			} );
-	}
-
-	/**
-	 * Move into the encoding/processing state and start polling.
-	 *
-	 * @param {number} [generation] Upload generation that owns this encode run.
-	 */
-	switchToEncoding( generation ) {
-		const activeGeneration =
-			typeof generation === 'number'
-				? generation
-				: this.uploadGeneration;
-
-		this.encodePollAttempts = 0;
-		this.setState(
-			{
-				status: 'encoding',
-				progress: null,
-				errorMessage: '',
-			},
-			() => {
-				this.encode( activeGeneration );
-			}
-		);
-	}
+		clearNotices();
+		setStatus( 'idle' );
+		setProgress( null );
+		setErrorMessage( '' );
+	}, [ clearNotices ] );
 
 	/**
 	 * Schedule the next encoding status poll.
@@ -598,64 +534,143 @@ class CloudflareStreamEdit extends Component {
 	 * @param {number} generation Upload generation for this encode run.
 	 * @param {number} delayMs    Delay before the next poll.
 	 */
-	scheduleEncodePoll( generation, delayMs ) {
-		const block = this;
-		block.clearEncodingPoller();
-		block.encodingPoller = setTimeout( function () {
-			block.encode( generation );
-		}, delayMs );
-	}
+	const scheduleEncodePoll = useCallback(
+		( generation, delayMs ) => {
+			clearEncodingPoller();
+			encodingPollerRef.current = setTimeout( () => {
+				encodeRef.current( generation );
+			}, delayMs );
+		},
+		[ clearEncodingPoller ]
+	);
+
+	/**
+	 * Retry a transient encode poll a few times, then surface an error.
+	 *
+	 * @param {number} generation Upload generation for this encode run.
+	 * @param {string} message    User-facing failure text.
+	 * @param {*}      [cause]    Optional raw error for the console.
+	 */
+	const handleEncodePollFailure = useCallback(
+		( generation, message, cause ) => {
+			if ( ! isCurrentGeneration( generation ) ) {
+				return;
+			}
+
+			encodePollAttemptsRef.current += 1;
+
+			if ( encodePollAttemptsRef.current < ENCODE_POLL_MAX_ATTEMPTS ) {
+				// Simple backoff: 5s, 10s, …
+				const delayMs = 5000 * encodePollAttemptsRef.current;
+				scheduleEncodePoll( generation, delayMs );
+				return;
+			}
+
+			clearEncodingPoller();
+			showUploadError(
+				sprintf(
+					/* translators: %s: error detail from the API */
+					__( 'Processing Error: %s', 'cloudflare-stream' ),
+					message ||
+						__(
+							'See the console for details.',
+							'cloudflare-stream'
+						)
+				),
+				cause !== undefined ? cause : message
+			);
+		},
+		[
+			clearEncodingPoller,
+			isCurrentGeneration,
+			scheduleEncodePoll,
+			showUploadError,
+		]
+	);
 
 	/**
 	 * Poll Stream until the video is ready to play.
 	 *
 	 * @param {number} [generation] Upload generation for this encode run.
 	 */
-	encode( generation ) {
-		const { attributes, setAttributes } = this.props;
-		const block = this;
-		const activeGeneration =
-			typeof generation === 'number'
-				? generation
-				: block.uploadGeneration;
+	const encode = useCallback(
+		( generation ) => {
+			const activeGeneration =
+				typeof generation === 'number'
+					? generation
+					: uploadGenerationRef.current;
 
-		if ( ! block.isCurrentGeneration( activeGeneration ) ) {
-			return;
-		}
+			if ( ! isCurrentGeneration( activeGeneration ) ) {
+				return;
+			}
 
-		if ( ! attributes.uid ) {
-			block.showUploadError(
-				__(
-					'Processing Error: Missing video id.',
-					'cloudflare-stream'
-				)
-			);
-			return;
-		}
+			const currentAttributes = attributesRef.current;
 
-		checkUploadStatus( attributes.uid )
-			.then( ( data ) => {
-				if ( ! block.isCurrentGeneration( activeGeneration ) ) {
-					return;
-				}
+			if ( ! currentAttributes.uid ) {
+				showUploadError(
+					__(
+						'Processing Error: Missing video id.',
+						'cloudflare-stream'
+					)
+				);
+				return;
+			}
 
-				if ( ! data || typeof data !== 'object' ) {
-					block.handleEncodePollFailure(
-						activeGeneration,
-						__(
-							'Invalid processing status response.',
-							'cloudflare-stream'
-						)
-					);
-					return;
-				}
+			checkUploadStatus( currentAttributes.uid )
+				.then( ( data ) => {
+					if ( ! isCurrentGeneration( activeGeneration ) ) {
+						return;
+					}
 
-				if ( ! data.success ) {
-					const detail = normaliseErrorMessage( data.data );
-					console.error( 'Error: ' + detail );
+					if ( ! data || typeof data !== 'object' ) {
+						handleEncodePollFailure(
+							activeGeneration,
+							__(
+								'Invalid processing status response.',
+								'cloudflare-stream'
+							)
+						);
+						return;
+					}
 
-					if ( isNonRetryableFailure( data.data || detail ) ) {
-						block.showUploadError(
+					if ( ! data.success ) {
+						const detail = normaliseErrorMessage( data.data );
+						console.error( 'Error: ' + detail );
+
+						if ( isNonRetryableFailure( data.data || detail ) ) {
+							showUploadError(
+								sprintf(
+									/* translators: %s: error detail from the API */
+									__(
+										'Processing Error: %s',
+										'cloudflare-stream'
+									),
+									detail ||
+										__(
+											'See the console for details.',
+											'cloudflare-stream'
+										)
+								),
+								data.data
+							);
+							return;
+						}
+
+						// One-shot re-upload only for ambiguous processing failures.
+						if (
+							retriedRef.current === false &&
+							selectedFileRef.current &&
+							! isNonRetryableFailure( detail )
+						) {
+							retriedRef.current = true;
+							setStatus( 'uploading' );
+							setProgress( null );
+							setErrorMessage( '' );
+							uploadFromFilesRef.current( selectedFileRef.current );
+							return;
+						}
+
+						showUploadError(
 							sprintf(
 								/* translators: %s: error detail from the API */
 								__(
@@ -673,199 +688,380 @@ class CloudflareStreamEdit extends Component {
 						return;
 					}
 
-					// One-shot re-upload only for ambiguous processing failures.
 					if (
-						block.retried === false &&
-						block.selectedFile &&
-						! isNonRetryableFailure( detail )
+						typeof data.data === 'undefined' ||
+						data.data === null
 					) {
-						block.retried = true;
-						block.setState(
-							{
-								status: 'uploading',
-								progress: null,
-								errorMessage: '',
-							},
-							() => {
-								block.uploadFromFiles( block.selectedFile );
-							}
+						handleEncodePollFailure(
+							activeGeneration,
+							__(
+								'Empty processing status response.',
+								'cloudflare-stream'
+							)
 						);
 						return;
 					}
 
-					block.showUploadError(
-						sprintf(
-							/* translators: %s: error detail from the API */
-							__(
-								'Processing Error: %s',
-								'cloudflare-stream'
-							),
-							detail ||
-								__(
-									'See the console for details.',
-									'cloudflare-stream'
-								)
-						),
-						data.data
-					);
-					return;
-				}
+					if (
+						data.data.readyToStream === true &&
+						typeof data.data.thumbnail !== 'undefined'
+					) {
+						clearEncodingPoller();
+						encodePollAttemptsRef.current = 0;
+						setAttributesRef.current( {
+							thumbnail: data.data.thumbnail,
+						} );
+						readySnapshotRef.current = {
+							uid: currentAttributes.uid,
+							fingerprint: currentAttributes.fingerprint,
+							thumbnail: data.data.thumbnail,
+						};
+						setStatus( 'ready' );
+						setProgress( null );
+						setErrorMessage( '' );
+						return;
+					}
 
-				if ( typeof data.data === 'undefined' || data.data === null ) {
-					block.handleEncodePollFailure(
+					// Successful poll with progress still running — reset transient failures.
+					encodePollAttemptsRef.current = 0;
+					scheduleEncodePoll( activeGeneration, 5000 );
+
+					if (
+						data.data.status &&
+						data.data.status.state === 'queued'
+					) {
+						setProgress( null );
+					} else if (
+						data.data.status &&
+						data.data.status.state === 'inprogress'
+					) {
+						const pct = Number( data.data.status.pctComplete );
+						setProgress(
+							Number.isFinite( pct ) ? Math.round( pct ) : null
+						);
+					}
+				} )
+				.catch( ( error ) => {
+					if ( ! isCurrentGeneration( activeGeneration ) ) {
+						return;
+					}
+
+					const detail = normaliseErrorMessage( error );
+					console.error( detail || error );
+
+					if ( isNonRetryableFailure( error ) ) {
+						showUploadError(
+							sprintf(
+								/* translators: %s: error detail from the API */
+								__(
+									'Processing Error: %s',
+									'cloudflare-stream'
+								),
+								detail ||
+									__(
+										'See the console for details.',
+										'cloudflare-stream'
+									)
+							),
+							error
+						);
+						return;
+					}
+
+					handleEncodePollFailure(
 						activeGeneration,
-						__(
-							'Empty processing status response.',
-							'cloudflare-stream'
-						)
-					);
-					return;
-				}
-
-				if (
-					data.data.readyToStream === true &&
-					typeof data.data.thumbnail !== 'undefined'
-				) {
-					block.clearEncodingPoller();
-					block.encodePollAttempts = 0;
-					setAttributes( {
-						thumbnail: data.data.thumbnail,
-					} );
-					block.readySnapshot = {
-						uid: attributes.uid,
-						fingerprint: attributes.fingerprint,
-						thumbnail: data.data.thumbnail,
-					};
-					block.setState( {
-						status: 'ready',
-						progress: null,
-						errorMessage: '',
-					} );
-					return;
-				}
-
-				// Successful poll with progress still running — reset transient failures.
-				block.encodePollAttempts = 0;
-				block.scheduleEncodePoll( activeGeneration, 5000 );
-
-				if (
-					data.data.status &&
-					data.data.status.state === 'queued'
-				) {
-					block.setState( { progress: null } );
-				} else if (
-					data.data.status &&
-					data.data.status.state === 'inprogress'
-				) {
-					const progress = Math.round(
-						data.data.status.pctComplete
-					);
-					block.setState( { progress } );
-				}
-			} )
-			.catch( ( error ) => {
-				if ( ! block.isCurrentGeneration( activeGeneration ) ) {
-					return;
-				}
-
-				const detail = normaliseErrorMessage( error );
-				console.error( detail || error );
-
-				if ( isNonRetryableFailure( error ) ) {
-					block.showUploadError(
-						sprintf(
-							/* translators: %s: error detail from the API */
-							__(
-								'Processing Error: %s',
-								'cloudflare-stream'
-							),
-							detail ||
-								__(
-									'See the console for details.',
-									'cloudflare-stream'
-								)
-						),
+						detail,
 						error
 					);
-					return;
-				}
-
-				block.handleEncodePollFailure( activeGeneration, detail, error );
-			} );
-	}
+				} );
+		},
+		[
+			clearEncodingPoller,
+			handleEncodePollFailure,
+			isCurrentGeneration,
+			scheduleEncodePoll,
+			showUploadError,
+		]
+	);
 
 	/**
-	 * Retry a transient encode poll a few times, then surface an error.
+	 * Move into the encoding/processing state and start polling.
 	 *
-	 * @param {number} generation Upload generation for this encode run.
-	 * @param {string} message    User-facing failure text.
-	 * @param {*}      [cause]    Optional raw error for the console.
+	 * @param {number} [generation] Upload generation that owns this encode run.
 	 */
-	handleEncodePollFailure( generation, message, cause ) {
-		if ( ! this.isCurrentGeneration( generation ) ) {
-			return;
-		}
+	const switchToEncoding = useCallback(
+		( generation ) => {
+			const activeGeneration =
+				typeof generation === 'number'
+					? generation
+					: uploadGenerationRef.current;
 
-		this.encodePollAttempts += 1;
+			encodePollAttemptsRef.current = 0;
+			setStatus( 'encoding' );
+			setProgress( null );
+			setErrorMessage( '' );
+			encode( activeGeneration );
+		},
+		[ encode ]
+	);
 
-		if ( this.encodePollAttempts < ENCODE_POLL_MAX_ATTEMPTS ) {
-			// Simple backoff: 5s, 10s, …
-			const delayMs = 5000 * this.encodePollAttempts;
-			this.scheduleEncodePoll( generation, delayMs );
-			return;
-		}
-
-		this.clearEncodingPoller();
-		this.showUploadError(
-			sprintf(
-				/* translators: %s: error detail from the API */
-				__( 'Processing Error: %s', 'cloudflare-stream' ),
-				message ||
+	/**
+	 * Request a direct-upload URL and transfer the file with TUS.
+	 *
+	 * @param {File} file Browser file object.
+	 */
+	const uploadFromFiles = useCallback(
+		( file ) => {
+			if ( ! file ) {
+				showUploadError(
 					__(
-						'See the console for details.',
+						'Upload Error: See the console for details.',
 						'cloudflare-stream'
 					)
-			),
-			cause !== undefined ? cause : message
-		);
-	}
+				);
+				return;
+			}
+
+			// Own this attempt; cancel/select/unmount bumps generation past it.
+			uploadGenerationRef.current += 1;
+			const generation = uploadGenerationRef.current;
+
+			fetchDirectUpload( file )
+				.then( ( { uploadURL, uid } ) => {
+					if ( ! isCurrentGeneration( generation ) ) {
+						return;
+					}
+
+					uploadRef.current = tusUploadFile( file, uploadURL, {
+						onError( error ) {
+							if ( ! isCurrentGeneration( generation ) ) {
+								return;
+							}
+							uploadRef.current = null;
+							showUploadError(
+								__(
+									'Upload Error: See the console for details.',
+									'cloudflare-stream'
+								),
+								error
+							);
+						},
+						onProgress( bytesUploaded, bytesTotal ) {
+							if ( ! isCurrentGeneration( generation ) ) {
+								return;
+							}
+							if ( ! bytesTotal ) {
+								setProgress( null );
+								return;
+							}
+							setProgress(
+								Math.round(
+									( bytesUploaded / bytesTotal ) * 100
+								)
+							);
+						},
+						onSuccess( upload ) {
+							if ( ! isCurrentGeneration( generation ) ) {
+								return;
+							}
+
+							const fingerprint =
+								upload.options &&
+								typeof upload.options.fingerprint ===
+									'function'
+									? upload.options.fingerprint(
+											upload.file,
+											upload.options
+									  )
+									: undefined;
+
+							uploadRef.current = null;
+							setAttributesRef.current( {
+								uid,
+								fingerprint,
+								thumbnail: false,
+							} );
+							switchToEncoding( generation );
+						},
+					} );
+				} )
+				.catch( ( error ) => {
+					if ( ! isCurrentGeneration( generation ) ) {
+						return;
+					}
+					showUploadError(
+						error && error.message
+							? error.message
+							: String( error ),
+						error
+					);
+				} );
+		},
+		[ isCurrentGeneration, showUploadError, switchToEncoding ]
+	);
 
 	/**
-	 * Whether the cancel control should be shown.
+	 * Begin a TUS upload for the given file.
 	 *
-	 * @return {boolean} True when cancel is available.
+	 * @param {File} file Browser file object.
 	 */
-	canCancel() {
-		const { attributes } = this.props;
-		const { status } = this.state;
+	const startUpload = useCallback(
+		( file ) => {
+			clearNotices();
+			invalidateUploadGeneration();
+			clearEncodingPoller();
+			abortUpload();
+			encodePollAttemptsRef.current = 0;
 
-		if ( status === 'uploading' || status === 'encoding' ) {
-			return true;
+			setStatus( 'uploading' );
+			setProgress( null );
+			setErrorMessage( '' );
+			uploadFromFiles( file );
+		},
+		[
+			abortUpload,
+			clearEncodingPoller,
+			clearNotices,
+			invalidateUploadGeneration,
+			uploadFromFiles,
+		]
+	);
+
+	/**
+	 * Handle a file chosen via the upload control.
+	 *
+	 * @param {Event} event Change event from the file input.
+	 */
+	const onFileChange = useCallback(
+		( event ) => {
+			const input = event.currentTarget;
+			const file =
+				input && input.files && input.files.length
+					? input.files[ 0 ]
+					: null;
+
+			// Allow re-selecting the same path after cancel.
+			if ( input ) {
+				input.value = '';
+			}
+
+			if ( ! file ) {
+				return;
+			}
+
+			selectedFileRef.current = file;
+			retriedRef.current = false;
+			startUpload( file );
+		},
+		[ startUpload ]
+	);
+
+	const showCancel =
+		status === 'uploading' ||
+		status === 'encoding' ||
+		status === 'error' ||
+		( status === 'idle' && Boolean( readySnapshotRef.current ) );
+
+	// Keep "latest" refs aligned before paint so async callbacks stay current.
+	useLayoutEffect( () => {
+		attributesRef.current = attributes;
+		setAttributesRef.current = setAttributes;
+		noticeOperationsRef.current = noticeOperations;
+		selectAttachmentRef.current = selectAttachment;
+		deleteAttachmentRef.current = deleteAttachment;
+		encodeRef.current = encode;
+		uploadFromFilesRef.current = uploadFromFiles;
+	} );
+
+	// Resume encoding for blocks that already have a uid but no thumbnail.
+	useEffect( () => {
+		if ( attributes.uid && ! attributes.thumbnail ) {
+			switchToEncoding();
 		}
 
-		// Idle after "edit" still has a ready snapshot or current ready attrs.
-		if ( status === 'idle' && this.readySnapshot ) {
-			return true;
+		return () => {
+			invalidateUploadGeneration();
+			clearEncodingPoller();
+			abortUpload();
+
+			if ( mediaFrameRef.current ) {
+				if ( typeof mediaFrameRef.current.off === 'function' ) {
+					mediaFrameRef.current.off( 'delete' );
+				}
+				if ( typeof mediaFrameRef.current.remove === 'function' ) {
+					mediaFrameRef.current.remove();
+				}
+				mediaFrameRef.current = null;
+			}
+		};
+		// Mount/unmount only — encoding resume uses the initial attributes.
+		// eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount lifecycle
+	}, [] );
+
+	// Undo/redo: re-derive idle/ready/encoding from attributes while not in flight.
+	useEffect( () => {
+		// Do not clobber upload, active encode polls, or error recovery UI.
+		if (
+			status === 'uploading' ||
+			status === 'encoding' ||
+			status === 'error'
+		) {
+			return;
 		}
 
-		return Boolean( attributes.uid );
-	}
+		const snap = readySnapshotRef.current;
 
-	render() {
-		const { autoplay, controls, loop, muted } = this.props.attributes;
-		const { className, noticeUI } = this.props;
-		const { status, progress } = this.state;
-		const instructions = this.getInstructions();
+		// Replace flow: switchToEditing keeps ready attrs and a snapshot.
+		if ( status === 'idle' && snap ) {
+			if (
+				attributes.uid === snap.uid &&
+				attributes.thumbnail === snap.thumbnail
+			) {
+				return;
+			}
+			// Attributes moved under us (undo/redo) — drop stale replace snapshot.
+			readySnapshotRef.current = snapshotReadyAttributes( attributes );
+		}
 
-		if ( status !== 'ready' ) {
-			const showProgress =
-				status === 'uploading' || status === 'encoding';
-			const showRetry = status === 'error';
-			const showUploadControls = status === 'idle';
-			const canManage = Boolean( cloudflareStream.nonce );
+		if ( ! attributes.uid ) {
+			readySnapshotRef.current = null;
+			if ( status !== 'idle' ) {
+				setStatus( 'idle' );
+				setProgress( null );
+				setErrorMessage( '' );
+			}
+			return;
+		}
 
-			return (
-				// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
+		if ( attributes.thumbnail ) {
+			readySnapshotRef.current = snapshotReadyAttributes( attributes );
+			if ( status !== 'ready' ) {
+				setStatus( 'ready' );
+				setProgress( null );
+				setErrorMessage( '' );
+			}
+			return;
+		}
+
+		// uid without thumbnail — resume processing with a fresh generation.
+		readySnapshotRef.current = null;
+		switchToEncoding();
+	}, [
+		attributes.fingerprint,
+		attributes.thumbnail,
+		attributes.uid,
+		status,
+		switchToEncoding,
+	] );
+
+	if ( status !== 'ready' ) {
+		const showProgress =
+			status === 'uploading' || status === 'encoding';
+		const showRetry = status === 'error';
+		const showUploadControls = status === 'idle';
+
+		return (
+			<div { ...blockProps }>
 				<Placeholder
 					icon={ cloudflareStream.icon }
 					label={ __(
@@ -892,141 +1088,123 @@ class CloudflareStreamEdit extends Component {
 					{ showUploadControls && canManage && (
 						<FormFileUpload
 							className="editor-media-placeholder__upload-button"
-							onChange={ this.onFileChange }
+							onChange={ onFileChange }
 							accept="video/*"
 						>
 							{ __( 'Upload', 'cloudflare-stream' ) }
 						</FormFileUpload>
 					) }
-					{ showUploadControls && (
-						<MediaUpload
-							type="video"
-							className={ className }
-							value={ this.props.attributes }
-							render={ () => (
-								<Button
-									label={ __(
-										'Stream Library',
-										'cloudflare-stream'
-									) }
-									onClick={ this.open }
-									className="editor-media-placeholder__browse-button"
-								>
-									{ ' ' }
-									{ __(
-										'Stream Library',
-										'cloudflare-stream'
-									) }
-								</Button>
+					{ showUploadControls && canManage && (
+						<Button
+							label={ __(
+								'Stream Library',
+								'cloudflare-stream'
 							) }
-						/>
+							onClick={ open }
+							className="editor-media-placeholder__browse-button"
+						>
+							{ __(
+								'Stream Library',
+								'cloudflare-stream'
+							) }
+						</Button>
 					) }
 					{ showRetry && (
 						<Button
 							variant="secondary"
 							icon="update"
 							label={ __( 'Retry', 'cloudflare-stream' ) }
-							onClick={ this.retry }
+							onClick={ retry }
 							className="editor-media-placeholder__retry-button"
 						>
 							{ __( 'Retry', 'cloudflare-stream' ) }
 						</Button>
 					) }
-					{ this.canCancel() && (
+					{ showCancel && (
 						<Button
 							variant="secondary"
 							icon="cancel"
 							label={ __( 'Cancel', 'cloudflare-stream' ) }
-							onClick={ this.cancel }
+							onClick={ cancel }
 							className="editor-media-placeholder__cancel-button"
 						>
-							{ ' ' }
 							{ __( 'Cancel', 'cloudflare-stream' ) }
 						</Button>
 					) }
 				</Placeholder>
-				// phpcs:enable
-			);
-		}
-
-		return (
-			// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
-			<Fragment>
-				<BlockControls>
-					<ToolbarGroup>
-						<Button
-							className="components-icon-button components-toolbar__control"
-							label={ __(
-								'Edit video',
-								'cloudflare-stream'
-							) }
-							onClick={ this.switchToEditing }
-							icon="edit"
-						/>
-					</ToolbarGroup>
-				</BlockControls>
-				<InspectorControls>
-					<PanelBody
-						title={ __(
-							'Video Settings',
-							'cloudflare-stream'
-						) }
-					>
-						<ToggleControl
-							label={ __(
-								'Autoplay',
-								'cloudflare-stream'
-							) }
-							onChange={ this.toggleAttribute( 'autoplay' ) }
-							checked={ autoplay }
-						/>
-						<ToggleControl
-							label={ __(
-								'Loop',
-								'cloudflare-stream'
-							) }
-							onChange={ this.toggleAttribute( 'loop' ) }
-							checked={ loop }
-						/>
-						<ToggleControl
-							label={ __(
-								'Muted',
-								'cloudflare-stream'
-							) }
-							onChange={ this.toggleAttribute( 'muted' ) }
-							checked={ muted }
-						/>
-						<ToggleControl
-							label={ __(
-								'Playback Controls',
-								'cloudflare-stream'
-							) }
-							onChange={ this.toggleAttribute( 'controls' ) }
-							checked={ controls }
-						/>
-					</PanelBody>
-				</InspectorControls>
-				<figure className={ className }>
-					<Disabled className="player-edit-wrapper">
-						{ ' ' }
-						{
-							<iframe
-								ref={ this.streamPlayer }
-								src={ streamIframeSource(
-									this.props.attributes
-								) }
-								title={ __(
-									'Cloudflare Stream video',
-									'cloudflare-stream'
-								) }
-							></iframe>
-						}
-					</Disabled>
-				</figure>
-			</Fragment>
-			// phpcs:enable
+			</div>
 		);
 	}
+
+	return (
+		<Fragment>
+			<BlockControls>
+				<ToolbarGroup>
+					<Button
+						className="components-icon-button components-toolbar__control"
+						label={ __(
+							'Edit video',
+							'cloudflare-stream'
+						) }
+						onClick={ switchToEditing }
+						icon="edit"
+					/>
+				</ToolbarGroup>
+			</BlockControls>
+			<InspectorControls>
+				<PanelBody
+					title={ __(
+						'Video Settings',
+						'cloudflare-stream'
+					) }
+				>
+					<ToggleControl
+						label={ __(
+							'Autoplay',
+							'cloudflare-stream'
+						) }
+						onChange={ toggleAttribute( 'autoplay' ) }
+						checked={ autoplay }
+					/>
+					<ToggleControl
+						label={ __(
+							'Loop',
+							'cloudflare-stream'
+						) }
+						onChange={ toggleAttribute( 'loop' ) }
+						checked={ loop }
+					/>
+					<ToggleControl
+						label={ __(
+							'Muted',
+							'cloudflare-stream'
+						) }
+						onChange={ toggleAttribute( 'muted' ) }
+						checked={ muted }
+					/>
+					<ToggleControl
+						label={ __(
+							'Playback Controls',
+							'cloudflare-stream'
+						) }
+						onChange={ toggleAttribute( 'controls' ) }
+						checked={ controls }
+					/>
+				</PanelBody>
+			</InspectorControls>
+			<figure { ...blockProps }>
+				<Disabled className="player-edit-wrapper">
+					<iframe
+						src={ streamIframeSource( attributes ) }
+						title={ __(
+							'Cloudflare Stream video',
+							'cloudflare-stream'
+						) }
+					></iframe>
+				</Disabled>
+			</figure>
+		</Fragment>
+	);
 }
 
 export default withNotices( CloudflareStreamEdit );

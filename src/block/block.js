@@ -64,10 +64,10 @@ cloudflareStream.icon = createElement(
  * @return {?WPBlock}          The block, if it has been successfully
  *                             registered; otherwise `undefined`.
  */
-// phpcs:disable Generic.WhiteSpace.ScopeIndent.IncorrectExact,Generic.WhiteSpace.ScopeIndent.Incorrect
 registerBlockType(
 	'cloudflare-stream/block-video',
 	{
+		apiVersion: 2,
 		title: __( 'Cloudflare Stream Video', 'cloudflare-stream' ),
 		icon: cloudflareStream.icon,
 		render_callback: 'cloudflare_stream_render_block',
