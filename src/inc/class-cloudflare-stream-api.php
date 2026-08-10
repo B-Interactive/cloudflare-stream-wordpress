@@ -578,6 +578,7 @@ class Cloudflare_Stream_API {
 	 * @return string
 	 */
 	private function base64url_encode( $data ) {
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode -- JWT-style base64url encoding, not obfuscation.
 		return rtrim( strtr( base64_encode( $data ), '+/', '-_' ), '=' );
 	}
 
@@ -600,6 +601,7 @@ class Cloudflare_Stream_API {
 			return $value;
 		}
 
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Cloudflare returns PEM signing material base64-encoded.
 		$decoded = base64_decode( $value, true );
 
 		if ( false !== $decoded && '' !== $decoded && false !== strpos( $decoded, 'BEGIN' ) ) {

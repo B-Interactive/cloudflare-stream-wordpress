@@ -695,7 +695,7 @@ class Cloudflare_Stream_Settings {
 	 *
 	 * @param string $key_id  Signing key id.
 	 * @param string $pem     PEM as returned (base64 or PEM text).
-	 * @param string $context setup|migrate
+	 * @param string $context setup|migrate.
 	 */
 	private function stash_signing_key_reveal( $key_id, $pem, $context = 'setup' ) {
 		$context = ( 'migrate' === $context ) ? 'migrate' : 'setup';
@@ -794,21 +794,21 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Stable form id for a signing key admin-post action.
 	 *
-	 * @param string $do signing_key_do value.
+	 * @param string $key_do signing_key_do value.
 	 * @return string
 	 */
-	private function signing_key_form_id( $do ) {
-		return self::SIGNING_KEY_FORM_ID . '-' . sanitize_key( $do );
+	private function signing_key_form_id( $key_do ) {
+		return self::SIGNING_KEY_FORM_ID . '-' . sanitize_key( $key_do );
 	}
 
 	/**
 	 * Button that submits an external signing key form (no nested forms).
 	 *
-	 * @param string $do    signing_key_do value / form id suffix.
-	 * @param string $label Button label.
-	 * @param string $type  WordPress button type (primary, secondary, delete).
+	 * @param string $key_do    signing_key_do value / form id suffix.
+	 * @param string $label     Button label.
+	 * @param string $type      WordPress button type (primary, secondary, delete).
 	 */
-	private function echo_signing_key_form_button( $do, $label, $type = 'secondary' ) {
+	private function echo_signing_key_form_button( $key_do, $label, $type = 'secondary' ) {
 		$classes = array( 'button' );
 		if ( 'primary' === $type ) {
 			$classes[] = 'button-primary';
@@ -822,7 +822,7 @@ class Cloudflare_Stream_Settings {
 		printf(
 			'<p class="cloudflare-stream-signing-key-action"><button type="submit" class="%1$s" form="%2$s">%3$s</button></p>',
 			esc_attr( implode( ' ', $classes ) ),
-			esc_attr( $this->signing_key_form_id( $do ) ),
+			esc_attr( $this->signing_key_form_id( $key_do ) ),
 			esc_html( $label )
 		);
 	}
@@ -830,17 +830,17 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Hidden admin-post form for one signing key action (lives outside options form).
 	 *
-	 * @param string $do signing_key_do value.
+	 * @param string $key_do signing_key_do value.
 	 */
-	private function echo_signing_key_external_form( $do ) {
-		$do = sanitize_key( $do );
+	private function echo_signing_key_external_form( $key_do ) {
+		$key_do = sanitize_key( $key_do );
 		printf(
 			'<form method="post" action="%1$s" id="%2$s" class="cloudflare-stream-signing-key-external-form">',
 			esc_url( admin_url( 'admin-post.php' ) ),
-			esc_attr( $this->signing_key_form_id( $do ) )
+			esc_attr( $this->signing_key_form_id( $key_do ) )
 		);
 		echo '<input type="hidden" name="action" value="' . esc_attr( self::ADMIN_ACTION_SIGNING_KEY ) . '">';
-		echo '<input type="hidden" name="signing_key_do" value="' . esc_attr( $do ) . '">';
+		echo '<input type="hidden" name="signing_key_do" value="' . esc_attr( $key_do ) . '">';
 		wp_nonce_field( self::ADMIN_ACTION_SIGNING_KEY, self::NONCE );
 		echo '</form>';
 	}
@@ -850,7 +850,7 @@ class Cloudflare_Stream_Settings {
 	 *
 	 * @param string $key_id  Signing key id.
 	 * @param string $pem     PEM value.
-	 * @param string $context setup|migrate
+	 * @param string $context setup|migrate.
 	 */
 	private function render_signing_key_setup_panel( $key_id, $pem, $context = 'setup' ) {
 		$context = ( 'migrate' === $context ) ? 'migrate' : 'setup';

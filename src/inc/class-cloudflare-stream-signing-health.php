@@ -19,16 +19,32 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 class Cloudflare_Stream_Signing_Health {
 
-	/** @var self|false */
+	/**
+	 * Singleton instance.
+	 *
+	 * @var self|false
+	 */
 	private static $instance = false;
 
-	/** @var array|null In-request state cache. */
+	/**
+	 * In-request state cache.
+	 *
+	 * @var array|null
+	 */
 	private $state_cache = null;
 
-	/** @var bool Whether the option was written this request. */
+	/**
+	 * Whether the option was written this request.
+	 *
+	 * @var bool
+	 */
 	private $wrote_this_request = false;
 
-	/** @var bool Legacy hot transient scrubbed this request. */
+	/**
+	 * Whether the legacy hot transient was scrubbed this request.
+	 *
+	 * @var bool
+	 */
 	private static $legacy_transient_scrubbed = false;
 
 	const OPTION_HEALTH         = 'cloudflare_stream_signing_health';
@@ -61,6 +77,8 @@ class Cloudflare_Stream_Signing_Health {
 	);
 
 	/**
+	 * Return the singleton instance.
+	 *
 	 * @return self
 	 */
 	public static function instance() {
@@ -71,19 +89,33 @@ class Cloudflare_Stream_Signing_Health {
 		return self::$instance;
 	}
 
-	/** @return void */
+	/**
+	 * Prevent external construction.
+	 *
+	 * @return void
+	 */
 	private function __construct() { }
 
-	/** @return void */
+	/**
+	 * Prevent cloning.
+	 *
+	 * @return void
+	 */
 	private function __clone() { }
 
-	/** @return void */
+	/**
+	 * Register hooks for Site Health and dismiss handling.
+	 *
+	 * @return void
+	 */
 	private function setup() {
 		add_filter( 'site_status_tests', array( $this, 'register_site_health_test' ) );
 		add_action( 'admin_post_' . self::ADMIN_ACTION_DISMISS, array( $this, 'handle_dismiss_notice' ) );
 	}
 
 	/**
+	 * Default durable health state payload.
+	 *
 	 * @return array
 	 */
 	private function default_state() {
@@ -106,6 +138,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Normalise a raw option value into a complete state array.
+	 *
 	 * @param mixed $raw Raw option value.
 	 * @return array
 	 */
@@ -149,7 +183,11 @@ class Cloudflare_Stream_Signing_Health {
 		return '' === $uid ? '' : substr( hash_hmac( 'sha256', $uid, wp_salt( 'nonce' ) ), 0, 12 );
 	}
 
-	/** @return void */
+	/**
+	 * Delete the legacy hot transient once per request.
+	 *
+	 * @return void
+	 */
 	private function maybe_scrub_legacy_transient() {
 		if ( self::$legacy_transient_scrubbed ) {
 			return;
@@ -213,6 +251,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Whether the local signing circuit breaker is open.
+	 *
 	 * @param array|null $state Optional state snapshot.
 	 * @return bool
 	 */
@@ -222,6 +262,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Whether the API token circuit breaker is open.
+	 *
 	 * @param array|null $state Optional state snapshot.
 	 * @return bool
 	 */
@@ -400,6 +442,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Log an operational message when the throttle window allows.
+	 *
 	 * @param array  $state   State (by ref for logged_* updates).
 	 * @param string $log_key Stable log key for throttle.
 	 * @param string $message Log message (no secrets).
@@ -421,6 +465,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Restrict a reason code to the known set for its family.
+	 *
 	 * @param string $code Candidate.
 	 * @param string $kind 'local' or 'api' fallback family.
 	 * @return string
@@ -496,6 +542,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Human-readable label for a reason code.
+	 *
 	 * @param string $code Reason code.
 	 * @return string
 	 */
@@ -504,6 +552,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Resolution tips for local and optional API failure reasons.
+	 *
 	 * @param string $local_reason Local code.
 	 * @param string $api_reason   API code (optional).
 	 * @return string[]
@@ -631,6 +681,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Build the per-issue dismiss key from current health state.
+	 *
 	 * @param array|null $state State snapshot.
 	 * @return string
 	 */
@@ -640,6 +692,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Whether the current user dismissed the notice for this issue.
+	 *
 	 * @param array|null $state State.
 	 * @return bool
 	 */
@@ -669,6 +723,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Nonced admin-post URL that dismisses the signing health notice.
+	 *
 	 * @return string
 	 */
 	public function get_dismiss_url() {
@@ -680,6 +736,8 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
+	 * Register the signed playback Site Health direct test.
+	 *
 	 * @param array $tests Tests.
 	 * @return array
 	 */
