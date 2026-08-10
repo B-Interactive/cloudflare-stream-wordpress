@@ -61,6 +61,23 @@ class Cloudflare_Stream_API {
 	public $api_limit = 40;
 
 	/**
+	 * Maximum uncached API token mints allowed in a single admin request.
+	 *
+	 * Only applies when no local signing key is configured, where each mint is a
+	 * sequential HTTP round trip. Local RS256 signing is cheap and unbudgeted.
+	 *
+	 * @var int
+	 */
+	const ADMIN_MINT_BUDGET = 12;
+
+	/**
+	 * Uncached API token mints used by the current admin request.
+	 *
+	 * @var int
+	 */
+	private $admin_mints_used = 0;
+
+	/**
 	 * Whether this request already marked the response uncacheable for signed embeds.
 	 *
 	 * @var bool
@@ -395,6 +412,77 @@ class Cloudflare_Stream_API {
 		}
 
 		return $url;
+	}
+
+	/**
+	 * Whether signed playback is enabled for this site.
+	 *
+	 * Mirrors the front-end rule in get_video_embed(): the site option alone
+	 * decides. Signing a video that does not require it is harmless, and keeping
+	 * one rule stops the admin and the front end drifting apart.
+	 *
+	 * @since 1.1.7
+	 * @return bool
+	 */
+	public function is_signed_playback_enabled() {
+		return (bool) get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+	}
+
+	/**
+	 * Transient key holding a minted API token for a uid at the current duration.
+	 *
+	 * @param string $uid Video UID.
+	 * @return string
+	 */
+	private function get_signed_token_cache_key( $uid ) {
+		return 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $this->get_signed_url_duration_minutes() );
+	}
+
+	/**
+	 * Whether a usable minted token is already cached for this uid.
+	 *
+	 * @param string $uid Video UID.
+	 * @return bool
+	 */
+	private function has_cached_signed_token( $uid ) {
+		$cached = get_transient( $this->get_signed_token_cache_key( $uid ) );
+
+		return is_string( $cached ) && '' !== $cached;
+	}
+
+	/**
+	 * Path segment to use when building playback URLs for a video.
+	 *
+	 * Returns a signed token when signed playback is on, otherwise the bare uid.
+	 * This is the single place admin surfaces should ask, so library thumbnails
+	 * and editor previews match what the front end renders.
+	 *
+	 * @since 1.1.7
+	 * @param string $uid      Video UID.
+	 * @param bool   $budgeted Apply the per-request mint budget (listing screens).
+	 * @return string|false Playback id, or false when signed playback is required
+	 *                      but no token could be minted.
+	 */
+	public function get_playback_id( $uid, $budgeted = false ) {
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			return false;
+		}
+
+		if ( ! $this->is_signed_playback_enabled() ) {
+			return $uid;
+		}
+
+		// Without a local key each miss is an HTTP round trip; cap them per request.
+		if ( $budgeted && ! $this->has_signing_key() && ! $this->has_cached_signed_token( $uid ) ) {
+			if ( $this->admin_mints_used >= self::ADMIN_MINT_BUDGET ) {
+				return false;
+			}
+			++$this->admin_mints_used;
+		}
+
+		$token = $this->get_signed_video_token( $uid );
+
+		return ( is_string( $token ) && '' !== $token ) ? $token : false;
 	}
 
 	/**
@@ -897,7 +985,7 @@ class Cloudflare_Stream_API {
 		}
 
 		$duration_minutes = $this->get_signed_url_duration_minutes();
-		$cache_key        = 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
+		$cache_key        = $this->get_signed_token_cache_key( $uid );
 		$fail_key         = 'cfstream_token_fail_' . md5( strtolower( $uid ) . '|' . $duration_minutes );
 
 		$cached_token = get_transient( $cache_key );

@@ -96,6 +96,9 @@ function cloudflare_stream_block_editor_assets() {
 				// Playback host for editor preview iframes (mirrors PHP helpers).
 				'mediaDomain'     => $api->get_media_domain(),
 				'standardDomains' => Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS,
+				// When on, preview URLs must be fetched server-side so they carry
+				// a signed token. Only ever a boolean; no key material is exposed.
+				'signedUrls'      => $api->is_signed_playback_enabled(),
 				// Namespaces the bundled media models and views attach to.
 				'media'           => array(
 					'view'  => array(),
@@ -189,6 +192,16 @@ function cloudflare_stream_verify_ajax_capability() {
 }
 
 /**
+ * Poster time suffix used for Stream thumbnails, e.g. "0s".
+ *
+ * @since 1.1.7
+ * @return string
+ */
+function cloudflare_stream_poster_time() {
+	return absint( get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) ) . 's';
+}
+
+/**
  * AJAX method for retrieving a collection of Stream videos.
  *
  * @since 1.0.0
@@ -216,20 +229,44 @@ function cloudflare_stream_ajax_query_attachments() {
 		return;
 	}
 
+	$poster_time = cloudflare_stream_poster_time();
+
 	foreach ( $videos->result as $video ) {
 		$datetime = new DateTime( $video->created );
-		// phpcs:ignore
-		$embedcode = '<stream src="' . $video->uid . '" controls></stream><script data-cfasync="false" defer type="text/javascript" src="https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' . $video->uid . '"></script>';
-		$shortcode = '[cloudflare_stream uid="' . $video->uid . '"]';
-		$data[]    = array(
+
+		// Signed playback needs a token in the path; a bare uid returns 401.
+		// Budgeted so a full page of videos cannot stall admin-ajax when tokens
+		// are minted over HTTP (no local signing key configured).
+		$playback_id = $api->get_playback_id( $video->uid, true );
+
+		// Rendered in the grid. Empty when a token could not be minted, so the
+		// item degrades to the generic video icon instead of a broken image.
+		$signed_thumb = ( false !== $playback_id )
+			? $api->get_poster_url( $playback_id, $poster_time )
+			: '';
+
+		// Stored on the block when selected, so it must never contain a token:
+		// block attributes are saved into post content and tokens expire.
+		$unsigned_thumb = $api->get_poster_url( $video->uid, $poster_time );
+
+		$title = isset( $video->meta->name ) && is_string( $video->meta->name ) && '' !== $video->meta->name
+			? $video->meta->name
+			: $video->uid;
+
+		// Player page for this video; signed when the site requires it.
+		$player_url = ( false !== $playback_id ) ? $api->get_iframe_url( $playback_id ) : '';
+
+		$data[] = array(
 			'uid'                     => $video->uid,
 			'id'                      => $video->uid,
-			'title'                   => $video->meta->name,
-			'filename'                => $video->meta->name,
-			'url'                     => 'https://watch.cloudflarestream.com/' . $video->uid,
-			'link'                    => 'https://watch.cloudflarestream.com/' . $video->uid,
-			'description'             => $embedcode,
-			'caption'                 => $shortcode,
+			'title'                   => $title,
+			'filename'                => $title,
+			'url'                     => $player_url,
+			'link'                    => $player_url,
+			// Caption and description are author-facing fields; the old shortcode
+			// and legacy <stream> embed markup were never meant to live here.
+			'description'             => '',
+			'caption'                 => '',
 			'status'                  => 'inherit',
 			'uploadedTo'              => 0,
 			'date'                    => $video->created,
@@ -238,7 +275,7 @@ function cloudflare_stream_ajax_query_attachments() {
 			'mime'                    => 'video/mp4',
 			'type'                    => 'video',
 			'subtype'                 => 'mp4',
-			'icon'                    => $video->thumbnail,
+			'icon'                    => '' !== $signed_thumb ? $signed_thumb : wp_mime_type_icon( 'video' ),
 			'dateFormatted'           => $datetime->format( 'F j, Y' ),
 			'nonces'                  =>
 			array(
@@ -247,17 +284,19 @@ function cloudflare_stream_ajax_query_attachments() {
 			'filesizeInBytes'         => $video->size,
 			'filesizeHumanReadable'   => size_format( $video->size ),
 			'image'                   => array(
-				'src'    => $video->thumbnail,
+				'src'    => $signed_thumb,
 				'width'  => 64,
 				'height' => 48,
 			),
 			'fileLength'              => gmdate( 'H:i:s', round( $video->duration ) ),
 			'fileLengthHumanReadable' => human_readable_duration( gmdate( 'H:i:s', round( $video->duration ) ) ),
 			'thumb'                   => array(
-				'src'    => $video->thumbnail,
+				'src'    => $signed_thumb,
 				'width'  => 64,
 				'height' => 48,
 			),
+			// Token-free poster for block attributes (see $unsigned_thumb above).
+			'unsignedThumb'           => $unsigned_thumb,
 			'compat'                  => array(
 				'item' => '',
 				'meta' => '',
@@ -292,6 +331,12 @@ function cloudflare_stream_ajax_check_upload() {
 	$data = $api->get_video_details( $uid );
 
 	if ( is_object( $data ) && ! empty( $data->success ) ) {
+		// The editor stores this on the block, so it stays token-free. Rebuilt
+		// with our own helper so it honours the configured media domain.
+		if ( is_object( $data->result ) && ! empty( $data->result->thumbnail ) ) {
+			$data->result->thumbnail = $api->get_poster_url( $uid, cloudflare_stream_poster_time() );
+		}
+
 		wp_send_json_success( $data->result );
 	}
 
@@ -303,6 +348,42 @@ function cloudflare_stream_ajax_check_upload() {
 	wp_send_json_error( $message );
 }
 add_action( 'wp_ajax_cloudflare-stream-check-upload', 'cloudflare_stream_ajax_check_upload' );
+
+/**
+ * AJAX method for resolving editor preview URLs for a video.
+ *
+ * When signed playback is on these URLs carry a short-lived playback token, so
+ * they are minted here rather than in the browser. Only the playback token is
+ * ever returned; the Cloudflare API token stays on the server.
+ *
+ * @since 1.1.7
+ */
+function cloudflare_stream_ajax_playback_urls() {
+	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+	cloudflare_stream_verify_ajax_capability();
+
+	$uid = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
+
+	$api         = Cloudflare_Stream_API::instance();
+	$playback_id = $api->get_playback_id( $uid );
+
+	if ( false === $playback_id ) {
+		// Fail closed, exactly as the front end does: no unsigned fallback.
+		wp_send_json_error(
+			array(
+				'message' => __( 'Could not create a signed preview for this video.', 'cloudflare-stream' ),
+			)
+		);
+	}
+
+	wp_send_json_success(
+		array(
+			'iframeUrl' => $api->get_iframe_url( $playback_id ),
+			'posterUrl' => $api->get_poster_url( $playback_id, cloudflare_stream_poster_time() ),
+		)
+	);
+}
+add_action( 'wp_ajax_cloudflare-stream-playback-urls', 'cloudflare_stream_ajax_playback_urls' );
 
 /**
  * AJAX method for initializing a video upload.

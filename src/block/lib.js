@@ -39,27 +39,35 @@ const getMediaDomain = function () {
 };
 
 /**
- * Build the Stream iframe src for editor preview.
+ * Whether this site serves Stream playback through signed URLs.
+ *
+ * @return {boolean} True when playback URLs need a server-minted token.
+ */
+export const usesSignedUrls = function () {
+	return (
+		typeof cloudflareStream !== 'undefined' &&
+		Boolean( cloudflareStream.signedUrls )
+	);
+};
+
+/**
+ * Build the playback option query string shared by signed and unsigned URLs.
  *
  * @param {Object} attributes Block attributes.
- * @return {string} Iframe URL.
+ * @param {string} extra      Params already present on the base URL.
+ * @param {string} poster     Poster URL to use, if any.
+ * @return {string} Query string including the leading '?', or an empty string.
  */
-export const streamIframeSource = function ( attributes ) {
-	const { uid, controls, autoplay, loop, muted, thumbnail } = attributes;
-
-	// Build a query string for Stream URL options.
+const playbackQueryString = function ( attributes, extra, poster ) {
+	const { controls, autoplay, loop, muted } = attributes;
 	const queryElements = [];
 
-	// Get any querystring params included in the UID (not clear why this sometimes happens).
-	const uidParts = String( uid || '' ).split( '?' );
-	const idPath = uidParts[ 0 ];
-	if ( uidParts[ 1 ] ) {
-		queryElements.push( uidParts[ 1 ] );
+	if ( extra ) {
+		queryElements.push( extra );
 	}
 
-	// Add the thumbnail if it exists.
-	if ( thumbnail ) {
-		queryElements.push( 'poster=' + encodeURIComponent( thumbnail ) );
+	if ( poster ) {
+		queryElements.push( 'poster=' + encodeURIComponent( poster ) );
 	}
 
 	// Add other boolean parameters if they are set.
@@ -70,8 +78,30 @@ export const streamIframeSource = function ( attributes ) {
 		}
 	}
 
-	const queryString =
-		queryElements.length > 0 ? '?' + queryElements.join( '&' ) : '';
+	return queryElements.length > 0 ? '?' + queryElements.join( '&' ) : '';
+};
+
+/**
+ * Build the Stream iframe src for editor preview.
+ *
+ * Unsigned playback only. When signed URLs are on the base URL must come from
+ * the server (it carries a playback token), so use signedIframeSource instead.
+ *
+ * @param {Object} attributes Block attributes.
+ * @return {string} Iframe URL.
+ */
+export const streamIframeSource = function ( attributes ) {
+	const { uid, thumbnail } = attributes;
+
+	// Get any querystring params included in the UID (not clear why this sometimes happens).
+	const uidParts = String( uid || '' ).split( '?' );
+	const idPath = uidParts[ 0 ];
+
+	const queryString = playbackQueryString(
+		attributes,
+		uidParts[ 1 ],
+		thumbnail
+	);
 	const domain = getMediaDomain();
 	const isStandard = getStandardDomains().indexOf( domain ) !== -1;
 
@@ -80,4 +110,23 @@ export const streamIframeSource = function ( attributes ) {
 	}
 
 	return 'https://' + domain + '/' + idPath + '/iframe' + queryString;
+};
+
+/**
+ * Apply playback options to a server-minted signed iframe URL.
+ *
+ * The token lives in the base URL path, so it is never rebuilt here.
+ *
+ * @param {Object} attributes Block attributes.
+ * @param {Object} urls       Server response with iframeUrl and posterUrl.
+ * @return {string} Iframe URL, or an empty string when not yet resolved.
+ */
+export const signedIframeSource = function ( attributes, urls ) {
+	if ( ! urls || ! urls.iframeUrl ) {
+		return '';
+	}
+
+	return (
+		urls.iframeUrl + playbackQueryString( attributes, '', urls.posterUrl )
+	);
 };

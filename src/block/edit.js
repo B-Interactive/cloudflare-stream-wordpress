@@ -4,7 +4,7 @@
  * @package cloudflare-stream
  */
 
-import { streamIframeSource } from './lib';
+import { streamIframeSource, signedIframeSource, usesSignedUrls } from './lib';
 import {
 	fetchDirectUpload,
 	tusUploadFile,
@@ -220,6 +220,9 @@ function CloudflareStreamEdit( {
 	);
 	const [ progress, setProgress ] = useState( null );
 	const [ errorMessage, setErrorMessage ] = useState( '' );
+	// Signed preview URLs are minted server-side and held in state only, so no
+	// short-lived token is ever written into block attributes / post content.
+	const [ signedUrls, setSignedUrls ] = useState( null );
 
 	const encodingPollerRef = useRef( null );
 	const uploadRef = useRef( null );
@@ -370,16 +373,23 @@ function CloudflareStreamEdit( {
 			encodePollAttemptsRef.current = 0;
 			clearNotices();
 
+			// thumb.src may carry a signed token for display; persist the
+			// token-free variant so saved content cannot go stale.
+			const thumbnail =
+				attachment.unsignedThumb ||
+				( attachment.thumb && attachment.thumb.src ) ||
+				'';
+
 			setAttributes( {
 				uid: attachment.uid,
 				fingerprint: false,
-				thumbnail: attachment.thumb.src,
+				thumbnail,
 			} );
 
 			readySnapshotRef.current = {
 				uid: attachment.uid,
 				fingerprint: false,
-				thumbnail: attachment.thumb.src,
+				thumbnail,
 			};
 
 			setStatus( 'ready' );
@@ -1057,6 +1067,46 @@ function CloudflareStreamEdit( {
 		switchToEncoding,
 	] );
 
+	// Mint signed preview URLs for the current video. Runs only when signed
+	// playback is on; unsigned sites keep building URLs entirely client-side.
+	useEffect( () => {
+		if ( ! usesSignedUrls() || ! attributes.uid || status !== 'ready' ) {
+			return undefined;
+		}
+
+		let cancelled = false;
+
+		// Drop URLs minted for a previous video before fetching the new ones.
+		setSignedUrls( ( current ) =>
+			current && current.uid === attributes.uid ? current : null
+		);
+
+		streamAjax( 'cloudflare-stream-playback-urls', { uid: attributes.uid } )
+			.then( ( data ) => {
+				if ( cancelled ) {
+					return;
+				}
+				if (
+					data &&
+					data.success &&
+					data.data &&
+					data.data.iframeUrl
+				) {
+					setSignedUrls( { ...data.data, uid: attributes.uid } );
+				}
+			} )
+			.catch( ( error ) => {
+				if ( ! cancelled ) {
+					// eslint-disable-next-line no-console
+					console.error( error );
+				}
+			} );
+
+		return () => {
+			cancelled = true;
+		};
+	}, [ attributes.uid, status ] );
+
 	if ( status !== 'ready' ) {
 		const showProgress =
 			status === 'uploading' || status === 'encoding';
@@ -1148,6 +1198,11 @@ function CloudflareStreamEdit( {
 		);
 	}
 
+	// Signed sites wait for the server-minted URL; a bare uid would 401.
+	const previewSource = usesSignedUrls()
+		? signedIframeSource( attributes, signedUrls )
+		: streamIframeSource( attributes );
+
 	return (
 		<>
 			<BlockControls group="other">
@@ -1200,13 +1255,27 @@ function CloudflareStreamEdit( {
 			</InspectorControls>
 			<figure { ...blockProps }>
 				<Disabled className="player-edit-wrapper">
-					<iframe
-						src={ streamIframeSource( attributes ) }
-						title={ __(
-							'Cloudflare Stream video',
-							'cloudflare-stream'
-						) }
-					></iframe>
+					{ previewSource ? (
+						<iframe
+							src={ previewSource }
+							title={ __(
+								'Cloudflare Stream video',
+								'cloudflare-stream'
+							) }
+						></iframe>
+					) : (
+						<Placeholder
+							icon={ cloudflareStream.icon }
+							label={ __(
+								'Cloudflare Stream Video',
+								'cloudflare-stream'
+							) }
+							instructions={ __(
+								'Loading the video preview…',
+								'cloudflare-stream'
+							) }
+						/>
+					) }
 				</Disabled>
 			</figure>
 		</>
