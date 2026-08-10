@@ -4,9 +4,11 @@
  * @package cloudflare-stream
  */
 
-const Post  = wp.media.view.MediaFrame.Post,
+import { streamAjax } from '../../lib/ajax';
+
+const Post = wp.media.view.MediaFrame.Post,
 	Library = wp.media.controller.Library,
-	l10n    = wp.media.view.l10n;
+	l10n = wp.media.view.l10n;
 
 /**
  * The frame for manipulating media on the Edit Post page.
@@ -25,19 +27,19 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 	{
 		initialize( options ) {
 			this.select = options;
+			this._sidebarBound = false;
+			this._onSidebarClick = null;
+			this._onSidebarChange = null;
 
-			_.defaults(
-				this.options,
-				{
-					id: 'cloudflare-stream',
-					className: 'cloudflare-stream-media-frame',
-					title: 'Cloudflare Stream Library',
-					multiple: false,
-					editing: false,
-					state: 'insert',
-					metadata: {},
-				}
-			);
+			_.defaults( this.options, {
+				id: 'cloudflare-stream',
+				className: 'cloudflare-stream-media-frame',
+				title: 'Cloudflare Stream Library',
+				multiple: false,
+				editing: false,
+				state: 'insert',
+				metadata: {},
+			} );
 
 			// Call 'initialize' directly on the parent class.
 			Post.prototype.initialize.apply( this, arguments );
@@ -49,28 +51,26 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		createStates() {
 			const options = this.options;
 
-			this.states.add(
-				[
-				new Library(
-					{
-						id: 'insert',
-						title: options.title,
-						priority: 20,
-						toolbar: 'main-insert',
-						menu: false,
-						filterable: false,
-						searchable: false,
-						date: false,
-						library: new cloudflareStream.media.model.Query(
+			this.states.add( [
+				new Library( {
+					id: 'insert',
+					title: options.title,
+					priority: 20,
+					toolbar: 'main-insert',
+					menu: false,
+					filterable: false,
+					searchable: false,
+					date: false,
+					library: new cloudflareStream.media.model.Query(
+						null,
+						_.defaults(
 							null,
-							_.defaults(
-								null,
-								{
-									type: 'video',
-									},
-								options.library
-							)
-						),
+							{
+								type: 'video',
+							},
+							options.library
+						)
+					),
 					multiple: options.multiple ? 'reset' : false,
 					editable: true,
 
@@ -85,10 +85,8 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 					displayUserSettings: false,
 
 					//AttachmentView: wp.media.view.Attachments.EditSelection,
-					}
-				),
-				]
-			);
+				} ),
+			] );
 		},
 
 		bindHandlers() {
@@ -99,20 +97,17 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			this.on( 'activate', this.activate, this );
 
 			// Only bother checking media type counts if one of the counts is zero.
-			checkCounts = _.find(
-				this.counts,
-				function ( type ) {
-					return type.count === 0;
-				}
-			);
+			checkCounts = _.find( this.counts, function ( type ) {
+				return type.count === 0;
+			} );
 
-		if ( typeof checkCounts !== 'undefined' ) {
-			this.listenTo(
-				wp.media.model.Attachments.all,
-				'change:type',
-				this.mediaTypeCounts
-			);
-		}
+			if ( typeof checkCounts !== 'undefined' ) {
+				this.listenTo(
+					wp.media.model.Attachments.all,
+					'change:type',
+					this.mediaTypeCounts
+				);
+			}
 
 			this.on( 'toolbar:create:main-insert', this.createToolbar, this );
 			this.on( 'selection:toggle', this.bindSidebarItems, this );
@@ -142,17 +137,56 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			);
 		},
 
+		/**
+		 * Bind sidebar delete/title handlers once on the frame root.
+		 * Delegation survives sidebar re-renders on selection change.
+		 */
 		bindSidebarItems() {
-			jQuery( '.delete-attachment' ).on(
-				'click',
-				this,
-				this.deleteAttachment
-			);
-			jQuery( 'label[data-setting="title"] input' ).on(
-				'change',
-				this,
-				this.updateAttachment
-			);
+			const el = this.el;
+			if ( ! el || this._sidebarBound ) {
+				return;
+			}
+
+			this._sidebarBound = true;
+
+			this._onSidebarClick = ( event ) => {
+				if ( event.target.closest( '.delete-attachment' ) ) {
+					this.deleteAttachment( event );
+				}
+			};
+
+			this._onSidebarChange = ( event ) => {
+				if (
+					event.target.closest( 'label[data-setting="title"] input' )
+				) {
+					this.updateAttachment( event );
+				}
+			};
+
+			el.addEventListener( 'click', this._onSidebarClick );
+			el.addEventListener( 'change', this._onSidebarChange );
+		},
+
+		/**
+		 * Tear down delegated sidebar listeners with the frame.
+		 */
+		remove() {
+			const el = this.el;
+
+			if ( el && this._sidebarBound ) {
+				if ( this._onSidebarClick ) {
+					el.removeEventListener( 'click', this._onSidebarClick );
+				}
+				if ( this._onSidebarChange ) {
+					el.removeEventListener( 'change', this._onSidebarChange );
+				}
+			}
+
+			this._sidebarBound = false;
+			this._onSidebarClick = null;
+			this._onSidebarChange = null;
+
+			return Post.prototype.remove.apply( this, arguments );
 		},
 
 		/**
@@ -164,13 +198,11 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			event.preventDefault();
 			event.stopPropagation();
 
-			const controller = event.data;
-
 			/* eslint-disable */
 			if ( window.confirm( l10n.warnDelete ) ) {
 				/* eslint-enable */
-				const state    = controller.state(),
-					selection  = state.get( 'selection' ),
+				const state = this.state(),
+					selection = state.get( 'selection' ),
 					attachment = selection.first().toJSON();
 
 				selection.remove( attachment );
@@ -187,42 +219,43 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			event.preventDefault();
 			event.stopPropagation();
 
-			const controller = event.data;
-			const state      = controller.state(),
-				selection    = state.get( 'selection' ),
-				attachment   = selection.first().toJSON();
+			const state = this.state(),
+				selection = state.get( 'selection' ),
+				attachment = selection.first().toJSON();
 
-			// Update the model.
-			const newTitle = jQuery(
+			const input = this.el.querySelector(
 				'label[data-setting="title"] input'
-			).val();
-
-			jQuery( '.media-sidebar .spinner' ).css( 'visibility', 'visible' );
-
-			jQuery.ajax(
-				{
-					url: ajaxurl + '?action=cloudflare-stream-update',
-					method: 'POST',
-					data: {
-						nonce: cloudflareStream.nonce,
-						uid: attachment.uid,
-						title: newTitle,
-						upload: attachment.cloudflare && attachment.cloudflare.meta
-							? attachment.cloudflare.meta.upload
-							: '',
-					},
-					success() {
-						selection.models[ 0 ].set( 'filename', newTitle );
-						jQuery( '.media-sidebar .spinner' ).css(
-							'visibility',
-							'hidden'
-						);
-					},
-					error( jqXHR, textStatus ) {
-						console.error( 'Error: ' + textStatus );
-					},
-				}
 			);
+			const newTitle = input ? input.value : '';
+			const spinner = this.el.querySelector( '.media-sidebar .spinner' );
+
+			if ( spinner ) {
+				spinner.style.visibility = 'visible';
+			}
+
+			streamAjax( 'cloudflare-stream-update', {
+				uid: attachment.uid,
+				title: newTitle,
+				upload:
+					attachment.cloudflare && attachment.cloudflare.meta
+						? attachment.cloudflare.meta.upload
+						: '',
+			} )
+				.then( () => {
+					selection.models[ 0 ].set( 'filename', newTitle );
+				} )
+				.catch( ( err ) => {
+					// eslint-disable-next-line no-console
+					console.error(
+						'Error: ',
+						err && err.message ? err.message : err
+					);
+				} )
+				.finally( () => {
+					if ( spinner ) {
+						spinner.style.visibility = 'hidden';
+					}
+				} );
 		},
 
 		/**
@@ -231,14 +264,12 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		 * @param {wp.media.view.Router} routerView The Router view.
 		 */
 		browseRouter( routerView ) {
-			routerView.set(
-				{
-					browse: {
-						text: this.options.title,
-						priority: 40,
-					},
-				}
-			);
+			routerView.set( {
+				browse: {
+					text: this.options.title,
+					priority: 40,
+				},
+			} );
 		},
 
 		/**
@@ -249,30 +280,27 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		mainInsertToolbar( view ) {
 			const controller = this;
 
-			view.set(
-				'insert',
-				{
-					style: 'primary',
-					priority: 80,
-					text: 'Select',
-					requires: { selection: true },
+			view.set( 'insert', {
+				style: 'primary',
+				priority: 80,
+				text: 'Select',
+				requires: { selection: true },
 
-					/**
-					 * Click event
-					 *
-					 * @fires wp.media.controller.State#insert
-					 */
-					click() {
-						const state = controller.state(),
-						selection   = state.get( 'selection' ),
-						attachment  = selection.first().toJSON();
+				/**
+				 * Click event
+				 *
+				 * @fires wp.media.controller.State#insert
+				 */
+				click() {
+					const state = controller.state(),
+						selection = state.get( 'selection' ),
+						attachment = selection.first().toJSON();
 
-						controller.select( attachment );
-						controller.close();
-						state.trigger( 'insert', selection ).reset();
-					},
-				}
-			);
+					controller.select( attachment );
+					controller.close();
+					state.trigger( 'insert', selection ).reset();
+				},
+			} );
 		},
 	}
 );
