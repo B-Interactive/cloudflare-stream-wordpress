@@ -35,16 +35,21 @@ cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 				);
 
 				let timestampOffset = '';
-				if (
-					cloudflareStream.media.model.Attachments.all.models.length >
-					0
-				) {
-					timestampOffset =
-						'&end=' +
-						cloudflareStream.media.model.Attachments.all.models[
-							cloudflareStream.media.model.Attachments.all.models
-								.length - 1
-						].attributes.modified.toISOString();
+				if ( this.length > 0 ) {
+					const oldest = this.reduce( ( min, attachment ) => {
+						const modified = attachment.get( 'modified' );
+						if (
+							modified instanceof Date &&
+							( ! min || modified < min )
+						) {
+							return modified;
+						}
+						return min;
+					}, null );
+
+					if ( oldest ) {
+						timestampOffset = '&end=' + oldest.toISOString();
+					}
 				}
 
 				options.data.query = 'asc=false' + timestampOffset;

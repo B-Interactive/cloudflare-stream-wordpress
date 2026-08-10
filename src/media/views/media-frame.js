@@ -64,11 +64,10 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 					library: new cloudflareStream.media.model.Query(
 						null,
 						_.defaults(
-							null,
+							{},
 							{
 								type: 'video',
-							},
-							options.library
+							}
 						)
 					),
 					multiple: options.multiple ? 'reset' : false,
