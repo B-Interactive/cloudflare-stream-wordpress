@@ -28,6 +28,7 @@ class Test_CFStream_Registration extends WP_UnitTestCase {
 		$smoke->s12_admin_post_actions();
 		$smoke->s13_dist_assets();
 		$smoke->s17_no_wp_editor_usage();
+		$smoke->s18_block_script_deps();
 
 		$failures = $smoke->get_failures();
 		$this->assertSame( array(), $failures, implode( "\n", $failures ) );

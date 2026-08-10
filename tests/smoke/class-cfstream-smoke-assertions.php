@@ -89,6 +89,7 @@ class CFStream_Smoke_Assertions {
 		$this->s15_no_outbound_http();
 		$this->s16_openssl_available();
 		$this->s17_no_wp_editor_usage();
+		$this->s18_block_script_deps();
 
 		return $this->failures;
 	}
@@ -585,6 +586,56 @@ class CFStream_Smoke_Assertions {
 		}
 		if ( $hits ) {
 			$this->fail( 'S17: wp.editor reference found in ' . implode( ', ', $hits ) );
+		}
+	}
+
+	/**
+	 * Block editor script deps come from the generated asset file.
+	 *
+	 * The build emits dist/blocks.build.asset.php; the enqueue adds media-views
+	 * for the Stream library frame and nothing from jQuery UI.
+	 */
+	public function s18_block_script_deps() {
+		$asset_path = $this->plugin_root . '/dist/blocks.build.asset.php';
+		if ( ! is_readable( $asset_path ) ) {
+			$this->fail( 'S18: missing dist/blocks.build.asset.php' );
+			return;
+		}
+
+		$asset = require $asset_path;
+		if ( ! is_array( $asset ) || empty( $asset['dependencies'] ) || ! is_array( $asset['dependencies'] ) ) {
+			$this->fail( 'S18: asset file has no dependency array' );
+			return;
+		}
+
+		foreach ( array( 'wp-block-editor', 'wp-components', 'wp-element' ) as $handle ) {
+			if ( ! in_array( $handle, $asset['dependencies'], true ) ) {
+				$this->fail( "S18: asset dependencies missing {$handle}" );
+			}
+		}
+
+		$deps = array_merge( $asset['dependencies'], array( 'media-views' ) );
+		foreach ( $deps as $handle ) {
+			if ( 0 === strpos( $handle, 'jquery' ) ) {
+				$this->fail( "S18: block script depends on {$handle}" );
+			}
+		}
+
+		if ( ! in_array( 'media-views', $deps, true ) ) {
+			$this->fail( 'S18: block script does not depend on media-views' );
+		}
+
+		$src = $this->plugin_root . '/src/init.php';
+		$php = is_readable( $src ) ? file_get_contents( $src ) : '';
+		if ( '' === $php ) {
+			$this->fail( 'S18: src/init.php unreadable' );
+			return;
+		}
+		if ( false === strpos( $php, 'dist/blocks.build.asset.php' ) ) {
+			$this->fail( 'S18: init.php does not read the generated asset file' );
+		}
+		if ( false !== stripos( $php, 'jquery' ) ) {
+			$this->fail( 'S18: init.php still references jQuery' );
 		}
 	}
 
