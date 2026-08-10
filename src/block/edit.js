@@ -39,6 +39,9 @@ import {
 } from '@wordpress/block-editor';
 import { Fragment, Component, createRef } from '@wordpress/element';
 
+/** Transient poll failures before surfacing an error. */
+const ENCODE_POLL_MAX_ATTEMPTS = 3;
+
 /**
  * Resolve the initial UI status from block attributes.
  *
@@ -55,6 +58,81 @@ function statusFromAttributes( attributes ) {
 	return 'ready';
 }
 
+/**
+ * Turn API/ajax error payloads into a readable string.
+ *
+ * @param {*} value Raw error value.
+ * @return {string} User-facing message text.
+ */
+function normaliseErrorMessage( value ) {
+	if ( value == null || value === '' ) {
+		return '';
+	}
+	if ( typeof value === 'string' ) {
+		return value;
+	}
+	if ( typeof value === 'number' || typeof value === 'boolean' ) {
+		return String( value );
+	}
+	if ( value instanceof Error && value.message ) {
+		return value.message;
+	}
+	if ( typeof value === 'object' ) {
+		if ( typeof value.message === 'string' && value.message ) {
+			return value.message;
+		}
+		if ( typeof value.error === 'string' && value.error ) {
+			return value.error;
+		}
+		if ( typeof value.code === 'string' && value.code ) {
+			return value.code;
+		}
+	}
+	return __(
+		'Something went wrong. See the console for details.',
+		'cloudflare-stream'
+	);
+}
+
+/**
+ * Whether a failure is a hard auth/permission problem (no auto-retry).
+ *
+ * @param {*} value Raw error value or message.
+ * @return {boolean} True when retrying the same request is pointless.
+ */
+function isNonRetryableFailure( value ) {
+	const text = normaliseErrorMessage( value ).toLowerCase();
+	if ( ! text ) {
+		return false;
+	}
+	return (
+		text.indexOf( 'nonce' ) !== -1 ||
+		text.indexOf( 'forbidden' ) !== -1 ||
+		text.indexOf( 'permission' ) !== -1 ||
+		text.indexOf( 'not allowed' ) !== -1 ||
+		text.indexOf( 'unauthorized' ) !== -1 ||
+		text.indexOf( 'log in' ) !== -1 ||
+		text.indexOf( 'logged in' ) !== -1
+	);
+}
+
+/**
+ * Snapshot of ready-video attributes used when cancelling a replace.
+ *
+ * @param {Object} attributes Block attributes.
+ * @return {Object|null} Snapshot, or null when there is no ready video.
+ */
+function snapshotReadyAttributes( attributes ) {
+	if ( ! attributes.uid || ! attributes.thumbnail ) {
+		return null;
+	}
+	return {
+		uid: attributes.uid,
+		fingerprint: attributes.fingerprint,
+		thumbnail: attributes.thumbnail,
+	};
+}
+
 class CloudflareStreamEdit extends Component {
 	constructor( props ) {
 		super( props );
@@ -66,13 +144,15 @@ class CloudflareStreamEdit extends Component {
 			errorMessage: '',
 		};
 
-		this.instanceId = props.clientId;
-		this.controller = this;
 		this.streamPlayer = createRef();
 		this.encodingPoller = null;
 		this.upload = null;
 		this.selectedFile = null;
 		this.retried = false;
+		this.uploadGeneration = 0;
+		this.encodePollAttempts = 0;
+		// Ready video attrs before replace; restored if the replace is cancelled.
+		this.readySnapshot = snapshotReadyAttributes( props.attributes );
 
 		this.toggleAttribute = this.toggleAttribute.bind( this );
 		this.open = this.open.bind( this );
@@ -92,31 +172,17 @@ class CloudflareStreamEdit extends Component {
 		}
 	}
 
-	componentDidUpdate() {
-		const { attributes } = this.props;
-		const streamPlayer = this.streamPlayer.current;
-
-		if ( streamPlayer !== null && streamPlayer.play !== null ) {
-			streamPlayer.autoPlay = attributes.autoplay;
-			streamPlayer.controls = attributes.controls;
-			streamPlayer.mute = attributes.mute;
-			streamPlayer.loop = attributes.loop;
-			streamPlayer.controls = attributes.controls;
-
-			if (
-				attributes.autoplay &&
-				typeof streamPlayer.play === 'function'
-			) {
-				streamPlayer.play();
-			} else if ( typeof streamPlayer.pause === 'function' ) {
-				streamPlayer.pause();
-			}
-		}
-	}
-
 	componentWillUnmount() {
+		this.invalidateUploadGeneration();
 		this.clearEncodingPoller();
 		this.abortUpload();
+	}
+
+	/**
+	 * Bump the upload generation so in-flight callbacks become no-ops.
+	 */
+	invalidateUploadGeneration() {
+		this.uploadGeneration += 1;
 	}
 
 	/**
@@ -141,6 +207,16 @@ class CloudflareStreamEdit extends Component {
 			}
 		}
 		this.upload = null;
+	}
+
+	/**
+	 * True when the given generation still owns the active upload/encode work.
+	 *
+	 * @param {number} generation Generation captured when work started.
+	 * @return {boolean} Whether callbacks may update UI/attributes.
+	 */
+	isCurrentGeneration( generation ) {
+		return generation === this.uploadGeneration;
 	}
 
 	toggleAttribute( attribute ) {
@@ -170,14 +246,27 @@ class CloudflareStreamEdit extends Component {
 
 	select( attachment ) {
 		const { setAttributes } = this.props;
-		setAttributes( {
-			uid: attachment.uid,
-			thumbnail: attachment.thumb.src,
-		} );
+
+		// Drops any pending direct-upload / TUS work for a library pick.
+		this.invalidateUploadGeneration();
 		this.clearEncodingPoller();
 		this.abortUpload();
 		this.selectedFile = null;
 		this.retried = false;
+		this.encodePollAttempts = 0;
+
+		setAttributes( {
+			uid: attachment.uid,
+			fingerprint: false,
+			thumbnail: attachment.thumb.src,
+		} );
+
+		this.readySnapshot = {
+			uid: attachment.uid,
+			fingerprint: false,
+			thumbnail: attachment.thumb.src,
+		};
+
 		this.setState( {
 			status: 'ready',
 			progress: null,
@@ -230,7 +319,7 @@ class CloudflareStreamEdit extends Component {
 	showUploadError( message, cause ) {
 		const { noticeOperations } = this.props;
 		const text =
-			message ||
+			normaliseErrorMessage( message ) ||
 			__(
 				'Upload Error: See the console for details.',
 				'cloudflare-stream'
@@ -260,9 +349,11 @@ class CloudflareStreamEdit extends Component {
 	retry() {
 		const { noticeOperations } = this.props;
 
+		this.invalidateUploadGeneration();
 		this.clearEncodingPoller();
 		this.abortUpload();
 		this.retried = false;
+		this.encodePollAttempts = 0;
 
 		if ( noticeOperations ) {
 			noticeOperations.removeAllNotices();
@@ -276,24 +367,45 @@ class CloudflareStreamEdit extends Component {
 	}
 
 	/**
-	 * Stop upload/encoding work and leave the edit UI.
+	 * Stop upload/encoding work and restore a ready video or a clean idle state.
 	 */
 	cancel() {
-		const { attributes } = this.props;
+		const { setAttributes } = this.props;
 		const { noticeOperations } = this.props;
 
+		this.invalidateUploadGeneration();
 		this.clearEncodingPoller();
 		this.abortUpload();
+		this.selectedFile = null;
+		this.retried = false;
+		this.encodePollAttempts = 0;
 
 		if ( noticeOperations ) {
 			noticeOperations.removeAllNotices();
 		}
 
-		const nextStatus =
-			attributes.uid && attributes.thumbnail ? 'ready' : 'idle';
+		if ( this.readySnapshot ) {
+			setAttributes( {
+				uid: this.readySnapshot.uid,
+				fingerprint: this.readySnapshot.fingerprint,
+				thumbnail: this.readySnapshot.thumbnail,
+			} );
+			this.setState( {
+				status: 'ready',
+				progress: null,
+				errorMessage: '',
+			} );
+			return;
+		}
 
+		// Abandoned new upload/encoding — clear so reload does not resume.
+		setAttributes( {
+			uid: false,
+			fingerprint: false,
+			thumbnail: false,
+		} );
 		this.setState( {
-			status: nextStatus,
+			status: 'idle',
 			progress: null,
 			errorMessage: '',
 		} );
@@ -303,7 +415,11 @@ class CloudflareStreamEdit extends Component {
 	 * Open the edit placeholder (replace video).
 	 */
 	switchToEditing() {
+		const { attributes } = this.props;
 		const { noticeOperations } = this.props;
+
+		// Keep a restore point while the user picks a replacement.
+		this.readySnapshot = snapshotReadyAttributes( attributes );
 
 		if ( noticeOperations ) {
 			noticeOperations.removeAllNotices();
@@ -347,8 +463,10 @@ class CloudflareStreamEdit extends Component {
 			noticeOperations.removeAllNotices();
 		}
 
+		this.invalidateUploadGeneration();
 		this.clearEncodingPoller();
 		this.abortUpload();
+		this.encodePollAttempts = 0;
 
 		this.setState(
 			{
@@ -381,10 +499,21 @@ class CloudflareStreamEdit extends Component {
 			return;
 		}
 
+		// Own this attempt; cancel/select/unmount bumps generation past it.
+		block.uploadGeneration += 1;
+		const generation = block.uploadGeneration;
+
 		fetchDirectUpload( file )
 			.then( ( { uploadURL, uid } ) => {
+				if ( ! block.isCurrentGeneration( generation ) ) {
+					return;
+				}
+
 				block.upload = tusUploadFile( file, uploadURL, {
 					onError( error ) {
+						if ( ! block.isCurrentGeneration( generation ) ) {
+							return;
+						}
 						block.upload = null;
 						block.showUploadError(
 							__(
@@ -395,6 +524,9 @@ class CloudflareStreamEdit extends Component {
 						);
 					},
 					onProgress( bytesUploaded, bytesTotal ) {
+						if ( ! block.isCurrentGeneration( generation ) ) {
+							return;
+						}
 						const percentage = parseInt(
 							( bytesUploaded / bytesTotal ) * 100,
 							10
@@ -402,6 +534,10 @@ class CloudflareStreamEdit extends Component {
 						block.setState( { progress: percentage } );
 					},
 					onSuccess( upload ) {
+						if ( ! block.isCurrentGeneration( generation ) ) {
+							return;
+						}
+
 						const fingerprint =
 							upload.options &&
 							typeof upload.options.fingerprint === 'function'
@@ -415,12 +551,16 @@ class CloudflareStreamEdit extends Component {
 						setAttributes( {
 							uid,
 							fingerprint,
+							thumbnail: false,
 						} );
-						block.switchToEncoding();
+						block.switchToEncoding( generation );
 					},
 				} );
 			} )
 			.catch( ( error ) => {
+				if ( ! block.isCurrentGeneration( generation ) ) {
+					return;
+				}
 				block.showUploadError(
 					error && error.message ? error.message : String( error ),
 					error
@@ -430,8 +570,16 @@ class CloudflareStreamEdit extends Component {
 
 	/**
 	 * Move into the encoding/processing state and start polling.
+	 *
+	 * @param {number} [generation] Upload generation that owns this encode run.
 	 */
-	switchToEncoding() {
+	switchToEncoding( generation ) {
+		const activeGeneration =
+			typeof generation === 'number'
+				? generation
+				: this.uploadGeneration;
+
+		this.encodePollAttempts = 0;
 		this.setState(
 			{
 				status: 'encoding',
@@ -439,25 +587,97 @@ class CloudflareStreamEdit extends Component {
 				errorMessage: '',
 			},
 			() => {
-				this.encode();
+				this.encode( activeGeneration );
 			}
 		);
 	}
 
 	/**
-	 * Poll Stream until the video is ready to play.
+	 * Schedule the next encoding status poll.
+	 *
+	 * @param {number} generation Upload generation for this encode run.
+	 * @param {number} delayMs    Delay before the next poll.
 	 */
-	encode() {
+	scheduleEncodePoll( generation, delayMs ) {
+		const block = this;
+		block.clearEncodingPoller();
+		block.encodingPoller = setTimeout( function () {
+			block.encode( generation );
+		}, delayMs );
+	}
+
+	/**
+	 * Poll Stream until the video is ready to play.
+	 *
+	 * @param {number} [generation] Upload generation for this encode run.
+	 */
+	encode( generation ) {
 		const { attributes, setAttributes } = this.props;
 		const block = this;
+		const activeGeneration =
+			typeof generation === 'number'
+				? generation
+				: block.uploadGeneration;
+
+		if ( ! block.isCurrentGeneration( activeGeneration ) ) {
+			return;
+		}
+
+		if ( ! attributes.uid ) {
+			block.showUploadError(
+				__(
+					'Processing Error: Missing video id.',
+					'cloudflare-stream'
+				)
+			);
+			return;
+		}
 
 		checkUploadStatus( attributes.uid )
 			.then( ( data ) => {
+				if ( ! block.isCurrentGeneration( activeGeneration ) ) {
+					return;
+				}
+
+				if ( ! data || typeof data !== 'object' ) {
+					block.handleEncodePollFailure(
+						activeGeneration,
+						__(
+							'Invalid processing status response.',
+							'cloudflare-stream'
+						)
+					);
+					return;
+				}
+
 				if ( ! data.success ) {
-					console.error( 'Error: ' + data.data );
+					const detail = normaliseErrorMessage( data.data );
+					console.error( 'Error: ' + detail );
+
+					if ( isNonRetryableFailure( data.data || detail ) ) {
+						block.showUploadError(
+							sprintf(
+								/* translators: %s: error detail from the API */
+								__(
+									'Processing Error: %s',
+									'cloudflare-stream'
+								),
+								detail ||
+									__(
+										'See the console for details.',
+										'cloudflare-stream'
+									)
+							),
+							data.data
+						);
+						return;
+					}
+
+					// One-shot re-upload only for ambiguous processing failures.
 					if (
 						block.retried === false &&
-						block.selectedFile
+						block.selectedFile &&
+						! isNonRetryableFailure( detail )
 					) {
 						block.retried = true;
 						block.setState(
@@ -470,22 +690,35 @@ class CloudflareStreamEdit extends Component {
 								block.uploadFromFiles( block.selectedFile );
 							}
 						);
-					} else {
-						block.showUploadError(
-							sprintf(
-								/* translators: %s: error detail from the API */
-								__(
-									'Processing Error: %s',
-									'cloudflare-stream'
-								),
-								data.data
-							)
-						);
+						return;
 					}
+
+					block.showUploadError(
+						sprintf(
+							/* translators: %s: error detail from the API */
+							__(
+								'Processing Error: %s',
+								'cloudflare-stream'
+							),
+							detail ||
+								__(
+									'See the console for details.',
+									'cloudflare-stream'
+								)
+						),
+						data.data
+					);
 					return;
 				}
 
-				if ( typeof data.data === 'undefined' ) {
+				if ( typeof data.data === 'undefined' || data.data === null ) {
+					block.handleEncodePollFailure(
+						activeGeneration,
+						__(
+							'Empty processing status response.',
+							'cloudflare-stream'
+						)
+					);
 					return;
 				}
 
@@ -494,9 +727,15 @@ class CloudflareStreamEdit extends Component {
 					typeof data.data.thumbnail !== 'undefined'
 				) {
 					block.clearEncodingPoller();
+					block.encodePollAttempts = 0;
 					setAttributes( {
 						thumbnail: data.data.thumbnail,
 					} );
+					block.readySnapshot = {
+						uid: attributes.uid,
+						fingerprint: attributes.fingerprint,
+						thumbnail: data.data.thumbnail,
+					};
 					block.setState( {
 						status: 'ready',
 						progress: null,
@@ -505,10 +744,9 @@ class CloudflareStreamEdit extends Component {
 					return;
 				}
 
-				// Poll at a 5 second interval.
-				block.encodingPoller = setTimeout( function () {
-					block.encode();
-				}, 5000 );
+				// Successful poll with progress still running — reset transient failures.
+				block.encodePollAttempts = 0;
+				block.scheduleEncodePoll( activeGeneration, 5000 );
 
 				if (
 					data.data.status &&
@@ -526,10 +764,70 @@ class CloudflareStreamEdit extends Component {
 				}
 			} )
 			.catch( ( error ) => {
-				console.error(
-					error && error.message ? error.message : String( error )
-				);
+				if ( ! block.isCurrentGeneration( activeGeneration ) ) {
+					return;
+				}
+
+				const detail = normaliseErrorMessage( error );
+				console.error( detail || error );
+
+				if ( isNonRetryableFailure( error ) ) {
+					block.showUploadError(
+						sprintf(
+							/* translators: %s: error detail from the API */
+							__(
+								'Processing Error: %s',
+								'cloudflare-stream'
+							),
+							detail ||
+								__(
+									'See the console for details.',
+									'cloudflare-stream'
+								)
+						),
+						error
+					);
+					return;
+				}
+
+				block.handleEncodePollFailure( activeGeneration, detail, error );
 			} );
+	}
+
+	/**
+	 * Retry a transient encode poll a few times, then surface an error.
+	 *
+	 * @param {number} generation Upload generation for this encode run.
+	 * @param {string} message    User-facing failure text.
+	 * @param {*}      [cause]    Optional raw error for the console.
+	 */
+	handleEncodePollFailure( generation, message, cause ) {
+		if ( ! this.isCurrentGeneration( generation ) ) {
+			return;
+		}
+
+		this.encodePollAttempts += 1;
+
+		if ( this.encodePollAttempts < ENCODE_POLL_MAX_ATTEMPTS ) {
+			// Simple backoff: 5s, 10s, …
+			const delayMs = 5000 * this.encodePollAttempts;
+			this.scheduleEncodePoll( generation, delayMs );
+			return;
+		}
+
+		this.clearEncodingPoller();
+		this.showUploadError(
+			sprintf(
+				/* translators: %s: error detail from the API */
+				__( 'Processing Error: %s', 'cloudflare-stream' ),
+				message ||
+					__(
+						'See the console for details.',
+						'cloudflare-stream'
+					)
+			),
+			cause !== undefined ? cause : message
+		);
 	}
 
 	/**
@@ -542,6 +840,11 @@ class CloudflareStreamEdit extends Component {
 		const { status } = this.state;
 
 		if ( status === 'uploading' || status === 'encoding' ) {
+			return true;
+		}
+
+		// Idle after "edit" still has a ready snapshot or current ready attrs.
+		if ( status === 'idle' && this.readySnapshot ) {
 			return true;
 		}
 
@@ -560,58 +863,6 @@ class CloudflareStreamEdit extends Component {
 			const showRetry = status === 'error';
 			const showUploadControls = status === 'idle';
 			const canManage = Boolean( cloudflareStream.nonce );
-
-			// Nonce is only localised for users who can manage Stream.
-			if ( showUploadControls && ! canManage ) {
-				return (
-					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
-					<Placeholder
-						icon={ cloudflareStream.icon }
-						label={ __(
-							'Cloudflare Stream',
-							'cloudflare-stream'
-						) }
-						instructions={ instructions }
-						className="editor-media-placeholder"
-					>
-						{ noticeUI }
-						<MediaUpload
-							type="video"
-							className={ className }
-							value={ this.props.attributes }
-							render={ () => (
-								<Button
-									label={ __(
-										'Stream Library',
-										'cloudflare-stream'
-									) }
-									onClick={ this.open }
-									className="editor-media-placeholder__browse-button"
-								>
-									{ ' ' }
-									{ __(
-										'Stream Library',
-										'cloudflare-stream'
-									) }
-								</Button>
-							) }
-						/>
-						{ this.canCancel() && (
-							<Button
-								variant="secondary"
-								icon="cancel"
-								label={ __( 'Cancel', 'cloudflare-stream' ) }
-								onClick={ this.cancel }
-								className="editor-media-placeholder__cancel-button"
-							>
-								{ ' ' }
-								{ __( 'Cancel', 'cloudflare-stream' ) }
-							</Button>
-						) }
-					</Placeholder>
-					// phpcs:enable
-				);
-			}
 
 			return (
 				// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
@@ -640,7 +891,6 @@ class CloudflareStreamEdit extends Component {
 					) }
 					{ showUploadControls && canManage && (
 						<FormFileUpload
-							multiple
 							className="editor-media-placeholder__upload-button"
 							onChange={ this.onFileChange }
 							accept="video/*"

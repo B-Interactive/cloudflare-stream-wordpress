@@ -31,9 +31,12 @@
 }
 
 .cloudflare-stream-progress-wrap {
-	position: relative;
 	width: 100%;
 	margin-bottom: 8px;
+}
+
+.cloudflare-stream-progress {
+	width: 100%;
 }
 
 .cloudflare-stream-progress__label {
