@@ -1,13 +1,10 @@
 /**
- * Query
+ * A collection of Stream attachments matching the supplied query arguments.
  *
  * @package cloudflare-stream
  */
 
-/**
- * A collection of Stream Attachments that match the supplied query arguments.
- */
-cloudflareStream.media.model.Query   = wp.media.model.Query.extend(
+cloudflareStream.media.model.Query = wp.media.model.Query.extend(
 	{
 		initialize( models, options ) {
 			options                  = options || {};
@@ -17,8 +14,7 @@ cloudflareStream.media.model.Query   = wp.media.model.Query.extend(
 		},
 
 		/**
-		 * Overrides Backbone.Collection.sync
-		 * Overrides wp.media.model.Attachments.sync
+		 * Read Stream videos through admin-ajax; everything else falls back.
 		 *
 		 * @param {string}         method       Method for sync
 		 * @param {Backbone.Model} model        Backbone model
@@ -26,7 +22,6 @@ cloudflareStream.media.model.Query   = wp.media.model.Query.extend(
 		 * @return {Promise} A Promise
 		 */
 		sync( method, model, options ) {
-			// Overload the read method so Attachment.fetch() functions correctly.
 			if ( 'read' === method ) {
 				options         = options || {};
 				options.context = this;
@@ -52,19 +47,10 @@ cloudflareStream.media.model.Query   = wp.media.model.Query.extend(
 						].attributes.modified.toISOString();
 				}
 
-				// Clone the args so manipulation is non-destructive.
-				const args = _.clone( this.args );
-				// Determine which page to query.
-				if ( -1 !== args.posts_per_page ) {
-					args.paged =
-						Math.floor( this.length / args.posts_per_page ) + 1;
-				}
-
 				options.data.query = 'asc=false' + timestampOffset;
 				return wp.media.ajax( options );
-
-				// Otherwise, fall back to Backbone.sync().
 			}
+
 			const fallback = wp.media.model.Attachments.prototype.sync
 				? wp.media.model.Attachments.prototype
 				: Backbone;
