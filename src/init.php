@@ -1,8 +1,6 @@
 <?php
 /**
- * Blocks Initializer
- *
- * Enqueue CSS/JS of all the blocks.
+ * Block registration, asset enqueues, and Stream AJAX handlers.
  *
  * @since   1.0.0
  * @package cloudflare-stream
@@ -14,39 +12,43 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
- * Enqueue Cloudflare Stream block assets for both frontend + backend.
+ * Enqueue the block stylesheets.
  *
- * `wp-blocks`: includes block type registration and related functions.
+ * Both sheets go through `enqueue_block_assets` so the editor canvas iframe
+ * receives them; the editor sheet is admin-only.
  *
  * @since 1.0.0
  */
 function cloudflare_stream_block_assets() {
-	// Styles.
 	$style_path = plugin_dir_path( __DIR__ ) . 'dist/style-blocks.css';
-	if ( ! file_exists( $style_path ) ) {
+	if ( file_exists( $style_path ) ) {
+		wp_enqueue_style(
+			'cloudflare-stream-block-style-css',
+			plugins_url( 'dist/style-blocks.css', __DIR__ ),
+			array( 'wp-block-library' ),
+			filemtime( $style_path )
+		);
+	}
+
+	if ( ! is_admin() ) {
 		return;
 	}
-	wp_enqueue_style(
-		'cloudflare-stream-block-style-css',
-		// Handle.
-		plugins_url( 'dist/style-blocks.css', __DIR__ ),
-		// Block style CSS.
-		array( 'wp-block-library' ),
-		// Dependency to include the CSS after it.
-		filemtime( $style_path )
-		// Version: filemtime gets file modification time.
-	);
+
+	$editor_style_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.css';
+	if ( file_exists( $editor_style_path ) ) {
+		wp_enqueue_style(
+			'cloudflare-stream-block-editor-css',
+			plugins_url( 'dist/blocks.css', __DIR__ ),
+			array( 'wp-edit-blocks' ),
+			filemtime( $editor_style_path )
+		);
+	}
 } // End function cloudflare_stream_block_assets().
 
-// Hook: Frontend assets.
 add_action( 'enqueue_block_assets', 'cloudflare_stream_block_assets' );
 
 /**
- * Enqueue Cloudflare Stream block assets for backend editor.
- *
- * `wp-blocks`: includes block type registration and related functions.
- * `wp-element`: includes the WordPress Element abstraction for describing the structure of your blocks.
- * `wp-i18n`: To internationalize the block's text.
+ * Enqueue the block editor script and its localised Stream data.
  *
  * @since 1.0.0
  */
@@ -56,9 +58,6 @@ function cloudflare_stream_block_editor_assets() {
 		return;
 	}
 
-	$current_user = wp_get_current_user();
-
-	// Scripts.
 	$script_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.build.js';
 	if ( file_exists( $script_path ) ) {
 		$asset_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.build.asset.php';
@@ -71,36 +70,33 @@ function cloudflare_stream_block_editor_assets() {
 
 		wp_enqueue_script(
 			'cloudflare-stream-block-js',
-			// Handle.
 			plugins_url( '/dist/blocks.build.js', __DIR__ ),
-			// Block.build.js: We register the block here. Built with Webpack.
 			// media-views is required by the Stream media frame (wp.media global).
 			array_merge( $asset['dependencies'], array( 'media-views' ) ),
 			$asset['version'],
 			true
-			// Enqueue the script in the footer.
 		);
 
-		// Only localise privileged Stream data for users who can manage options.
-		// Never send the API token to the browser; uploads use a server-made direct upload URL.
-		$can_manage_stream = current_user_can( 'manage_options' );
-		$api_account       = $can_manage_stream ? Cloudflare_Stream_Settings::get_api_account() : '';
-		$api_nonce         = $can_manage_stream ? wp_create_nonce( Cloudflare_Stream_Settings::NONCE ) : '';
-		$api               = Cloudflare_Stream_API::instance();
+		// The nonce is the upload/library gate, so only users who can manage
+		// Stream receive one. The API token never reaches the browser; uploads
+		// use a server-made direct upload URL.
+		$api_nonce = current_user_can( 'manage_options' )
+			? wp_create_nonce( Cloudflare_Stream_Settings::NONCE )
+			: '';
+		$api       = Cloudflare_Stream_API::instance();
+
 		wp_localize_script(
 			'cloudflare-stream-block-js',
 			'cloudflareStream',
 			array(
 				'nonce'           => $api_nonce,
 				'api'             => array(
-					'account'        => $api_account,
 					'posts_per_page' => $api->api_limit,
-					'uid'            => md5( $current_user->user_login ),
 				),
-				// Playback hosts for editor preview iframes (mirrors PHP helpers).
+				// Playback host for editor preview iframes (mirrors PHP helpers).
 				'mediaDomain'     => $api->get_media_domain(),
-				'mediaAssetHost'  => $api->get_media_asset_host(),
 				'standardDomains' => Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS,
+				// Namespaces the bundled media models and views attach to.
 				'media'           => array(
 					'view'  => array(),
 					'model' => array(),
@@ -108,33 +104,16 @@ function cloudflare_stream_block_editor_assets() {
 			)
 		);
 	}
+} // End function cloudflare_stream_block_editor_assets().
 
-	// Styles.
-	$editor_style_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.css';
-	if ( file_exists( $editor_style_path ) ) {
-		wp_enqueue_style(
-			'cloudflare-stream-block-editor-css',
-			// Handle.
-			plugins_url( 'dist/blocks.css', __DIR__ ),
-			// Block editor CSS.
-			array( 'wp-edit-blocks' ),
-			// Dependency to include the CSS after it.
-			filemtime( $editor_style_path )
-			// Version: filemtime gets file modification time.
-		);
-	}
-} // End function cloudflare_stream_editor_assets().
-
-// Hook: Editor assets.
 add_action( 'enqueue_block_editor_assets', 'cloudflare_stream_block_editor_assets' );
 
 /**
- * Load the JavaScript on admin
+ * Register the video block with its server-side render callback.
  *
  * @since 1.0.0
  */
-function cloudflare_stream_admin_enqueue_scripts() {
-	// Registering the block.
+function cloudflare_stream_register_block() {
 	register_block_type(
 		'cloudflare-stream/block-video',
 		array(
@@ -142,7 +121,7 @@ function cloudflare_stream_admin_enqueue_scripts() {
 		)
 	);
 }
-add_action( 'init', 'cloudflare_stream_admin_enqueue_scripts' );
+add_action( 'init', 'cloudflare_stream_register_block' );
 
 
 /**
