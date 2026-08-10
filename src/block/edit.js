@@ -26,16 +26,16 @@ import {
 	Disabled,
 	Button,
 	PanelBody,
-	ToolbarGroup,
+	ToolbarButton,
 	ToggleControl,
 	withNotices,
 	Placeholder,
-	FormFileUpload,
 	ProgressBar,
 } from '@wordpress/components';
 import {
 	BlockControls,
 	InspectorControls,
+	MediaPlaceholder,
 	useBlockProps,
 } from '@wordpress/block-editor';
 import {
@@ -928,32 +928,40 @@ function CloudflareStreamEdit( {
 	);
 
 	/**
-	 * Handle a file chosen via the upload control.
+	 * Handle files from MediaPlaceholder (upload or drop).
+	 * With handleUpload false, onSelect receives a FileList, not WP attachments.
 	 *
-	 * @param {Event} event Change event from the file input.
+	 * @param {FileList|Array|Object} input Selected files or media object.
 	 */
-	const onFileChange = useCallback(
-		( event ) => {
-			const input = event.currentTarget;
-			const file =
-				input && input.files && input.files.length
-					? input.files[ 0 ]
-					: null;
+	const onSelectMedia = useCallback(
+		( input ) => {
+			const candidate = Array.isArray( input )
+				? input[ 0 ]
+				: input && typeof input === 'object' && 'length' in input
+					? input[ 0 ]
+					: input;
 
-			// Allow re-selecting the same path after cancel.
-			if ( input ) {
-				input.value = '';
-			}
-
-			if ( ! file ) {
+			if ( ! ( candidate instanceof window.File ) ) {
 				return;
 			}
 
-			selectedFileRef.current = file;
+			selectedFileRef.current = candidate;
 			retriedRef.current = false;
-			startUpload( file );
+			startUpload( candidate );
 		},
 		[ startUpload ]
+	);
+
+	/**
+	 * Surface MediaPlaceholder validation failures as block notices.
+	 *
+	 * @param {string} message Error text from the placeholder.
+	 */
+	const onPlaceholderError = useCallback(
+		( message ) => {
+			showUploadError( message );
+		},
+		[ showUploadError ]
 	);
 
 	const showCancel =
@@ -1058,7 +1066,81 @@ function CloudflareStreamEdit( {
 		const showProgress =
 			status === 'uploading' || status === 'encoding';
 		const showRetry = status === 'error';
-		const showUploadControls = status === 'idle';
+		// MediaPlaceholder is idle/error only — progress keeps a plain Placeholder.
+		const useMediaPlaceholder =
+			( status === 'idle' || status === 'error' ) && canManage;
+
+		const progressAndActions = (
+			<>
+				{ showProgress && (
+					<div className="cloudflare-stream-progress-wrap">
+						<ProgressBar
+							value={ progress }
+							className="cloudflare-stream-progress"
+						/>
+						{ null !== progress && (
+							<p className="cloudflare-stream-progress__label">
+								{ progress }%
+							</p>
+						) }
+					</div>
+				) }
+				{ showRetry && (
+					<Button
+						variant="secondary"
+						icon="update"
+						label={ __( 'Retry', 'cloudflare-stream' ) }
+						onClick={ retry }
+						className="editor-media-placeholder__retry-button"
+					>
+						{ __( 'Retry', 'cloudflare-stream' ) }
+					</Button>
+				) }
+				{ showCancel && (
+					<Button
+						variant="secondary"
+						icon="cancel"
+						label={ __( 'Cancel', 'cloudflare-stream' ) }
+						onClick={ cancel }
+						className="editor-media-placeholder__cancel-button"
+					>
+						{ __( 'Cancel', 'cloudflare-stream' ) }
+					</Button>
+				) }
+			</>
+		);
+
+		if ( useMediaPlaceholder ) {
+			return (
+				<div { ...blockProps }>
+					<MediaPlaceholder
+						icon={ cloudflareStream.icon }
+						labels={ {
+							title: __(
+								'Cloudflare Stream',
+								'cloudflare-stream'
+							),
+							instructions,
+						} }
+						accept="video/*"
+						allowedTypes={ [ 'video' ] }
+						handleUpload={ false }
+						multiple={ false }
+						notices={ noticeUI }
+						onError={ onPlaceholderError }
+						onSelect={ onSelectMedia }
+					>
+						<Button variant="secondary" onClick={ open }>
+							{ __(
+								'Stream Library',
+								'cloudflare-stream'
+							) }
+						</Button>
+						{ progressAndActions }
+					</MediaPlaceholder>
+				</div>
+			);
+		}
 
 		return (
 			<div { ...blockProps }>
@@ -1072,65 +1154,7 @@ function CloudflareStreamEdit( {
 					className="editor-media-placeholder"
 				>
 					{ noticeUI }
-					{ showProgress && (
-						<div className="cloudflare-stream-progress-wrap">
-							<ProgressBar
-								value={ progress }
-								className="cloudflare-stream-progress"
-							/>
-							{ null !== progress && (
-								<p className="cloudflare-stream-progress__label">
-									{ progress }%
-								</p>
-							) }
-						</div>
-					) }
-					{ showUploadControls && canManage && (
-						<FormFileUpload
-							className="editor-media-placeholder__upload-button"
-							onChange={ onFileChange }
-							accept="video/*"
-						>
-							{ __( 'Upload', 'cloudflare-stream' ) }
-						</FormFileUpload>
-					) }
-					{ showUploadControls && canManage && (
-						<Button
-							label={ __(
-								'Stream Library',
-								'cloudflare-stream'
-							) }
-							onClick={ open }
-							className="editor-media-placeholder__browse-button"
-						>
-							{ __(
-								'Stream Library',
-								'cloudflare-stream'
-							) }
-						</Button>
-					) }
-					{ showRetry && (
-						<Button
-							variant="secondary"
-							icon="update"
-							label={ __( 'Retry', 'cloudflare-stream' ) }
-							onClick={ retry }
-							className="editor-media-placeholder__retry-button"
-						>
-							{ __( 'Retry', 'cloudflare-stream' ) }
-						</Button>
-					) }
-					{ showCancel && (
-						<Button
-							variant="secondary"
-							icon="cancel"
-							label={ __( 'Cancel', 'cloudflare-stream' ) }
-							onClick={ cancel }
-							className="editor-media-placeholder__cancel-button"
-						>
-							{ __( 'Cancel', 'cloudflare-stream' ) }
-						</Button>
-					) }
+					{ progressAndActions }
 				</Placeholder>
 			</div>
 		);
@@ -1138,18 +1162,12 @@ function CloudflareStreamEdit( {
 
 	return (
 		<Fragment>
-			<BlockControls>
-				<ToolbarGroup>
-					<Button
-						className="components-icon-button components-toolbar__control"
-						label={ __(
-							'Edit video',
-							'cloudflare-stream'
-						) }
-						onClick={ switchToEditing }
-						icon="edit"
-					/>
-				</ToolbarGroup>
+			<BlockControls group="other">
+				<ToolbarButton
+					icon="edit"
+					label={ __( 'Replace video', 'cloudflare-stream' ) }
+					onClick={ switchToEditing }
+				/>
 			</BlockControls>
 			<InspectorControls>
 				<PanelBody
