@@ -30,6 +30,7 @@ import {
 	withNotices,
 	Placeholder,
 	FormFileUpload,
+	ProgressBar,
 } from '@wordpress/components';
 import {
 	BlockControls,
@@ -38,49 +39,68 @@ import {
 } from '@wordpress/block-editor';
 import { Fragment, Component, createRef } from '@wordpress/element';
 
+/**
+ * Resolve the initial UI status from block attributes.
+ *
+ * @param {Object} attributes Block attributes.
+ * @return {'idle'|'encoding'|'ready'} Initial status.
+ */
+function statusFromAttributes( attributes ) {
+	if ( ! attributes.uid ) {
+		return 'idle';
+	}
+	if ( ! attributes.thumbnail ) {
+		return 'encoding';
+	}
+	return 'ready';
+}
+
 class CloudflareStreamEdit extends Component {
-	constructor( instanceId ) {
-		super( ...arguments );
+	constructor( props ) {
+		super( props );
 
 		this.state = {
-			editing: ! this.props.attributes.uid,
-			uploading: false,
-			encoding:
-				this.props.attributes.uid && ! this.props.attributes.thumbnail,
-			resume: true,
+			// status: 'idle' | 'uploading' | 'encoding' | 'ready' | 'error'
+			status: statusFromAttributes( props.attributes ),
+			progress: null,
+			errorMessage: '',
 		};
 
-		this.instanceId      = instanceId.clientId;
-		this.controller      = this;
-		this.streamPlayer    = createRef();
+		this.instanceId = props.clientId;
+		this.controller = this;
+		this.streamPlayer = createRef();
+		this.encodingPoller = null;
+		this.upload = null;
+		this.selectedFile = null;
+		this.retried = false;
+
 		this.toggleAttribute = this.toggleAttribute.bind( this );
-		this.open            = this.open.bind( this );
-		this.select          = this.select.bind( this );
-		this.mediaFrame      = new cloudflareStream.media.view.MediaFrame(
-			this.select
-		);
-		this.encodingPoller  = false;
+		this.open = this.open.bind( this );
+		this.select = this.select.bind( this );
+		this.delete = this.delete.bind( this );
+		this.cancel = this.cancel.bind( this );
+		this.retry = this.retry.bind( this );
+		this.onFileChange = this.onFileChange.bind( this );
+		this.switchToEditing = this.switchToEditing.bind( this );
 	}
 
 	componentDidMount() {
 		const { attributes } = this.props;
 
-		if ( attributes.uid !== false && attributes.thumbnail === false ) {
+		if ( attributes.uid && ! attributes.thumbnail ) {
 			this.switchToEncoding();
-		} else {
-			this.reload();
 		}
 	}
 
 	componentDidUpdate() {
 		const { attributes } = this.props;
-		const streamPlayer   = this.streamPlayer.current;
+		const streamPlayer = this.streamPlayer.current;
 
 		if ( streamPlayer !== null && streamPlayer.play !== null ) {
 			streamPlayer.autoPlay = attributes.autoplay;
 			streamPlayer.controls = attributes.controls;
-			streamPlayer.mute     = attributes.mute;
-			streamPlayer.loop     = attributes.loop;
+			streamPlayer.mute = attributes.mute;
+			streamPlayer.loop = attributes.loop;
 			streamPlayer.controls = attributes.controls;
 
 			if (
@@ -92,530 +112,457 @@ class CloudflareStreamEdit extends Component {
 				streamPlayer.pause();
 			}
 		}
+	}
 
-		if ( false !== attributes.uid ) {
-			jQuery(
-				'#block-' +
-					this.instanceId +
-					' .editor-media-placeholder__cancel-button'
-			).show();
-			this.reload();
+	componentWillUnmount() {
+		this.clearEncodingPoller();
+		this.abortUpload();
+	}
+
+	/**
+	 * Stop the encoding status poller if it is running.
+	 */
+	clearEncodingPoller() {
+		if ( this.encodingPoller ) {
+			clearTimeout( this.encodingPoller );
+			this.encodingPoller = null;
 		}
+	}
+
+	/**
+	 * Abort an in-flight TUS upload, if any.
+	 */
+	abortUpload() {
+		if ( this.upload && typeof this.upload.abort === 'function' ) {
+			try {
+				this.upload.abort();
+			} catch ( error ) {
+				// Upload may already be finished or torn down.
+			}
+		}
+		this.upload = null;
 	}
 
 	toggleAttribute( attribute ) {
 		const { setAttributes } = this.props;
 		return ( newValue ) => {
-			setAttributes(
-				{
-					[ attribute ]: newValue,
-				}
-			);
+			setAttributes( {
+				[ attribute ]: newValue,
+			} );
 		};
 	}
 
 	open() {
 		const block = this;
 
+		this.mediaFrame = this.mediaFrame || new cloudflareStream.media.view.MediaFrame(
+			this.select
+		);
 		this.mediaFrame.open();
 
-		this.mediaFrame.on(
-			'delete',
-			function ( attachment ) {
-				block.delete( attachment );
-			}
-		);
-		this.mediaFrame.on(
-			'select',
-			function () {
-				block.select();
-			}
-		);
+		this.mediaFrame.on( 'delete', function ( attachment ) {
+			block.delete( attachment );
+		} );
+		this.mediaFrame.on( 'select', function () {
+			block.select();
+		} );
 	}
 
 	select( attachment ) {
 		const { setAttributes } = this.props;
-		setAttributes(
-			{
-				uid: attachment.uid,
-				thumbnail: attachment.thumb.src,
-			}
-		);
-		this.setState(
-			{
-				editing: false,
-				uploading: false,
-				encoding: false,
-			}
-		);
-		this.reload();
+		setAttributes( {
+			uid: attachment.uid,
+			thumbnail: attachment.thumb.src,
+		} );
+		this.clearEncodingPoller();
+		this.abortUpload();
+		this.selectedFile = null;
+		this.retried = false;
+		this.setState( {
+			status: 'ready',
+			progress: null,
+			errorMessage: '',
+		} );
 	}
 
 	delete( attachment ) {
-		jQuery.ajax(
-			{
-				url: ajaxurl + '?action=cloudflare-stream-delete',
-				data: {
-					nonce: cloudflareStream.nonce,
-					uid: attachment.uid,
-				},
-				success() {
-					jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
-				},
-				error( jqXHR, textStatus ) {
-					console.error( 'Error: ' + textStatus );
-				},
-			}
-		);
-	}
-
-	update( attachment ) {
-		jQuery( '.settings-save-status .media-frame .spinner' ).css(
-			'visibility',
-			'visible'
-		);
-		jQuery.ajax(
-			{
-				url: ajaxurl + '?action=cloudflare-stream-update',
-				method: 'POST',
-				data: {
-					nonce: cloudflareStream.nonce,
-					uid: attachment.uid,
-					title: attachment.title,
-				},
-				success() {
-					jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
-				},
-				error( jqXHR, textStatus ) {
-					console.error( 'Error: ' + textStatus );
-				},
-			}
-		);
-	}
-
-	reload() {
-		const { attributes } = this.props;
-		const link           =
-			'https://embed.videodelivery.net/embed/r4xu.fla9.latest.js?video=' +
-			attributes.uid;
-
-		jQuery.getScript( link ).fail(
-			function ( jqxhr, settings, exception ) {
-				console.error( 'Exception:' + exception );
-			}
-		);
+		jQuery.ajax( {
+			url: ajaxurl + '?action=cloudflare-stream-delete',
+			data: {
+				nonce: cloudflareStream.nonce,
+				uid: attachment.uid,
+			},
+			success() {
+				jQuery( 'li[data-id="' + attachment.id + '"]' ).hide();
+			},
+			error( jqXHR, textStatus ) {
+				console.error( 'Error: ' + textStatus );
+			},
+		} );
 	}
 
 	/**
-	 * Progress bar nodes for this block instance.
+	 * User-facing instruction text for the current status.
 	 *
-	 * @return {{ bar: Object, label: Object }} jQuery collections.
+	 * @return {string} Placeholder instructions.
 	 */
-	progressNodes() {
-		return {
-			bar: jQuery( '#progressbar-' + this.instanceId ),
-			label: jQuery( '.progress-label-' + this.instanceId ),
+	getInstructions() {
+		const { status, errorMessage } = this.state;
+		const instructions = {
+			idle: __( 'Select a file from your library.', 'cloudflare-stream' ),
+			uploading: __( 'Uploading your video.', 'cloudflare-stream' ),
+			encoding: __(
+				'Upload complete. Processing video.',
+				'cloudflare-stream'
+			),
+			error: errorMessage,
 		};
+
+		return instructions[ status ] || instructions.idle;
 	}
 
 	/**
-	 * Show a failed upload or processing message in the placeholder.
+	 * Surface a failed upload or processing message via editor notices.
 	 *
 	 * @param {string} message User-facing error text.
+	 * @param {*}      [cause] Optional raw error for the console.
 	 */
-	showUploadError( message ) {
-		const { bar } = this.progressNodes();
-
-		console.error( 'Error: ' + message );
-		bar.hide();
-		jQuery(
-			'.editor-media-placeholder .components-placeholder__instructions'
-		).html(
+	showUploadError( message, cause ) {
+		const { noticeOperations } = this.props;
+		const text =
 			message ||
+			__(
+				'Upload Error: See the console for details.',
+				'cloudflare-stream'
+			);
+
+		if ( cause !== undefined ) {
+			console.error( cause );
+		} else {
+			console.error( text );
+		}
+
+		if ( noticeOperations ) {
+			noticeOperations.removeAllNotices();
+			noticeOperations.createErrorNotice( text );
+		}
+
+		this.setState( {
+			status: 'error',
+			progress: null,
+			errorMessage: text,
+		} );
+	}
+
+	/**
+	 * Return to the empty/edit placeholder so the user can pick another file.
+	 */
+	retry() {
+		const { noticeOperations } = this.props;
+
+		this.clearEncodingPoller();
+		this.abortUpload();
+		this.retried = false;
+
+		if ( noticeOperations ) {
+			noticeOperations.removeAllNotices();
+		}
+
+		this.setState( {
+			status: 'idle',
+			progress: null,
+			errorMessage: '',
+		} );
+	}
+
+	/**
+	 * Stop upload/encoding work and leave the edit UI.
+	 */
+	cancel() {
+		const { attributes } = this.props;
+		const { noticeOperations } = this.props;
+
+		this.clearEncodingPoller();
+		this.abortUpload();
+
+		if ( noticeOperations ) {
+			noticeOperations.removeAllNotices();
+		}
+
+		const nextStatus =
+			attributes.uid && attributes.thumbnail ? 'ready' : 'idle';
+
+		this.setState( {
+			status: nextStatus,
+			progress: null,
+			errorMessage: '',
+		} );
+	}
+
+	/**
+	 * Open the edit placeholder (replace video).
+	 */
+	switchToEditing() {
+		const { noticeOperations } = this.props;
+
+		if ( noticeOperations ) {
+			noticeOperations.removeAllNotices();
+		}
+
+		this.setState( {
+			status: 'idle',
+			progress: null,
+			errorMessage: '',
+		} );
+	}
+
+	/**
+	 * Handle a file chosen via the upload control.
+	 *
+	 * @param {Event} event Change event from the file input.
+	 */
+	onFileChange( event ) {
+		const input = event.currentTarget;
+		const file =
+			input && input.files && input.files.length ? input.files[ 0 ] : null;
+
+		if ( ! file ) {
+			return;
+		}
+
+		this.selectedFile = file;
+		this.retried = false;
+		this.startUpload( file );
+	}
+
+	/**
+	 * Begin a TUS upload for the given file.
+	 *
+	 * @param {File} file Browser file object.
+	 */
+	startUpload( file ) {
+		const { noticeOperations } = this.props;
+
+		if ( noticeOperations ) {
+			noticeOperations.removeAllNotices();
+		}
+
+		this.clearEncodingPoller();
+		this.abortUpload();
+
+		this.setState(
+			{
+				status: 'uploading',
+				progress: null,
+				errorMessage: '',
+			},
+			() => {
+				this.uploadFromFiles( file );
+			}
+		);
+	}
+
+	/**
+	 * Request a direct-upload URL and transfer the file with TUS.
+	 *
+	 * @param {File} file Browser file object.
+	 */
+	uploadFromFiles( file ) {
+		const block = this;
+		const { setAttributes } = this.props;
+
+		if ( ! file ) {
+			block.showUploadError(
 				__(
 					'Upload Error: See the console for details.',
 					'cloudflare-stream'
 				)
-		);
-		jQuery( '.editor-media-placeholder__retry-button' ).show();
-	}
-
-	uploadFromFiles( file ) {
-		const block             = this;
-		const { setAttributes } = this.props;
-		const { bar, label }    = this.progressNodes();
-		const val               = bar.progressbar( 'value' ) || 0;
-
-		bar.progressbar( 'value', val );
+			);
+			return;
+		}
 
 		fetchDirectUpload( file )
-			.then(
-				( { uploadURL, uid } ) => {
-					tusUploadFile(
-						file,
-						uploadURL,
-						{
-							onError( error ) {
-								block.showUploadError(
-									__(
-										'Upload Error: See the console for details.',
-										'cloudflare-stream'
-									)
-								);
-								console.error( 'Error: ' + error );
-							},
-							onProgress( bytesUploaded, bytesTotal ) {
-								const percentage = parseInt(
-									( bytesUploaded / bytesTotal ) * 100
-								);
+			.then( ( { uploadURL, uid } ) => {
+				block.upload = tusUploadFile( file, uploadURL, {
+					onError( error ) {
+						block.upload = null;
+						block.showUploadError(
+							__(
+								'Upload Error: See the console for details.',
+								'cloudflare-stream'
+							),
+							error
+						);
+					},
+					onProgress( bytesUploaded, bytesTotal ) {
+						const percentage = parseInt(
+							( bytesUploaded / bytesTotal ) * 100,
+							10
+						);
+						block.setState( { progress: percentage } );
+					},
+					onSuccess( upload ) {
+						const fingerprint =
+							upload.options &&
+							typeof upload.options.fingerprint === 'function'
+								? upload.options.fingerprint(
+										upload.file,
+										upload.options
+								  )
+								: undefined;
 
-								label.text( percentage + '%' );
-								bar.progressbar(
-									'option',
-									'value',
-									percentage
-								);
-							},
-							onSuccess( upload ) {
-								setAttributes(
-									{
-										uid,
-										fingerprint: upload.options.fingerprint(
-											upload.file,
-											upload.options
-										),
-									}
-								);
-								block.switchToEncoding();
-							},
-						}
-					);
-				}
-			)
-			.catch(
-				( error ) => {
-					block.showUploadError(
-						error && error.message ? error.message : String( error )
-					);
-				}
-			);
+						block.upload = null;
+						setAttributes( {
+							uid,
+							fingerprint,
+						} );
+						block.switchToEncoding();
+					},
+				} );
+			} )
+			.catch( ( error ) => {
+				block.showUploadError(
+					error && error.message ? error.message : String( error ),
+					error
+				);
+			} );
 	}
 
+	/**
+	 * Move into the encoding/processing state and start polling.
+	 */
 	switchToEncoding() {
-		const block = this;
-		block.setState(
+		this.setState(
 			{
-				editing: true,
-				uploading: false,
-				encoding: true,
+				status: 'encoding',
+				progress: null,
+				errorMessage: '',
 			},
-			() =>
-			{
-				const { bar, label } = this.progressNodes();
-				jQuery(
-					'.editor-media-placeholder .components-placeholder__instructions'
-				).html(
-					__(
-						'Upload Complete. Processing video.',
-						'cloudflare-stream'
-					)
-				);
-				label.text( '' );
-				bar.progressbar(
-					{
-						value: false,
-					}
-				);
-				block.encode();
+			() => {
+				this.encode();
 			}
 		);
 	}
 
+	/**
+	 * Poll Stream until the video is ready to play.
+	 */
 	encode() {
 		const { attributes, setAttributes } = this.props;
-		const block                         = this;
-		const { bar, label }                = this.progressNodes();
-		const { file }                      = this.props.attributes;
+		const block = this;
 
 		checkUploadStatus( attributes.uid )
-			.then(
-				( data ) => {
-					if ( ! data.success ) {
-						console.error( 'Error: ' + data.data );
-						if ( block.state.resume === true ) {
-							block.setState(
-								{
-									resume: false,
-								}
-							);
-							jQuery(
-								'.editor-media-placeholder .components-placeholder__instructions'
-							).html(
+			.then( ( data ) => {
+				if ( ! data.success ) {
+					console.error( 'Error: ' + data.data );
+					if (
+						block.retried === false &&
+						block.selectedFile
+					) {
+						block.retried = true;
+						block.setState(
+							{
+								status: 'uploading',
+								progress: null,
+								errorMessage: '',
+							},
+							() => {
+								block.uploadFromFiles( block.selectedFile );
+							}
+						);
+					} else {
+						block.showUploadError(
+							sprintf(
+								/* translators: %s: error detail from the API */
 								__(
-									'Uploading your video.',
+									'Processing Error: %s',
 									'cloudflare-stream'
-								)
-							);
-							block.uploadFromFiles( file );
-						} else {
-							bar.hide();
-							jQuery(
-								'.editor-media-placeholder .components-placeholder__instructions'
-							).html(
-								sprintf(
-									__(
-										'Processing Error: %s',
-										'cloudflare-stream'
-									),
-									data.data
-								)
-							);
-							jQuery(
-								'.editor-media-placeholder__retry-button'
-							).show();
-						}
-					} else if ( typeof data.data !== 'undefined' ) {
-						if (
-							data.data.readyToStream === true &&
-							typeof data.data.thumbnail !== 'undefined'
-						) {
-							clearTimeout( block.encodingPoller );
-							setAttributes(
-								{
-									thumbnail: data.data.thumbnail,
-								}
-							);
-							block.setState(
-								{
-									editing: false,
-									uploading: false,
-									encoding: false,
-								}
-							);
-						} else {
-							// Poll at a 5 second interval.
-							block.encodingPoller = setTimeout(
-								function () {
-									block.encode();
-								},
-								5000
-							);
-						}
-						if ( data.data.status.state === 'queued' ) {
-							label.text( '' );
-							bar.progressbar(
-								{
-									value: false,
-								}
-							);
-						} else if ( data.data.status.state === 'inprogress' ) {
-							const progress = Math.round(
-								data.data.status.pctComplete
-							);
-							label.text( progress + '%' );
-
-							bar.progressbar(
-								{
-									value: progress,
-								}
-							);
-						}
-						block.reload();
+								),
+								data.data
+							)
+						);
 					}
+					return;
 				}
-			)
-			.catch(
-				( error ) => {
-					console.error(
-						'Error: ' +
-							( error && error.message
-								? error.message
-								: String( error ) )
+
+				if ( typeof data.data === 'undefined' ) {
+					return;
+				}
+
+				if (
+					data.data.readyToStream === true &&
+					typeof data.data.thumbnail !== 'undefined'
+				) {
+					block.clearEncodingPoller();
+					setAttributes( {
+						thumbnail: data.data.thumbnail,
+					} );
+					block.setState( {
+						status: 'ready',
+						progress: null,
+						errorMessage: '',
+					} );
+					return;
+				}
+
+				// Poll at a 5 second interval.
+				block.encodingPoller = setTimeout( function () {
+					block.encode();
+				}, 5000 );
+
+				if (
+					data.data.status &&
+					data.data.status.state === 'queued'
+				) {
+					block.setState( { progress: null } );
+				} else if (
+					data.data.status &&
+					data.data.status.state === 'inprogress'
+				) {
+					const progress = Math.round(
+						data.data.status.pctComplete
 					);
+					block.setState( { progress } );
 				}
-			);
+			} )
+			.catch( ( error ) => {
+				console.error(
+					error && error.message ? error.message : String( error )
+				);
+			} );
+	}
+
+	/**
+	 * Whether the cancel control should be shown.
+	 *
+	 * @return {boolean} True when cancel is available.
+	 */
+	canCancel() {
+		const { attributes } = this.props;
+		const { status } = this.state;
+
+		if ( status === 'uploading' || status === 'encoding' ) {
+			return true;
+		}
+
+		return Boolean( attributes.uid );
 	}
 
 	render() {
-		const { uid, autoplay, controls, loop, muted } = this.props.attributes;
-		const { className }                            = this.props;
-		const { editing, uploading, encoding }         = this.state;
+		const { autoplay, controls, loop, muted } = this.props.attributes;
+		const { className, noticeUI } = this.props;
+		const { status, progress } = this.state;
+		const instructions = this.getInstructions();
 
-		const switchToEditing = () => {
-			this.setState(
-				{
-					editing: true,
-				}
-			);
-			this.setState(
-				{
-					uploading: false,
-				}
-			);
-			this.setState(
-				{
-					encoding: false,
-				}
-			);
-		};
-
-		const switchFromEditing = () => {
-			this.setState(
-				{
-					editing: false,
-				}
-			);
-			this.setState(
-				{
-					uploading: false,
-				}
-			);
-			this.setState(
-				{
-					encoding: false,
-				}
-			);
-		};
-
-		const switchToUploading     = () => {
-			const { setAttributes } = this.props;
-
-			jQuery(
-				'.editor-media-placeholder .components-placeholder__instructions'
-			).html(
-				__( 'Processing your video', 'cloudflare-stream' )
-			);
-
-			const file = jQuery(
-				".components-form-file-upload :input[type='file']"
-			)[ 0 ].files[ 0 ];
-			setAttributes(
-				{
-					file,
-				}
-			);
-
-			const block               = this;
-			block.setState(
-				{
-					editing: true,
-					uploading: true,
-					encoding: false,
-				},
-				() =>
-				{
-					const { bar } = this.progressNodes();
-
-					bar.progressbar(
-						{
-							value: false,
-						}
-					);
-					block.uploadFromFiles( file );
-				}
-			);
-		};
-
-		if ( editing ) {
-			if ( uploading ) {
-				const progressBarStyle = {
-					width: '100%',
-				};
-				return (
-					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
-					<Placeholder
-						icon={ cloudflareStream.icon }
-						label={ __(
-							'Cloudflare Stream',
-							'cloudflare-stream'
-						) }
-						instructions={ __(
-							'Uploading your video.',
-							'cloudflare-stream'
-						) }
-						className="editor-media-placeholder"
-					>
-						<div
-							id={ 'progressbar-' + this.instanceId }
-							style={ progressBarStyle }
-						>
-							<div
-								className={
-									'progress-label progress-label-' +
-									this.instanceId
-								}
-							>
-								Connecting...
-							</div>
-						</div>
-						<Button
-							isSecondary
-							icon="update"
-							label={ __( 'Retry', 'cloudflare-stream' ) }
-							onClick={ switchToEditing }
-							style={ {
-								display: 'none',
-							} }
-							className="editor-media-placeholder__retry-button"
-						>
-							{ __( 'Retry', 'cloudflare-stream' ) }
-						</Button>
-					</Placeholder>
-					// phpcs:enable
-				);
-			} else if ( encoding ) {
-				const progressBarStyle = {
-					width: '100%',
-				};
-				return (
-					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
-					<Placeholder
-						icon={ cloudflareStream.icon }
-						label={ __(
-							'Cloudflare Stream',
-							'cloudflare-stream'
-						) }
-						instructions={ __(
-							'Processing your video.',
-							'cloudflare-stream'
-						) }
-						className="editor-media-placeholder"
-					>
-						<div
-							id={ 'progressbar-' + this.instanceId }
-							style={ progressBarStyle }
-						>
-							<div
-								className={
-									'progress-label progress-label-' +
-									this.instanceId
-								}
-							>
-								Connecting...
-							</div>
-						</div>
-						<Button
-							isSecondary
-							icon="update"
-							label={ __(
-								'Retry',
-								'cloudflare-stream'
-							) }
-							onClick={ switchToEditing }
-							style={ {
-								display: 'none',
-							} }
-							className="editor-media-placeholder__retry-button"
-						>
-							{ __( 'Retry', 'cloudflare-stream' ) }
-						</Button>
-					</Placeholder>
-					// phpcs:enable
-				);
-			}
+		if ( status !== 'ready' ) {
+			const showProgress =
+				status === 'uploading' || status === 'encoding';
+			const showRetry = status === 'error';
+			const showUploadControls = status === 'idle';
+			const canManage = Boolean( cloudflareStream.nonce );
 
 			// Nonce is only localised for users who can manage Stream.
-			if ( ! cloudflareStream.nonce ) {
+			if ( showUploadControls && ! canManage ) {
 				return (
 					// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 					<Placeholder
@@ -624,11 +571,10 @@ class CloudflareStreamEdit extends Component {
 							'Cloudflare Stream',
 							'cloudflare-stream'
 						) }
-						instructions={ __(
-							'Select a file from your library.',
-							'cloudflare-stream'
-						) }
+						instructions={ instructions }
+						className="editor-media-placeholder"
 					>
+						{ noticeUI }
 						<MediaUpload
 							type="video"
 							className={ className }
@@ -650,76 +596,109 @@ class CloudflareStreamEdit extends Component {
 								</Button>
 							) }
 						/>
+						{ this.canCancel() && (
+							<Button
+								variant="secondary"
+								icon="cancel"
+								label={ __( 'Cancel', 'cloudflare-stream' ) }
+								onClick={ this.cancel }
+								className="editor-media-placeholder__cancel-button"
+							>
+								{ ' ' }
+								{ __( 'Cancel', 'cloudflare-stream' ) }
+							</Button>
+						) }
+					</Placeholder>
+					// phpcs:enable
+				);
+			}
+
+			return (
+				// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
+				<Placeholder
+					icon={ cloudflareStream.icon }
+					label={ __(
+						'Cloudflare Stream',
+						'cloudflare-stream'
+					) }
+					instructions={ instructions }
+					className="editor-media-placeholder"
+				>
+					{ noticeUI }
+					{ showProgress && (
+						<div className="cloudflare-stream-progress-wrap">
+							<ProgressBar
+								value={ progress }
+								className="cloudflare-stream-progress"
+							/>
+							{ null !== progress && (
+								<p className="cloudflare-stream-progress__label">
+									{ progress }%
+								</p>
+							) }
+						</div>
+					) }
+					{ showUploadControls && canManage && (
+						<FormFileUpload
+							multiple
+							className="editor-media-placeholder__upload-button"
+							onChange={ this.onFileChange }
+							accept="video/*"
+						>
+							{ __( 'Upload', 'cloudflare-stream' ) }
+						</FormFileUpload>
+					) }
+					{ showUploadControls && (
+						<MediaUpload
+							type="video"
+							className={ className }
+							value={ this.props.attributes }
+							render={ () => (
+								<Button
+									label={ __(
+										'Stream Library',
+										'cloudflare-stream'
+									) }
+									onClick={ this.open }
+									className="editor-media-placeholder__browse-button"
+								>
+									{ ' ' }
+									{ __(
+										'Stream Library',
+										'cloudflare-stream'
+									) }
+								</Button>
+							) }
+						/>
+					) }
+					{ showRetry && (
 						<Button
-							isSecondary
+							variant="secondary"
+							icon="update"
+							label={ __( 'Retry', 'cloudflare-stream' ) }
+							onClick={ this.retry }
+							className="editor-media-placeholder__retry-button"
+						>
+							{ __( 'Retry', 'cloudflare-stream' ) }
+						</Button>
+					) }
+					{ this.canCancel() && (
+						<Button
+							variant="secondary"
 							icon="cancel"
-							label={ __( 'Cancel' ) }
-							onClick={ switchFromEditing }
-							style={ {
-								display: 'none',
-							} }
+							label={ __( 'Cancel', 'cloudflare-stream' ) }
+							onClick={ this.cancel }
 							className="editor-media-placeholder__cancel-button"
 						>
 							{ ' ' }
 							{ __( 'Cancel', 'cloudflare-stream' ) }
 						</Button>
-					</Placeholder>
-					// phpcs:enable
-				);
-			}
-			return (
-				// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
-				<Placeholder
-					icon={ cloudflareStream.icon }
-					label="Cloudflare Stream"
-					instructions="Select a file from your library."
-				>
-					<FormFileUpload
-						multiple
-						className="editor-media-placeholder__upload-button"
-						onChange={ switchToUploading }
-						accept="video/*"
-					>
-						{ __( 'Upload', 'cloudflare-stream' ) }
-					</FormFileUpload>
-					<MediaUpload
-						type="video"
-						className={ className }
-						value={ this.props.attributes }
-						render={ () => (
-							<Button
-								label={ __(
-									'Stream Library',
-									'cloudflare-stream'
-								) }
-								onClick={ this.open }
-								className="editor-media-placeholder__browse-button"
-							>
-								{ ' ' }
-								{ __(
-									'Stream Library',
-									'cloudflare-stream'
-								) }
-							</Button>
-						) }
-					/>
-					<Button
-						isSecondary
-						icon="cancel"
-						label={ __( 'Cancel', 'cloudflare-stream' ) }
-						onClick={ switchFromEditing }
-						style={ {
-							display: 'none',
-						} }
-						className="editor-media-placeholder__cancel-button"
-					>
-						{ ' ' }
-						{ __( 'Cancel', 'cloudflare-stream' ) }
-					</Button>
+					) }
 				</Placeholder>
 				// phpcs:enable
 			);
 		}
+
 		return (
 			// phpcs:disable WordPress.WhiteSpace.OperatorSpacing.NoSpaceAfter,WordPress.WhiteSpace.OperatorSpacing.NoSpaceBefore,Generic.Formatting.MultipleStatementAlignment,Generic.WhiteSpace.ScopeIndent.IncorrectExact
 			<Fragment>
@@ -731,7 +710,7 @@ class CloudflareStreamEdit extends Component {
 								'Edit video',
 								'cloudflare-stream'
 							) }
-							onClick={ switchToEditing }
+							onClick={ this.switchToEditing }
 							icon="edit"
 						/>
 					</ToolbarGroup>
@@ -782,8 +761,13 @@ class CloudflareStreamEdit extends Component {
 						{ ' ' }
 						{
 							<iframe
+								ref={ this.streamPlayer }
 								src={ streamIframeSource(
 									this.props.attributes
+								) }
+								title={ __(
+									'Cloudflare Stream video',
+									'cloudflare-stream'
 								) }
 							></iframe>
 						}
@@ -794,4 +778,5 @@ class CloudflareStreamEdit extends Component {
 		);
 	}
 }
+
 export default withNotices( CloudflareStreamEdit );

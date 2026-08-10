@@ -109,9 +109,6 @@ function cloudflare_stream_block_editor_assets() {
 		);
 	}
 
-	// The jQuery UI progress bar.
-	wp_enqueue_script( 'jquery-ui-progressbar' );
-
 	// Styles.
 	$editor_style_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.css';
 	if ( file_exists( $editor_style_path ) ) {
@@ -126,12 +123,6 @@ function cloudflare_stream_block_editor_assets() {
 			// Version: filemtime gets file modification time.
 		);
 	}
-	wp_enqueue_style(
-		'progressbar',
-		plugins_url( 'src/css/jquery-ui.min.css', __DIR__ ),
-		array(),
-		'1.13.3'
-	);
 } // End function cloudflare_stream_editor_assets().
 
 // Hook: Editor assets.

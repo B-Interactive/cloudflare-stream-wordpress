@@ -30,20 +30,17 @@
 	margin-right: 4px;
 }
 
-.ui-progressbar {
+.cloudflare-stream-progress-wrap {
 	position: relative;
+	width: 100%;
+	margin-bottom: 8px;
 }
 
-.progress-label {
-	position: absolute;
+.cloudflare-stream-progress__label {
+	margin: 4px 0 0;
 	width: 100%;
 	text-align: center;
 	font-weight: 700;
-	text-shadow: 1px 1px 0 #fff;
-}
-
-.ui-progressbar .ui-progressbar-value {
-	margin: 0 !important;
 }
 
 label[data-setting="url"],
