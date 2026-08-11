@@ -137,10 +137,12 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 
 		foreach ( $mutate as $action ) {
 			$this->assert_ajax_forbidden( $action );
+			$this->clear_ajax_request_globals();
 		}
 
 		// Read actions must not die on the capability gate alone.
 		foreach ( $read as $action ) {
+			$this->clear_ajax_request_globals();
 			$_REQUEST['action']   = $action;
 			$_REQUEST['nonce']    = wp_create_nonce( Cloudflare_Stream_Settings::NONCE );
 			$_GET['nonce']        = $_REQUEST['nonce'];
@@ -168,6 +170,7 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 			}
 
 			$this->assertFalse( $cap_denied, "{$action} must not refuse an editor on capability grounds" );
+			$this->clear_ajax_request_globals();
 		}
 	}
 
@@ -228,11 +231,24 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 	}
 
 	/**
+	 * Drop AJAX request globals left between iterations.
+	 *
+	 * @return void
+	 */
+	private function clear_ajax_request_globals() {
+		foreach ( array( 'action', 'nonce', 'uid', 'query' ) as $key ) {
+			unset( $_REQUEST[ $key ], $_GET[ $key ], $_POST[ $key ] );
+		}
+		$this->_last_response = '';
+	}
+
+	/**
 	 * Assert an AJAX action dies with a capability refusal.
 	 *
 	 * @param string $action Action name.
 	 */
 	private function assert_ajax_forbidden( $action ) {
+		$this->clear_ajax_request_globals();
 		$_REQUEST['action']   = $action;
 		$_REQUEST['nonce']    = wp_create_nonce( Cloudflare_Stream_Settings::NONCE );
 		$_GET['nonce']        = $_REQUEST['nonce'];
