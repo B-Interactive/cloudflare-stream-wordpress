@@ -32,6 +32,16 @@ class Cloudflare_Stream_Settings {
 	 */
 	private static $api_keys_work = null;
 
+	/**
+	 * In-request copy of a consumed signing-key reveal payload.
+	 *
+	 * The transient is single-use; this keeps the panel and external forms aligned
+	 * for the rest of the same settings page render.
+	 *
+	 * @var array{id:string,pem:string,context:string}|null|false
+	 */
+	private $signing_key_reveal_for_request = false;
+
 	const NONCE                       = 'cloudflare-stream';
 	const SETTING_PAGE                = 'cloudflare-stream';
 	const SETTING_GROUP               = 'cloudflare_stream';
@@ -55,7 +65,13 @@ class Cloudflare_Stream_Settings {
 	const SIGNING_KEY_FORM_ID          = 'cloudflare-stream-signing-key-form';
 	const TRANSIENT_SIGNING_KEY_REVEAL = 'cfstream_sk_reveal_';
 	const TRANSIENT_SIGNING_KEY_NOTICE = 'cfstream_sk_notice_';
+	const TRANSIENT_PENDING_NEW_KEY    = 'cfstream_sk_pending_';
 	const TRANSIENT_SECRETS_AUTO_CLEAN = 'cfstream_secrets_auto_clean_';
+	const DEFAULT_SIGNED_URLS          = true;
+	const DEFAULT_SIGNED_URLS_DURATION = 60;
+	const DEFAULT_POSTER_TIME          = 0;
+	// Reveal lifetime in seconds for a freshly issued private key (copy into wp-config.php).
+	const SIGNING_KEY_REVEAL_TTL = 300;
 
 	/**
 	 * Singleton
@@ -96,6 +112,10 @@ class Cloudflare_Stream_Settings {
 	 * @since 1.0.0
 	 */
 	public function setup() {
+		$this->maybe_seed_defaults();
+
+		// Multisite registers under network admin (practical gate: manage_network).
+		// Single site uses the normal settings menu (gate: manage_options).
 		add_action( is_multisite() ? 'network_admin_menu' : 'admin_menu', array( $this, 'action_admin_menu' ), 11 );
 		add_action( 'admin_init', array( $this, 'action_admin_init' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'cloudflare_stream_admin_enqueue_styles' ) );
@@ -117,7 +137,21 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Drop signing breakers so a fix is picked up immediately.
+	 * Seed option defaults without depending on the current user.
+	 *
+	 * add_option() only writes when the row is missing, so existing values stay put.
+	 *
+	 * @return void
+	 */
+	public function maybe_seed_defaults() {
+		add_option( self::OPTION_SIGNED_URLS, self::DEFAULT_SIGNED_URLS );
+		add_option( self::OPTION_SIGNED_URLS_DURATION, self::DEFAULT_SIGNED_URLS_DURATION );
+		add_option( self::OPTION_MEDIA_DOMAIN, self::STANDARD_MEDIA_DOMAINS[0] );
+		add_option( self::OPTION_POSTER_TIME, self::DEFAULT_POSTER_TIME );
+	}
+
+	/**
+	 * Drop signing breakers and cached API tokens so a key change is picked up immediately.
 	 *
 	 * @return void
 	 */
@@ -125,6 +159,35 @@ class Cloudflare_Stream_Settings {
 		if ( class_exists( 'Cloudflare_Stream_Signing_Health' ) ) {
 			Cloudflare_Stream_Signing_Health::instance()->clear_breakers();
 		}
+
+		$this->clear_signed_token_transients();
+	}
+
+	/**
+	 * Delete cached signed playback tokens from the options table.
+	 *
+	 * @return void
+	 */
+	private function clear_signed_token_transients() {
+		global $wpdb;
+
+		if ( ! isset( $wpdb ) || ! is_object( $wpdb ) ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- bulk transient cleanup by known prefix.
+		$wpdb->query(
+			"DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_cfstream_signed_token_%' OR option_name LIKE '_transient_timeout_cfstream_signed_token_%'"
+		);
+
+		if ( is_multisite() && ! empty( $wpdb->sitemeta ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
+			$wpdb->query(
+				"DELETE FROM {$wpdb->sitemeta} WHERE meta_key LIKE '_site_transient_cfstream_signed_token_%' OR meta_key LIKE '_site_transient_timeout_cfstream_signed_token_%'"
+			);
+		}
+
+		wp_cache_flush();
 	}
 
 	/**
@@ -594,7 +657,7 @@ class Cloudflare_Stream_Settings {
 	 * Callback for rendering the use signed URLs field
 	 */
 	public function api_signed_urls_cb() {
-		$signed_urls = get_option( self::OPTION_SIGNED_URLS );
+		$signed_urls = get_option( self::OPTION_SIGNED_URLS, self::DEFAULT_SIGNED_URLS );
 		$site_host   = wp_parse_url( home_url(), PHP_URL_HOST );
 		$site_host   = is_string( $site_host ) && '' !== $site_host ? $site_host : 'your-site-host';
 
@@ -607,7 +670,7 @@ class Cloudflare_Stream_Settings {
 	 * Callback for rendering the signed URLs duration field
 	 */
 	public function api_signed_urls_duration_cb() {
-		$signed_urls_duration = get_option( self::OPTION_SIGNED_URLS_DURATION );
+		$signed_urls_duration = get_option( self::OPTION_SIGNED_URLS_DURATION, self::DEFAULT_SIGNED_URLS_DURATION );
 		echo '<label for="cloudflare_stream_signed_urls_duration"><input type="number" class="regular-text" name="cloudflare_stream_signed_urls_duration" id="cloudflare_stream_signed_urls_duration" min="1" max="1440" value="' . esc_attr( intval( $signed_urls_duration ) ) . '" autocomplete="off"> minutes</label>'
 		. '<small class="form-text text-muted">' . esc_html__( 'Sets how long the unique signed URL/token remains accessible for, in minutes (1 to 1440).', 'cloudflare-stream' ) . '</small>';
 	}
@@ -691,14 +754,53 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
+	 * User-specific transient holding a newly minted key id until setup finishes.
+	 *
+	 * Used to revoke an abandoned key that was never stored.
+	 *
+	 * @return string
+	 */
+	private function pending_new_signing_key_transient_name() {
+		return self::TRANSIENT_PENDING_NEW_KEY . get_current_user_id();
+	}
+
+	/**
+	 * Remember a freshly minted key id so abandon cleanup can revoke it.
+	 *
+	 * @param string $key_id Signing key id.
+	 * @return void
+	 */
+	private function stash_pending_new_signing_key_id( $key_id ) {
+		$key_id = sanitize_text_field( (string) $key_id );
+		if ( '' === $key_id ) {
+			return;
+		}
+
+		set_transient(
+			$this->pending_new_signing_key_transient_name(),
+			$key_id,
+			self::SIGNING_KEY_REVEAL_TTL
+		);
+	}
+
+	/**
+	 * Drop the pending new-key id without revoking it (successful store or confirm).
+	 *
+	 * @return void
+	 */
+	private function clear_pending_new_signing_key_id() {
+		delete_transient( $this->pending_new_signing_key_transient_name() );
+	}
+
+	/**
 	 * Stash key id + PEM for short-lived setup (user must choose how to keep it).
 	 *
 	 * @param string $key_id  Signing key id.
 	 * @param string $pem     PEM as returned (base64 or PEM text).
-	 * @param string $context setup|migrate.
+	 * @param string $context setup|rotate.
 	 */
 	private function stash_signing_key_reveal( $key_id, $pem, $context = 'setup' ) {
-		$context = ( 'migrate' === $context ) ? 'migrate' : 'setup';
+		$context = ( 'rotate' === $context ) ? 'rotate' : 'setup';
 
 		set_transient(
 			$this->signing_key_reveal_transient_name(),
@@ -706,19 +808,22 @@ class Cloudflare_Stream_Settings {
 				'id'      => (string) $key_id,
 				'pem'     => (string) $pem,
 				'context' => $context,
+				'shown'   => false,
 			),
-			15 * MINUTE_IN_SECONDS
+			self::SIGNING_KEY_REVEAL_TTL
 		);
+
+		$this->signing_key_reveal_for_request = false;
+		$this->stash_pending_new_signing_key_id( $key_id );
 	}
 
 	/**
-	 * Read a pending setup/migrate payload without deleting it.
+	 * Normalise a reveal transient payload, or null when unusable.
 	 *
-	 * @return array{id:string,pem:string,context:string}|null
+	 * @param mixed $payload Transient value.
+	 * @return array{id:string,pem:string,context:string,shown:bool}|null
 	 */
-	private function get_signing_key_reveal() {
-		$payload = get_transient( $this->signing_key_reveal_transient_name() );
-
+	private function normalize_signing_key_reveal_payload( $payload ) {
 		if ( ! is_array( $payload ) ) {
 			return null;
 		}
@@ -731,22 +836,167 @@ class Cloudflare_Stream_Settings {
 		}
 
 		$context = isset( $payload['context'] ) ? (string) $payload['context'] : 'setup';
-		if ( 'migrate' !== $context ) {
+		if ( 'rotate' !== $context && 'migrate' !== $context ) {
 			$context = 'setup';
+		}
+		// Older migrate context is treated as rotate.
+		if ( 'migrate' === $context ) {
+			$context = 'rotate';
 		}
 
 		return array(
 			'id'      => $id,
 			'pem'     => $pem,
 			'context' => $context,
+			'shown'   => ! empty( $payload['shown'] ),
 		);
 	}
 
 	/**
-	 * Drop the user-specific setup/migrate transient.
+	 * Read pending setup/rotate material for handlers (does not mark the PEM as shown).
+	 *
+	 * @return array{id:string,pem:string,context:string,shown:bool}|null
 	 */
-	private function clear_signing_key_reveal() {
+	private function get_signing_key_reveal() {
+		if ( false !== $this->signing_key_reveal_for_request ) {
+			return $this->signing_key_reveal_for_request;
+		}
+
+		$payload = $this->normalize_signing_key_reveal_payload(
+			get_transient( $this->signing_key_reveal_transient_name() )
+		);
+
+		$this->signing_key_reveal_for_request = $payload;
+
+		return $payload;
+	}
+
+	/**
+	 * Payload for on-screen reveal. Marks the transient shown after the first read
+	 * so a later page view cannot print the private key again. Server-side material
+	 * stays available for store/confirm until cleared or expired.
+	 *
+	 * @return array{id:string,pem:string,context:string}|null Null when nothing to show.
+	 */
+	private function get_signing_key_reveal_for_display() {
+		$payload = $this->get_signing_key_reveal();
+		if ( null === $payload ) {
+			return null;
+		}
+
+		if ( ! empty( $payload['shown'] ) ) {
+			// Already printed once; keep actions available without the PEM.
+			return array(
+				'id'      => $payload['id'],
+				'pem'     => '',
+				'context' => $payload['context'],
+				'shown'   => true,
+			);
+		}
+
+		$stored = array(
+			'id'      => $payload['id'],
+			'pem'     => $payload['pem'],
+			'context' => $payload['context'],
+			'shown'   => true,
+		);
+		set_transient(
+			$this->signing_key_reveal_transient_name(),
+			$stored,
+			self::SIGNING_KEY_REVEAL_TTL
+		);
+		$this->signing_key_reveal_for_request = $stored;
+
+		return array(
+			'id'      => $payload['id'],
+			'pem'     => $payload['pem'],
+			'context' => $payload['context'],
+			'shown'   => false,
+		);
+	}
+
+	/**
+	 * Drop the user-specific setup/rotate reveal transient.
+	 *
+	 * @param bool $revoke_pending When true, revoke an unused newly minted key at Cloudflare.
+	 */
+	private function clear_signing_key_reveal( $revoke_pending = false ) {
 		delete_transient( $this->signing_key_reveal_transient_name() );
+		$this->signing_key_reveal_for_request = null;
+
+		if ( $revoke_pending ) {
+			$this->revoke_pending_new_signing_key();
+		} else {
+			$this->clear_pending_new_signing_key_id();
+		}
+	}
+
+	/**
+	 * Allow the setup panel to show the PEM again after a failed constants check.
+	 *
+	 * @return void
+	 */
+	private function unmark_signing_key_reveal_shown() {
+		$payload = $this->get_signing_key_reveal();
+		if ( null === $payload || '' === $payload['pem'] ) {
+			return;
+		}
+
+		$stored = array(
+			'id'      => $payload['id'],
+			'pem'     => $payload['pem'],
+			'context' => $payload['context'],
+			'shown'   => false,
+		);
+		set_transient(
+			$this->signing_key_reveal_transient_name(),
+			$stored,
+			self::SIGNING_KEY_REVEAL_TTL
+		);
+		$this->signing_key_reveal_for_request = $stored;
+	}
+
+	/**
+	 * Revoke a newly minted key that was never stored (abandoned setup or rotate).
+	 *
+	 * @return void
+	 */
+	private function revoke_pending_new_signing_key() {
+		$key_id = get_transient( $this->pending_new_signing_key_transient_name() );
+		$this->clear_pending_new_signing_key_id();
+
+		if ( ! is_string( $key_id ) || '' === $key_id ) {
+			return;
+		}
+
+		// Best effort: an unused key left at Cloudflare is wasteful but not a leak of stored secrets.
+		Cloudflare_Stream_API::instance()->delete_signing_key( $key_id );
+	}
+
+	/**
+	 * Database signing key id only (ignores constants).
+	 *
+	 * @return string
+	 */
+	private function get_db_signing_key_id() {
+		$id = get_option( self::OPTION_SIGNING_KEY_ID, '' );
+
+		return is_string( $id ) ? sanitize_text_field( $id ) : '';
+	}
+
+	/**
+	 * Revoke a signing key at Cloudflare and report whether it succeeded.
+	 *
+	 * @param string $key_id Signing key id.
+	 * @return bool True when Cloudflare accepted the revoke, false otherwise.
+	 */
+	private function revoke_signing_key_at_cloudflare( $key_id ) {
+		$key_id = sanitize_text_field( (string) $key_id );
+		if ( '' === $key_id ) {
+			return false;
+		}
+
+		return (bool) Cloudflare_Stream_API::instance()->delete_signing_key( $key_id );
 	}
 
 	/**
@@ -850,15 +1100,20 @@ class Cloudflare_Stream_Settings {
 	 *
 	 * @param string $key_id  Signing key id.
 	 * @param string $pem     PEM value.
-	 * @param string $context setup|migrate.
+	 * @param string $context setup|rotate.
 	 */
 	private function render_signing_key_setup_panel( $key_id, $pem, $context = 'setup' ) {
-		$context = ( 'migrate' === $context ) ? 'migrate' : 'setup';
+		$context = ( 'rotate' === $context ) ? 'rotate' : 'setup';
 		$snippet = $this->build_signing_key_wpconfig_snippet( $key_id, $pem );
 
 		echo '<div class="notice notice-warning inline cloudflare-stream-signing-key-reveal">';
-		echo '<p><strong>' . esc_html__( 'Signing key setup', 'cloudflare-stream' ) . '</strong></p>';
-		echo '<p>' . esc_html__( 'Copy the lines below into wp-config.php, above the line that says "That\'s all, stop editing!". They are only shown for a short time and the private key is not shown again.', 'cloudflare-stream' ) . '</p>';
+		if ( 'rotate' === $context ) {
+			echo '<p><strong>' . esc_html__( 'Move signing key to wp-config.php', 'cloudflare-stream' ) . '</strong></p>';
+			echo '<p>' . esc_html__( 'A new signing key was created. Copy the lines below into wp-config.php, above the line that says "That\'s all, stop editing!". They are only shown once. After you confirm, the database copy is removed and the previous key is revoked in Cloudflare.', 'cloudflare-stream' ) . '</p>';
+		} else {
+			echo '<p><strong>' . esc_html__( 'Signing key setup', 'cloudflare-stream' ) . '</strong></p>';
+			echo '<p>' . esc_html__( 'Copy the lines below into wp-config.php, above the line that says "That\'s all, stop editing!". They are only shown once and the private key is not shown again.', 'cloudflare-stream' ) . '</p>';
+		}
 		echo '<textarea class="large-text code" id="cloudflare_stream_reveal_snippet" rows="8" readonly="readonly" onclick="this.select();">' . esc_textarea( $snippet ) . '</textarea>';
 
 		if ( 'setup' === $context ) {
@@ -869,10 +1124,10 @@ class Cloudflare_Stream_Settings {
 			echo '<p class="description">' . esc_html__( 'Signed playback works either way. You can move the key to wp-config.php later.', 'cloudflare-stream' ) . '</p>';
 		} else {
 			$this->echo_signing_key_form_button( 'confirm_moved', __( 'I have added this to wp-config.php', 'cloudflare-stream' ), 'primary' );
-			echo '<p class="description">' . esc_html__( 'Checks the lines work, then removes the database copy.', 'cloudflare-stream' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Checks the lines work, then removes the database copy and revokes the previous key.', 'cloudflare-stream' ) . '</p>';
 
-			$this->echo_signing_key_form_button( 'dismiss', __( 'Keep it in the database', 'cloudflare-stream' ) );
-			echo '<p class="description">' . esc_html__( 'Hides these lines and leaves the key where it is.', 'cloudflare-stream' ) . '</p>';
+			$this->echo_signing_key_form_button( 'dismiss', __( 'Cancel and keep the database key', 'cloudflare-stream' ) );
+			echo '<p class="description">' . esc_html__( 'Discards the new key and leaves the existing database key in place.', 'cloudflare-stream' ) . '</p>';
 		}
 
 		echo '</div>';
@@ -886,7 +1141,7 @@ class Cloudflare_Stream_Settings {
 		$const_ready  = $this->constants_signing_key_ready();
 		$const_broken = ! $const_ready && $this->signing_key_from_constants();
 		$in_db        = $this->db_has_signing_key_options();
-		$reveal       = $this->get_signing_key_reveal();
+		$reveal       = $this->get_signing_key_reveal_for_display();
 
 		if ( $const_broken ) {
 			$this->echo_field_status( __( 'Set as a PHP constant, but not usable', 'cloudflare-stream' ) );
@@ -901,7 +1156,22 @@ class Cloudflare_Stream_Settings {
 
 		// Setup owns the next step while a short-lived copy of the key is pending.
 		if ( is_array( $reveal ) ) {
-			$this->render_signing_key_setup_panel( $reveal['id'], $reveal['pem'], $reveal['context'] );
+			if ( '' !== $reveal['pem'] ) {
+				$this->render_signing_key_setup_panel( $reveal['id'], $reveal['pem'], $reveal['context'] );
+			} else {
+				// PEM already shown once; keep confirm/store actions without reprinting secrets.
+				echo '<div class="notice notice-warning inline cloudflare-stream-signing-key-reveal">';
+				echo '<p><strong>' . esc_html__( 'Signing key setup', 'cloudflare-stream' ) . '</strong></p>';
+				echo '<p>' . esc_html__( 'The private key was already shown once on this screen. Finish the step below, or cancel and start again if you need the lines reprinted.', 'cloudflare-stream' ) . '</p>';
+				if ( 'rotate' === $reveal['context'] ) {
+					$this->echo_signing_key_form_button( 'confirm_moved', __( 'I have added this to wp-config.php', 'cloudflare-stream' ), 'primary' );
+					$this->echo_signing_key_form_button( 'dismiss', __( 'Cancel and keep the database key', 'cloudflare-stream' ) );
+				} else {
+					$this->echo_signing_key_form_button( 'confirm_constants', __( 'I have added this to wp-config.php', 'cloudflare-stream' ), 'primary' );
+					$this->echo_signing_key_form_button( 'store_db', __( 'Save in the database instead', 'cloudflare-stream' ) );
+				}
+				echo '</div>';
+			}
 			return;
 		}
 
@@ -928,12 +1198,12 @@ class Cloudflare_Stream_Settings {
 		}
 
 		if ( $in_db ) {
-			echo '<p class="description">' . esc_html__( 'Move the key to wp-config.php / PHP constants to keep it out of database backups.', 'cloudflare-stream' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Move the key to wp-config.php / PHP constants to keep it out of database backups. This creates a new key, then revokes the old one after the constants work.', 'cloudflare-stream' ) . '</p>';
 
 			echo '<div class="cloudflare-stream-signing-key-actions">';
-			$this->echo_signing_key_form_button( 'reveal', __( 'Show wp-config.php lines', 'cloudflare-stream' ) );
+			$this->echo_signing_key_form_button( 'rotate', __( 'Move key to wp-config.php', 'cloudflare-stream' ) );
 			$this->echo_signing_key_form_button( 'clear', __( 'Remove signing key', 'cloudflare-stream' ), 'delete' );
-			echo '<p class="description">' . esc_html__( 'Removing it here does not revoke the key in Cloudflare.', 'cloudflare-stream' ) . '</p>';
+			echo '<p class="description">' . esc_html__( 'Removing the key also revokes it in Cloudflare when possible.', 'cloudflare-stream' ) . '</p>';
 			echo '</div>';
 			return;
 		}
@@ -1062,7 +1332,7 @@ class Cloudflare_Stream_Settings {
 		$reveal = $this->get_signing_key_reveal();
 
 		if ( is_array( $reveal ) ) {
-			if ( 'migrate' === $reveal['context'] ) {
+			if ( 'rotate' === $reveal['context'] ) {
 				$this->echo_signing_key_external_form( 'confirm_moved' );
 				$this->echo_signing_key_external_form( 'dismiss' );
 			} else {
@@ -1083,7 +1353,7 @@ class Cloudflare_Stream_Settings {
 		}
 
 		if ( $in_db ) {
-			$this->echo_signing_key_external_form( 'reveal' );
+			$this->echo_signing_key_external_form( 'rotate' );
 			$this->echo_signing_key_external_form( 'clear' );
 			return;
 		}
@@ -1104,12 +1374,19 @@ class Cloudflare_Stream_Settings {
 	 * Stash a notice code, then redirect to settings without a sticky query arg.
 	 *
 	 * @param string $code Notice code.
+	 * @param array  $data Optional extra fields (for example key_id).
 	 */
-	private function redirect_signing_key_notice( $code ) {
+	private function redirect_signing_key_notice( $code, $data = array() ) {
 		$code = sanitize_key( $code );
 
 		if ( '' !== $code && 'noop' !== $code ) {
-			set_transient( $this->signing_key_notice_transient_name(), $code, HOUR_IN_SECONDS );
+			$payload = array( 'code' => $code );
+			if ( is_array( $data ) ) {
+				if ( ! empty( $data['key_id'] ) ) {
+					$payload['key_id'] = sanitize_text_field( (string) $data['key_id'] );
+				}
+			}
+			set_transient( $this->signing_key_notice_transient_name(), $payload, HOUR_IN_SECONDS );
 		}
 
 		$redirect = add_query_arg(
@@ -1132,7 +1409,7 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Generate, finish setup, migrate, or clear signing key (manage_options + nonce).
+	 * Generate, finish setup, rotate, or clear signing key (manage_options + nonce).
 	 */
 	public function handle_signing_key_action() {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -1145,36 +1422,70 @@ class Cloudflare_Stream_Settings {
 		$api = Cloudflare_Stream_API::instance();
 
 		if ( 'clear' === $do ) {
+			// When constants are broken, only drop the unused DB copy; do not revoke
+			// a key id the constants may still be trying to use.
+			$revoke_id = '';
+			if ( ! $this->signing_key_from_constants() && $this->db_has_signing_key_options() ) {
+				$revoke_id = $this->get_db_signing_key_id();
+			}
+
 			$this->delete_db_signing_key_options();
-			$this->clear_signing_key_reveal();
+			$this->clear_signing_key_reveal( true );
 			$this->clear_signing_health_hot_state();
+
+			if ( '' !== $revoke_id ) {
+				if ( $this->revoke_signing_key_at_cloudflare( $revoke_id ) ) {
+					$this->redirect_signing_key_notice( 'cleared_revoked' );
+				}
+				$this->redirect_signing_key_notice( 'cleared_revoke_failed', array( 'key_id' => $revoke_id ) );
+			}
+
 			$this->redirect_signing_key_notice( 'cleared' );
 		}
 
 		if ( 'dismiss' === $do ) {
-			$this->clear_signing_key_reveal();
+			// Abandon rotate/setup: revoke the unused new key when one was minted.
+			$this->clear_signing_key_reveal( true );
 			$this->redirect_signing_key_notice( 'dismissed' );
 		}
 
 		if ( 'confirm_constants' === $do || 'confirm_moved' === $do ) {
 			if ( ! $this->constants_signing_key_ready() ) {
+				// Allow the setup panel to print the lines again after a failed check.
+				$this->unmark_signing_key_reveal_shown();
 				$this->redirect_signing_key_notice( 'constants_missing' );
 			}
 
+			$old_db_id = $this->get_db_signing_key_id();
+
+			// Constants verified first; only then drop DB options and revoke the old key.
 			$this->delete_db_signing_key_options();
-			$this->clear_signing_key_reveal();
+			$this->clear_signing_key_reveal( false );
 			$this->clear_signing_health_hot_state();
+
+			if ( 'confirm_moved' === $do && '' !== $old_db_id ) {
+				// Never revoke the key that constants now use.
+				$live_id = $api->get_signing_key_id();
+				if ( $old_db_id !== $live_id ) {
+					if ( $this->revoke_signing_key_at_cloudflare( $old_db_id ) ) {
+						$this->redirect_signing_key_notice( 'moved' );
+					}
+					$this->redirect_signing_key_notice( 'moved_revoke_failed', array( 'key_id' => $old_db_id ) );
+				}
+			}
+
 			$this->redirect_signing_key_notice( 'confirm_constants' === $do ? 'constants_ok' : 'moved' );
 		}
 
 		if ( 'store_db' === $do ) {
 			// Constants added since setup started win, so nothing is written.
 			if ( $this->signing_key_from_constants() ) {
+				$this->clear_signing_key_reveal( true );
 				$this->redirect_signing_key_notice( 'constants' );
 			}
 
 			$pending = $this->get_signing_key_reveal();
-			if ( null === $pending || 'setup' !== $pending['context'] ) {
+			if ( null === $pending || 'setup' !== $pending['context'] || '' === $pending['pem'] ) {
 				$this->redirect_signing_key_notice( 'store_failed' );
 			}
 
@@ -1183,10 +1494,11 @@ class Cloudflare_Stream_Settings {
 
 			if ( ! $api->has_signing_key() ) {
 				$this->delete_db_signing_key_options();
+				$this->clear_signing_key_reveal( true );
 				$this->redirect_signing_key_notice( 'invalid' );
 			}
 
-			$this->clear_signing_key_reveal();
+			$this->clear_signing_key_reveal( false );
 			$this->clear_signing_health_hot_state();
 			$this->redirect_signing_key_notice( 'stored' );
 		}
@@ -1218,16 +1530,27 @@ class Cloudflare_Stream_Settings {
 			$this->redirect_signing_key_notice( 'generated' );
 		}
 
-		if ( 'reveal' === $do ) {
+		if ( 'rotate' === $do ) {
 			if ( $this->signing_key_from_constants() || ! $this->db_has_signing_key_options() ) {
-				$this->redirect_signing_key_notice( 'reveal_failed' );
+				$this->redirect_signing_key_notice( 'rotate_failed' );
 			}
 
-			$key_id = get_option( self::OPTION_SIGNING_KEY_ID, '' );
-			$pem    = get_option( self::OPTION_SIGNING_KEY_PEM, '' );
+			// Mint a new key; the stored PEM is never read back to the screen.
+			$result = $api->create_signing_key();
 
-			$this->stash_signing_key_reveal( $key_id, $pem, 'migrate' );
-			$this->redirect_signing_key_notice( 'reveal' );
+			if ( ! is_object( $result ) || empty( $result->id ) || empty( $result->pem ) || ! is_string( $result->pem ) ) {
+				$this->redirect_signing_key_notice( 'rotate_create_failed' );
+			}
+
+			$key_id  = sanitize_text_field( (string) $result->id );
+			$pem_raw = trim( $result->pem );
+
+			if ( '' === $key_id || '' === $pem_raw ) {
+				$this->redirect_signing_key_notice( 'rotate_create_failed' );
+			}
+
+			$this->stash_signing_key_reveal( $key_id, $pem_raw, 'rotate' );
+			$this->redirect_signing_key_notice( 'rotate_started' );
 		}
 
 		$this->redirect_signing_key_notice( 'noop' );
@@ -1246,17 +1569,28 @@ class Cloudflare_Stream_Settings {
 			return;
 		}
 
-		$code = get_transient( $this->signing_key_notice_transient_name() );
-		if ( ! is_string( $code ) || '' === $code ) {
+		$raw = get_transient( $this->signing_key_notice_transient_name() );
+		if ( false === $raw || null === $raw || '' === $raw ) {
 			return;
 		}
 
 		// Consume immediately so reload/dismiss cannot replay the notice.
 		delete_transient( $this->signing_key_notice_transient_name() );
-		$code = sanitize_key( $code );
+
+		$key_id = '';
+		if ( is_array( $raw ) ) {
+			$code   = isset( $raw['code'] ) ? sanitize_key( (string) $raw['code'] ) : '';
+			$key_id = isset( $raw['key_id'] ) ? sanitize_text_field( (string) $raw['key_id'] ) : '';
+		} else {
+			$code = sanitize_key( (string) $raw );
+		}
+
+		if ( '' === $code ) {
+			return;
+		}
 
 		// Drop state-dependent copy when it is no longer true.
-		if ( in_array( $code, array( 'constants_ok', 'moved' ), true ) && ! $this->constants_signing_key_ready() ) {
+		if ( in_array( $code, array( 'constants_ok', 'moved', 'moved_revoke_failed' ), true ) && ! $this->constants_signing_key_ready() ) {
 			return;
 		}
 		if ( 'constants' === $code && ! $this->signing_key_from_constants() ) {
@@ -1264,55 +1598,71 @@ class Cloudflare_Stream_Settings {
 		}
 
 		$messages = array(
-			'generated'         => array(
+			'generated'             => array(
 				'type' => 'success',
 				'text' => __( 'Signing key created. Choose below where to keep it. Nothing is saved yet.', 'cloudflare-stream' ),
 			),
-			'reveal'            => array(
+			'rotate_started'        => array(
 				'type' => 'success',
-				'text' => __( 'The wp-config.php / PHP constants are shown below for a short time.', 'cloudflare-stream' ),
+				'text' => __( 'A new signing key was created. Add the lines below to wp-config.php, then confirm. The previous key stays valid until you confirm.', 'cloudflare-stream' ),
 			),
-			'constants_ok'      => array(
+			'constants_ok'          => array(
 				'type' => 'success',
 				'text' => __( 'Signing key is now read from PHP constants.', 'cloudflare-stream' ),
 			),
-			'moved'             => array(
+			'moved'                 => array(
 				'type' => 'success',
-				'text' => __( 'Signing key is now read from PHP constants and the database copy was removed.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key is now read from PHP constants. The database copy was removed and the previous key was revoked in Cloudflare.', 'cloudflare-stream' ),
 			),
-			'stored'            => array(
+			'moved_revoke_failed'   => array(
+				'type' => 'warning',
+				'text' => __( 'Signing key is now read from PHP constants and the database copy was removed, but the previous key could not be revoked in Cloudflare. Revoke it in the Cloudflare dashboard. Key id: %s', 'cloudflare-stream' ),
+			),
+			'stored'                => array(
 				'type' => 'success',
 				'text' => __( 'Signing key saved in the database.', 'cloudflare-stream' ),
 			),
-			'cleared'           => array(
+			'cleared'               => array(
 				'type' => 'success',
 				'text' => __( 'Signing key removed from the database.', 'cloudflare-stream' ),
 			),
-			'dismissed'         => array(
+			'cleared_revoked'       => array(
 				'type' => 'success',
-				'text' => __( 'Lines hidden. The signing key is still in the database.', 'cloudflare-stream' ),
+				'text' => __( 'Signing key removed from the database and revoked in Cloudflare.', 'cloudflare-stream' ),
 			),
-			'constants_missing' => array(
+			'cleared_revoke_failed' => array(
+				'type' => 'warning',
+				'text' => __( 'Signing key removed from the database, but it could not be revoked in Cloudflare. Revoke it in the Cloudflare dashboard. Key id: %s', 'cloudflare-stream' ),
+			),
+			'dismissed'             => array(
+				'type' => 'success',
+				'text' => __( 'Cancelled. The existing database signing key is unchanged. Any unused new key was discarded.', 'cloudflare-stream' ),
+			),
+			'constants_missing'     => array(
 				'type' => 'error',
-				'text' => __( 'The PHP constants are not working yet. Check them, then try again. They are still shown below for a short time.', 'cloudflare-stream' ),
+				'text' => __( 'The PHP constants are not working yet. Check them, then try again. The new key is still available below for a short time.', 'cloudflare-stream' ),
 			),
-			'generate_failed'   => array(
+			'generate_failed'       => array(
 				'type' => 'error',
 				'text' => __( 'Could not create a signing key. Check the API token and account ID.', 'cloudflare-stream' ),
 			),
-			'invalid'           => array(
+			'rotate_create_failed'  => array(
+				'type' => 'error',
+				'text' => __( 'Could not create a new signing key, so nothing was changed. The database key is still in place.', 'cloudflare-stream' ),
+			),
+			'rotate_failed'         => array(
+				'type' => 'error',
+				'text' => __( 'There is no database signing key to move, or PHP constants already supply the key.', 'cloudflare-stream' ),
+			),
+			'invalid'               => array(
 				'type' => 'error',
 				'text' => __( 'That signing key could not be used. Nothing was saved.', 'cloudflare-stream' ),
 			),
-			'store_failed'      => array(
+			'store_failed'          => array(
 				'type' => 'error',
 				'text' => __( 'There is no new signing key to save. Generate one again.', 'cloudflare-stream' ),
 			),
-			'reveal_failed'     => array(
-				'type' => 'error',
-				'text' => __( 'There is no signing key in the database to show.', 'cloudflare-stream' ),
-			),
-			'constants'         => array(
+			'constants'             => array(
 				'type' => 'error',
 				'text' => __( 'The signing key is set as PHP constants, so that action was skipped.', 'cloudflare-stream' ),
 			),
@@ -1322,10 +1672,15 @@ class Cloudflare_Stream_Settings {
 			return;
 		}
 
+		$text = $messages[ $code ]['text'];
+		if ( false !== strpos( $text, '%s' ) ) {
+			$text = sprintf( $text, '' !== $key_id ? $key_id : __( '(unknown)', 'cloudflare-stream' ) );
+		}
+
 		printf(
 			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
 			esc_attr( $messages[ $code ]['type'] ),
-			esc_html( $messages[ $code ]['text'] )
+			esc_html( $text )
 		);
 	}
 
@@ -1333,7 +1688,7 @@ class Cloudflare_Stream_Settings {
 	 * Callback for rendering the preferred media domain field
 	 */
 	public function media_domain_cb() {
-		$media_domain           = get_option( self::OPTION_MEDIA_DOMAIN );
+		$media_domain           = get_option( self::OPTION_MEDIA_DOMAIN, self::STANDARD_MEDIA_DOMAINS[0] );
 		$num_domains            = count( self::STANDARD_MEDIA_DOMAINS );
 		$existing_custom_domain = true; // Placeholder value, but will be confirmed below.
 
@@ -1376,7 +1731,7 @@ class Cloudflare_Stream_Settings {
 	 * Callback for rendering the poster time field
 	 */
 	public function poster_time_cb() {
-		$poster_time = get_option( self::OPTION_POSTER_TIME );
+		$poster_time = get_option( self::OPTION_POSTER_TIME, self::DEFAULT_POSTER_TIME );
 		echo '<label for="cloudflare_stream_poster_time"><input type="number" class="regular-text" name="cloudflare_stream_poster_time" id="cloudflare_stream_poster_time" value="' . esc_attr( intval( $poster_time ) ) . '" autocomplete="off"> seconds</label>'
 		. '<small class="form-text text-muted">' . esc_html__( 'A default time in seconds, of where to reference the video thumbnail from in any given video. Can be overridden by shortcode argument postertime. eg: postertime="10s".', 'cloudflare-stream' ) . '</small>';
 	}
@@ -1384,20 +1739,20 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Setup Admin Menu Options & Settings.
 	 *
-	 * @uses is_super_admin, add_submenu_page
+	 * Single site: manage_options. Multisite: page is under network admin, so the
+	 * practical gate is reaching network admin (manage_network), not site manage_options.
+	 *
+	 * @uses current_user_can, add_options_page
 	 * @action network_admin_menu, admin_menu
-	 * @return null
+	 * @return void|false
 	 */
 	public function action_admin_menu() {
-		if ( ! is_super_admin() ) {
+		// Defaults are independent of who can see the menu.
+		$this->maybe_seed_defaults();
+
+		if ( ! current_user_can( 'manage_options' ) ) {
 			return false;
 		}
-
-		// Defaults.
-		add_option( self::OPTION_SIGNED_URLS, true );
-		add_option( self::OPTION_SIGNED_URLS_DURATION, 60 );
-		add_option( self::OPTION_MEDIA_DOMAIN, self::STANDARD_MEDIA_DOMAINS[0] );
-		add_option( self::OPTION_POSTER_TIME, 0 );
 
 		// Completely remove old less secure API credentials if they exist.
 		if ( get_option( self::OPTION_API_KEY ) !== false ) {

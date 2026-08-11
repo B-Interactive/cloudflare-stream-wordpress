@@ -77,19 +77,23 @@ function cloudflare_stream_block_editor_assets() {
 			true
 		);
 
-		// The nonce is the upload/library gate, so only users who can manage
-		// Stream receive one. The API token never reaches the browser; uploads
-		// use a server-made direct upload URL.
-		$api_nonce = current_user_can( 'manage_options' )
+		// Nonce is issued to content editors so library browse and signed preview
+		// can run. Each AJAX handler still checks its own capability; mutating
+		// actions require manage_options. The API token never reaches the browser.
+		$can_edit_content = current_user_can( 'edit_posts' );
+		$can_manage       = current_user_can( 'manage_options' );
+		$api_nonce        = ( $can_edit_content || $can_manage )
 			? wp_create_nonce( Cloudflare_Stream_Settings::NONCE )
 			: '';
-		$api       = Cloudflare_Stream_API::instance();
+		$api              = Cloudflare_Stream_API::instance();
 
 		wp_localize_script(
 			'cloudflare-stream-block-js',
 			'cloudflareStream',
 			array(
 				'nonce'           => $api_nonce,
+				// Upload, rename and delete stay administrative.
+				'canManage'       => $can_manage,
 				'api'             => array(
 					'posts_per_page' => $api->api_limit,
 				),
@@ -179,16 +183,28 @@ function cloudflare_stream_admin_body_class( $classes ) {
 add_filter( 'admin_body_class', 'cloudflare_stream_admin_body_class' );
 
 /**
- * Require manage_options for Stream AJAX handlers.
+ * Require a capability for a Stream AJAX handler.
  *
  * Nonce checks stay in each handler so PHPCS can see them before $_REQUEST use.
  *
+ * @param string $capability Capability slug. Default manage_options.
  * @since 1.0.0
  */
-function cloudflare_stream_verify_ajax_capability() {
-	if ( ! current_user_can( 'manage_options' ) ) {
+function cloudflare_stream_verify_ajax_capability( $capability = 'manage_options' ) {
+	$capability = is_string( $capability ) && '' !== $capability ? $capability : 'manage_options';
+
+	if ( ! current_user_can( $capability ) ) {
 		wp_send_json_error( array( 'message' => 'Forbidden' ), 403 );
 	}
+}
+
+/**
+ * Capability for read-only Stream AJAX used while editing content.
+ *
+ * @return string
+ */
+function cloudflare_stream_ajax_edit_capability() {
+	return 'edit_posts';
 }
 
 /**
@@ -198,7 +214,12 @@ function cloudflare_stream_verify_ajax_capability() {
  * @return string
  */
 function cloudflare_stream_poster_time() {
-	return absint( get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) ) . 's';
+	return absint(
+		get_option(
+			Cloudflare_Stream_Settings::OPTION_POSTER_TIME,
+			Cloudflare_Stream_Settings::DEFAULT_POSTER_TIME
+		)
+	) . 's';
 }
 
 /**
@@ -208,7 +229,7 @@ function cloudflare_stream_poster_time() {
  */
 function cloudflare_stream_ajax_query_attachments() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	cloudflare_stream_verify_ajax_capability();
+	cloudflare_stream_verify_ajax_capability( cloudflare_stream_ajax_edit_capability() );
 
 	$api            = Cloudflare_Stream_API::instance();
 	$args['query']  = isset( $_REQUEST['query'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['query'] ) ) : '';
@@ -323,7 +344,7 @@ add_action( 'wp_ajax_query-cloudflare-stream-attachments', 'cloudflare_stream_aj
  */
 function cloudflare_stream_ajax_check_upload() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	cloudflare_stream_verify_ajax_capability();
+	cloudflare_stream_verify_ajax_capability( 'manage_options' );
 
 	$uid = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 
@@ -360,7 +381,7 @@ add_action( 'wp_ajax_cloudflare-stream-check-upload', 'cloudflare_stream_ajax_ch
  */
 function cloudflare_stream_ajax_playback_urls() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	cloudflare_stream_verify_ajax_capability();
+	cloudflare_stream_verify_ajax_capability( cloudflare_stream_ajax_edit_capability() );
 
 	$uid = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 
@@ -395,13 +416,15 @@ add_action( 'wp_ajax_cloudflare-stream-playback-urls', 'cloudflare_stream_ajax_p
  */
 function cloudflare_stream_ajax_query_upload() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	cloudflare_stream_verify_ajax_capability();
+	cloudflare_stream_verify_ajax_capability( 'manage_options' );
 
 	$upload_length = isset( $_REQUEST['uploadLength'] )
 		? absint( wp_unslash( $_REQUEST['uploadLength'] ) )
 		: 0;
 
-	if ( $upload_length < 1 ) {
+	$api = Cloudflare_Stream_API::instance();
+
+	if ( $upload_length < 1 || $upload_length > $api->get_max_upload_bytes() ) {
 		wp_send_json_error(
 			array(
 				'message' => __( 'Could not create upload URL.', 'cloudflare-stream' ),
@@ -417,7 +440,17 @@ function cloudflare_stream_ajax_query_upload() {
 		$file_meta['filetype'] = sanitize_text_field( wp_unslash( $_REQUEST['filetype'] ) );
 	}
 
-	$api  = Cloudflare_Stream_API::instance();
+	if ( ! empty( $file_meta['filetype'] ) ) {
+		$filetype = strtolower( trim( $file_meta['filetype'] ) );
+		if ( ! in_array( $filetype, $api->get_allowed_upload_mime_types(), true ) ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'That file type is not supported for Stream upload.', 'cloudflare-stream' ),
+				)
+			);
+		}
+	}
+
 	$data = $api->create_direct_upload( $upload_length, $file_meta );
 
 	// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- Cloudflare uploadURL field.
@@ -446,7 +479,7 @@ add_action( 'wp_ajax_query-cloudflare-stream-upload', 'cloudflare_stream_ajax_qu
  */
 function cloudflare_stream_ajax_delete() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	cloudflare_stream_verify_ajax_capability();
+	cloudflare_stream_verify_ajax_capability( 'manage_options' );
 
 	$uid  = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 	$api  = Cloudflare_Stream_API::instance();
@@ -467,7 +500,7 @@ add_action( 'wp_ajax_cloudflare-stream-delete', 'cloudflare_stream_ajax_delete' 
  */
 function cloudflare_stream_ajax_update() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	cloudflare_stream_verify_ajax_capability();
+	cloudflare_stream_verify_ajax_capability( 'manage_options' );
 
 	$uid    = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 	$title  = isset( $_REQUEST['title'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['title'] ) ) : '';

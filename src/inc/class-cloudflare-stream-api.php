@@ -199,7 +199,7 @@ class Cloudflare_Stream_API {
 		$response = wp_remote_request( $route, $args );
 
 		if ( is_wp_error( $response ) ) {
-			return $response->get_error_message();
+			return $response;
 		}
 
 		if ( 'response' === $return_headers ) {
@@ -332,11 +332,13 @@ class Cloudflare_Stream_API {
 	 * @return string
 	 */
 	public function get_media_domain() {
-		$domain = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN, '' );
+		$domain = get_option(
+			Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN,
+			Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS[0]
+		);
 
 		if ( ! is_string( $domain ) || '' === $domain ) {
-			$defaults = Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS;
-			return $defaults[0];
+			return Cloudflare_Stream_Settings::STANDARD_MEDIA_DOMAINS[0];
 		}
 
 		return $domain;
@@ -425,17 +427,28 @@ class Cloudflare_Stream_API {
 	 * @return bool
 	 */
 	public function is_signed_playback_enabled() {
-		return (bool) get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+		return (bool) get_option(
+			Cloudflare_Stream_Settings::OPTION_SIGNED_URLS,
+			Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS
+		);
 	}
 
 	/**
 	 * Transient key holding a minted API token for a uid at the current duration.
 	 *
+	 * Includes a signing-mode discriminator so API-minted tokens are not reused
+	 * after a local key is added or the key id changes.
+	 *
 	 * @param string $uid Video UID.
 	 * @return string
 	 */
 	private function get_signed_token_cache_key( $uid ) {
-		return 'cfstream_signed_token_' . md5( strtolower( $uid ) . '|' . $this->get_signed_url_duration_minutes() );
+		$key_id = $this->get_signing_key_id();
+		$mode   = '' !== $key_id ? $key_id : 'api';
+
+		return 'cfstream_signed_token_' . md5(
+			strtolower( (string) $uid ) . '|' . $this->get_signed_url_duration_minutes() . '|' . $mode
+		);
 	}
 
 	/**
@@ -488,10 +501,14 @@ class Cloudflare_Stream_API {
 	/**
 	 * Decode a JSON API body into an object, or null on failure.
 	 *
-	 * @param mixed $response_text Body from request(), or error string.
+	 * @param mixed $response_text Body from request(), WP_Error, or other failure value.
 	 * @return object|null
 	 */
 	private function decode_api_response( $response_text ) {
+		if ( is_wp_error( $response_text ) ) {
+			return null;
+		}
+
 		if ( ! is_string( $response_text ) || '' === $response_text ) {
 			return null;
 		}
@@ -507,7 +524,12 @@ class Cloudflare_Stream_API {
 	 * @return int Minutes between 1 and 1440.
 	 */
 	private function get_signed_url_duration_minutes() {
-		$minutes = intval( get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION, 60 ) );
+		$minutes = intval(
+			get_option(
+				Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION,
+				Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS_DURATION
+			)
+		);
 
 		if ( $minutes < 1 ) {
 			return 1;
@@ -602,7 +624,10 @@ class Cloudflare_Stream_API {
 	 * @return string Embed HTML, or empty string when signed playback cannot be minted.
 	 */
 	public function get_video_embed( $uid, $args = array() ) {
-		$signed_urls = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+		$signed_urls = get_option(
+			Cloudflare_Stream_Settings::OPTION_SIGNED_URLS,
+			Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS
+		);
 
 		if ( $signed_urls ) {
 			$token = $this->get_signed_video_token( $uid );
@@ -634,11 +659,13 @@ class Cloudflare_Stream_API {
 
 		$src_uri = $this->get_iframe_url( $uid ) . '?';
 
-		$poster_time = empty( $args['postertime'] ) ? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME ) : $args['postertime'];
+		$poster_time = empty( $args['postertime'] )
+			? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME, Cloudflare_Stream_Settings::DEFAULT_POSTER_TIME )
+			: $args['postertime'];
 		$poster_time = $poster_time . 's';
 		$poster_url  = empty( $args['posterurl'] )
 			? $this->get_poster_url( $uid, $poster_time )
-			: $args['posterurl'];
+			: $this->sanitize_poster_url( $args['posterurl'], $uid, $poster_time );
 		// Escape the poster URL, then encode it as a query value (same idea as encodeURIComponent in JS).
 		$poster_url = esc_url( $poster_url );
 
@@ -872,7 +899,7 @@ class Cloudflare_Stream_API {
 		$this->last_local_reason = '';
 
 		if ( ! $this->is_valid_video_uid( $uid ) ) {
-			// Content bug — not a local-signing degradation reason.
+			// Content bug - not a local-signing degradation reason.
 			return false;
 		}
 
@@ -1006,15 +1033,18 @@ class Cloudflare_Stream_API {
 
 		$response_text = $this->post( 'stream/' . rawurlencode( $uid ) . '/token', $args, false );
 
-		// Transport / WP_Error path returns a string message from request().
+		// Transport failure keeps the WP_Error from request().
+		if ( is_wp_error( $response_text ) ) {
+			return $this->note_api_fail( $health, $fail_key, 'api_transport_error' );
+		}
+
 		if ( ! is_string( $response_text ) || '' === $response_text ) {
 			return $this->note_api_fail( $health, $fail_key, 'api_http_error' );
 		}
 
-		// Non-JSON error string from wp_remote_request failure.
 		$data = $this->decode_api_response( $response_text );
 		if ( null === $data ) {
-			return $this->note_api_fail( $health, $fail_key, 'api_http_error' );
+			return $this->note_api_fail( $health, $fail_key, 'api_bad_payload' );
 		}
 
 		if (
@@ -1095,7 +1125,7 @@ class Cloudflare_Stream_API {
 			return false;
 		}
 
-		// No local key — normal API mode, no degradation writes.
+		// No local key - normal API mode, no degradation writes.
 		$token = $this->mint_token_via_api( $uid, $exp, $args );
 		return ( is_string( $token ) && '' !== $token ) ? $token : false;
 	}
@@ -1139,7 +1169,7 @@ class Cloudflare_Stream_API {
 	 * @return array Fragment to merge into create/update bodies.
 	 */
 	public function get_default_video_security_args() {
-		if ( ! get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS ) ) {
+		if ( ! get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS ) ) {
 			return array();
 		}
 
@@ -1210,6 +1240,136 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Cloudflare maximum upload size in bytes (30 GB).
+	 *
+	 * @return int
+	 */
+	public function get_max_upload_bytes() {
+		return 30 * 1024 * 1024 * 1024;
+	}
+
+	/**
+	 * Allowed video container MIME types for direct upload.
+	 *
+	 * @return string[]
+	 */
+	public function get_allowed_upload_mime_types() {
+		$types = array(
+			'video/mp4',
+			'video/webm',
+			'video/ogg',
+			'video/quicktime',
+			'video/x-msvideo',
+			'video/x-matroska',
+			'video/mpeg',
+			'video/x-m4v',
+			'application/mxf',
+		);
+
+		/**
+		 * Filter the allowlist of MIME types accepted for Stream direct upload.
+		 *
+		 * @param string[] $types MIME types.
+		 */
+		$filtered = apply_filters( 'cloudflare_stream_allowed_upload_mime_types', $types );
+
+		if ( ! is_array( $filtered ) ) {
+			return $types;
+		}
+
+		$out = array();
+		foreach ( $filtered as $type ) {
+			if ( ! is_string( $type ) ) {
+				continue;
+			}
+			$type = strtolower( trim( $type ) );
+			if ( '' !== $type ) {
+				$out[] = $type;
+			}
+		}
+
+		return ! empty( $out ) ? array_values( array_unique( $out ) ) : $types;
+	}
+
+	/**
+	 * Maximum encoded duration for a direct upload, in seconds.
+	 *
+	 * Default one hour; Cloudflare allows up to six hours. Filterable.
+	 *
+	 * @return int
+	 */
+	public function get_upload_max_duration_seconds() {
+		$default = 3600;
+
+		/**
+		 * Filter the maxDurationSeconds value sent with direct uploads.
+		 *
+		 * @param int $seconds Duration ceiling between 1 and 21600.
+		 */
+		$seconds = apply_filters( 'cloudflare_stream_upload_max_duration_seconds', $default );
+		$seconds = absint( $seconds );
+
+		if ( $seconds < 1 ) {
+			$seconds = $default;
+		}
+		if ( $seconds > 21600 ) {
+			$seconds = 21600;
+		}
+
+		return $seconds;
+	}
+
+	/**
+	 * Whether a poster URL host is allowed for embeds.
+	 *
+	 * Allows the configured media asset host and the standard Cloudflare hosts.
+	 *
+	 * @param string $url Candidate poster URL.
+	 * @return bool
+	 */
+	public function is_allowed_poster_host( $url ) {
+		$host = wp_parse_url( (string) $url, PHP_URL_HOST );
+		if ( ! is_string( $host ) || '' === $host ) {
+			return false;
+		}
+
+		$host = strtolower( $host );
+
+		$allowed = array(
+			strtolower( $this->get_media_asset_host() ),
+			'videodelivery.net',
+			'cloudflarestream.com',
+		);
+
+		$configured = strtolower( $this->get_media_domain() );
+		if ( '' !== $configured ) {
+			$allowed[] = $configured;
+		}
+
+		$allowed = array_values( array_unique( array_filter( $allowed ) ) );
+
+		return in_array( $host, $allowed, true );
+	}
+
+	/**
+	 * Return a poster URL only when its host is known; otherwise the generated poster.
+	 *
+	 * @param string $candidate Candidate poster URL.
+	 * @param string $uid       Video UID or signed token for the fallback poster.
+	 * @param string $time      Poster time suffix, e.g. "0s".
+	 * @return string
+	 */
+	public function sanitize_poster_url( $candidate, $uid, $time = '' ) {
+		$candidate = is_string( $candidate ) ? esc_url_raw( $candidate ) : '';
+
+		if ( '' !== $candidate && $this->is_allowed_poster_host( $candidate ) ) {
+			return $candidate;
+		}
+
+		return $this->get_poster_url( $uid, $time );
+	}
+
+	/**
 	 * Create a one-time TUS direct-upload URL for browser uploads.
 	 *
 	 * Uses POST /stream?direct_user=true so the API token stays on the server.
@@ -1224,20 +1384,33 @@ class Cloudflare_Stream_API {
 	 */
 	public function create_direct_upload( $upload_length, $file_meta = array() ) {
 		$upload_length = absint( $upload_length );
-		if ( $upload_length < 1 ) {
+		if ( $upload_length < 1 || $upload_length > $this->get_max_upload_bytes() ) {
 			return null;
 		}
 
+		if ( ! empty( $file_meta['filetype'] ) && is_string( $file_meta['filetype'] ) ) {
+			$filetype = strtolower( trim( $file_meta['filetype'] ) );
+			if ( ! in_array( $filetype, $this->get_allowed_upload_mime_types(), true ) ) {
+				return null;
+			}
+		} else {
+			$filetype = '';
+		}
+
+		// Short-lived direct upload URL; the browser starts the transfer immediately.
+		$expiry = gmdate( 'Y-m-d\TH:i:s\Z', time() + ( 30 * MINUTE_IN_SECONDS ) );
+
 		$metadata = array(
-			'maxdurationseconds' => '21600',
+			'maxdurationseconds' => (string) $this->get_upload_max_duration_seconds(),
+			'expiry'             => $expiry,
 		);
 
 		if ( ! empty( $file_meta['name'] ) && is_string( $file_meta['name'] ) ) {
 			$metadata['name'] = $file_meta['name'];
 		}
 
-		if ( ! empty( $file_meta['filetype'] ) && is_string( $file_meta['filetype'] ) ) {
-			$metadata['filetype'] = $file_meta['filetype'];
+		if ( '' !== $filetype ) {
+			$metadata['filetype'] = $filetype;
 		}
 
 		$security = $this->get_default_video_security_args();

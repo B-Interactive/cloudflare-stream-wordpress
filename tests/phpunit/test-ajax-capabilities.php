@@ -116,6 +116,108 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 	}
 
 	/**
+	 * Editor without manage_options is refused on mutating actions only.
+	 */
+	public function test_editor_split_capabilities() {
+		$mutate = array(
+			'query-cloudflare-stream-upload',
+			'cloudflare-stream-check-upload',
+			'cloudflare-stream-delete',
+			'cloudflare-stream-update',
+		);
+		$read   = array(
+			'query-cloudflare-stream-attachments',
+			'cloudflare-stream-playback-urls',
+		);
+
+		$editor_id = self::factory()->user->create( array( 'role' => 'editor' ) );
+		wp_set_current_user( $editor_id );
+		$this->assertTrue( current_user_can( 'edit_posts' ) );
+		$this->assertFalse( current_user_can( 'manage_options' ) );
+
+		foreach ( $mutate as $action ) {
+			$this->assert_ajax_forbidden( $action );
+		}
+
+		// Read actions must not die on the capability gate alone.
+		foreach ( $read as $action ) {
+			$_REQUEST['action']   = $action;
+			$_REQUEST['nonce']    = wp_create_nonce( Cloudflare_Stream_Settings::NONCE );
+			$_GET['nonce']        = $_REQUEST['nonce'];
+			$_POST['nonce']       = $_REQUEST['nonce'];
+			$_REQUEST['uid']      = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+			$_REQUEST['query']    = '';
+			$this->_last_response = '';
+
+			$cap_denied = false;
+			try {
+				$this->_handleAjax( $action );
+			} catch ( WPAjaxDieStopException $e ) {
+				$code = (int) $e->getCode();
+				if ( 403 === $code ) {
+					$cap_denied = true;
+				}
+			} catch ( WPAjaxDieContinueException $e ) {
+				unset( $e );
+				if ( is_string( $this->_last_response ) && '' !== $this->_last_response ) {
+					$decoded = json_decode( $this->_last_response, true );
+					if ( is_array( $decoded ) && ! empty( $decoded['data']['message'] ) && 'Forbidden' === $decoded['data']['message'] ) {
+						$cap_denied = true;
+					}
+				}
+			}
+
+			$this->assertFalse( $cap_denied, "{$action} must not refuse an editor on capability grounds" );
+		}
+	}
+
+	/**
+	 * manage_options user is not refused by the capability gate on mutating actions.
+	 */
+	public function test_manage_options_not_cap_denied_on_mutations() {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+		$this->assertTrue( current_user_can( 'manage_options' ) );
+
+		$mutate = array(
+			'query-cloudflare-stream-upload',
+			'cloudflare-stream-check-upload',
+			'cloudflare-stream-delete',
+			'cloudflare-stream-update',
+		);
+
+		foreach ( $mutate as $action ) {
+			$_REQUEST['action']       = $action;
+			$_REQUEST['nonce']        = wp_create_nonce( Cloudflare_Stream_Settings::NONCE );
+			$_GET['nonce']            = $_REQUEST['nonce'];
+			$_POST['nonce']           = $_REQUEST['nonce'];
+			$_REQUEST['uid']          = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+			$_REQUEST['uploadLength'] = '1';
+			$_REQUEST['title']        = 't';
+			$this->_last_response     = '';
+
+			$cap_denied = false;
+			try {
+				$this->_handleAjax( $action );
+			} catch ( WPAjaxDieStopException $e ) {
+				if ( 403 === (int) $e->getCode() ) {
+					$cap_denied = true;
+				}
+			} catch ( WPAjaxDieContinueException $e ) {
+				unset( $e );
+				if ( is_string( $this->_last_response ) && '' !== $this->_last_response ) {
+					$decoded = json_decode( $this->_last_response, true );
+					if ( is_array( $decoded ) && isset( $decoded['data']['message'] ) && 'Forbidden' === $decoded['data']['message'] ) {
+						$cap_denied = true;
+					}
+				}
+			}
+
+			$this->assertFalse( $cap_denied, "{$action} must not 403 a manage_options user on capability" );
+		}
+	}
+
+	/**
 	 * AJAX handlers are registered.
 	 */
 	public function test_ajax_actions_registered() {
@@ -123,5 +225,34 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 		$smoke->s9_ajax_actions_registered();
 		$failures = $smoke->get_failures();
 		$this->assertSame( array(), $failures, implode( "\n", $failures ) );
+	}
+
+	/**
+	 * Assert an AJAX action dies with a capability refusal.
+	 *
+	 * @param string $action Action name.
+	 */
+	private function assert_ajax_forbidden( $action ) {
+		$_REQUEST['action']   = $action;
+		$_REQUEST['nonce']    = wp_create_nonce( Cloudflare_Stream_Settings::NONCE );
+		$_GET['nonce']        = $_REQUEST['nonce'];
+		$_POST['nonce']       = $_REQUEST['nonce'];
+		$this->_last_response = '';
+
+		$rejected = false;
+		try {
+			$this->_handleAjax( $action );
+		} catch ( WPAjaxDieStopException $e ) {
+			$rejected = true;
+			$code     = (int) $e->getCode();
+			if ( $code > 0 ) {
+				$this->assertSame( 403, $code, $action . ' stop code' );
+			}
+		} catch ( WPAjaxDieContinueException $e ) {
+			$rejected = true;
+			unset( $e );
+		}
+
+		$this->assertTrue( $rejected, "{$action} should die for this user" );
 	}
 }

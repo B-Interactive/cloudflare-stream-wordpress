@@ -65,7 +65,7 @@ define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'your-key-id' );
 define( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM', "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" );
 ```
 
-Both constants are required together; setting only one leaves signing on the Cloudflare fallback. You can choose **Save in the database instead**, or later use **Show wp-config.php lines** and **Remove signing key**. The private key is only ever readable on the settings page and is never exposed to the front end or the editor.
+Both constants are required together; setting only one leaves signing on the Cloudflare fallback. You can choose **Save in the database instead**. If the key is already stored in the database, use **Move key to wp-config.php**: a new key is shown once, you confirm the constants, the database copy is removed, and the previous key is revoked in Cloudflare. **Remove signing key** clears the stored key and revokes it in Cloudflare when possible. The private key material is only shown once during setup or move, and is never exposed to the front end or the editor.
 
 Enabling these settings is only half the job — see [Securing video access](#securing-video-access) for the steps that actually restrict playback.
 
@@ -119,7 +119,7 @@ The block inspector offers **Autoplay**, **Loop**, **Muted** and **Playback Cont
 
 The block renders dynamically on the front end, so it uses the same signed embed path as the shortcode. There is no block UI for `preload`, `postertime` or `posterurl` — use the shortcode when you need those. Blocks saved by older versions (static iframe or the old `<stream>` tag) keep working in a deprecated form, but will not get signed playback until the block is updated or converted.
 
-Uploading and browsing the Stream library require the `manage_options` capability.
+Content editors (`edit_posts`) can open the Stream library, select a video, and preview playback. Uploading, renaming, deleting, and plugin settings require the `manage_options` capability.
 
 ### Shortcode
 

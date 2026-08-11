@@ -586,7 +586,7 @@ class Cloudflare_Stream_Signing_Health {
 		$now   = time();
 
 		if ( ! $api->has_signing_key() ) {
-			if ( ! get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS ) ) {
+			if ( ! get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS ) ) {
 				return null;
 			}
 			return array(
@@ -665,7 +665,8 @@ class Cloudflare_Stream_Signing_Health {
 	 * @return string
 	 */
 	public function get_editor_failure_comment() {
-		if ( ! current_user_can( 'edit_posts' ) && ! current_user_can( 'manage_options' ) ) {
+		// Internal reason codes are for administrators only.
+		if ( ! current_user_can( 'manage_options' ) ) {
 			return '';
 		}
 		$state = $this->get_state();

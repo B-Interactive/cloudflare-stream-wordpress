@@ -24,10 +24,12 @@ node_modules/
 *.kate-swp
 *.zip
 
-/ref
 /dist
+/plans
+/ref
 /cloudflare-stream
 /node_modules
+.roo
 .DS_Store
 phpcs.json
 

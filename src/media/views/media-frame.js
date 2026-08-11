@@ -6,9 +6,25 @@
 
 import { streamAjax } from '../../lib/ajax';
 
+/* global cloudflareStream */
+
 const Post = wp.media.view.MediaFrame.Post,
 	Library = wp.media.controller.Library,
 	l10n = wp.media.view.l10n;
+
+/**
+ * Whether the current user may rename or delete Stream library items.
+ *
+ * @return {boolean} True when PHP localised canManage is set.
+ */
+function userCanManageStream() {
+	return Boolean(
+		typeof cloudflareStream !== 'undefined' &&
+			( cloudflareStream.canManage === true ||
+				cloudflareStream.canManage === 1 ||
+				cloudflareStream.canManage === '1' )
+	);
+}
 
 /**
  * The frame for manipulating media on the Edit Post page.
@@ -27,13 +43,16 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 	{
 		initialize( options ) {
 			this.select = options;
+			this.canManage = userCanManageStream();
 			this._sidebarBound = false;
 			this._onSidebarClick = null;
 			this._onSidebarChange = null;
 
 			_.defaults( this.options, {
 				id: 'cloudflare-stream',
-				className: 'cloudflare-stream-media-frame',
+				className: this.canManage
+					? 'cloudflare-stream-media-frame'
+					: 'cloudflare-stream-media-frame cloudflare-stream-media-frame--view-only',
 				title: 'Cloudflare Stream Library',
 				multiple: false,
 				editing: false,
@@ -71,11 +90,12 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 						)
 					),
 					multiple: options.multiple ? 'reset' : false,
-					editable: true,
+					// Title edits and delete stay with manage capability.
+					editable: this.canManage,
 
 					// If the user isn't allowed to edit fields,
 					// can they still edit it locally?
-					allowLocalEdits: true,
+					allowLocalEdits: this.canManage,
 
 					// Show the attachment display settings.
 					displaySettings: false,
@@ -109,7 +129,14 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			}
 
 			this.on( 'toolbar:create:main-insert', this.createToolbar, this );
-			this.on( 'selection:toggle', this.bindSidebarItems, this );
+
+			if ( this.canManage ) {
+				this.on( 'selection:toggle', this.bindSidebarItems, this );
+			} else {
+				// Keep delete/title controls out of reach for content editors.
+				this.on( 'selection:toggle', this.lockSidebarForViewers, this );
+				this.on( 'open', this.lockSidebarForViewers, this );
+			}
 
 			handlers = {
 				toolbar: {
@@ -137,12 +164,44 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		},
 
 		/**
+		 * Hide delete and lock the title field when the user cannot manage Stream.
+		 */
+		lockSidebarForViewers() {
+			if ( this.canManage || ! this.el ) {
+				return;
+			}
+
+			window.requestAnimationFrame( () => {
+				if ( ! this.el ) {
+					return;
+				}
+
+				this.el
+					.querySelectorAll( '.delete-attachment' )
+					.forEach( ( node ) => {
+						node.hidden = true;
+						node.setAttribute( 'aria-hidden', 'true' );
+						node.style.display = 'none';
+					} );
+
+				this.el
+					.querySelectorAll(
+						'label[data-setting="title"] input'
+					)
+					.forEach( ( input ) => {
+						input.readOnly = true;
+						input.disabled = true;
+					} );
+			} );
+		},
+
+		/**
 		 * Bind sidebar delete/title handlers once on the frame root.
 		 * Delegation survives sidebar re-renders on selection change.
 		 */
 		bindSidebarItems() {
 			const el = this.el;
-			if ( ! el || this._sidebarBound ) {
+			if ( ! this.canManage || ! el || this._sidebarBound ) {
 				return;
 			}
 
@@ -197,15 +256,28 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			event.preventDefault();
 			event.stopPropagation();
 
+			if ( ! this.canManage ) {
+				return;
+			}
+
 			/* eslint-disable */
 			if ( window.confirm( l10n.warnDelete ) ) {
 				/* eslint-enable */
 				const state = this.state(),
 					selection = state.get( 'selection' ),
-					attachment = selection.first().toJSON();
+					model = selection.first(),
+					attachment = model ? model.toJSON() : null;
 
-				selection.remove( attachment );
-				state.trigger( 'delete', attachment ).reset();
+				if ( ! attachment ) {
+					return;
+				}
+
+				// Keep the model so the block can drop selection after success.
+				attachment._selectionModel = model;
+
+				// Server delete is owned by the block edit handler; only fire
+				// after the user confirms so the selection can drop on success.
+				state.trigger( 'delete', attachment );
 			}
 		},
 
@@ -217,6 +289,10 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		updateAttachment( event ) {
 			event.preventDefault();
 			event.stopPropagation();
+
+			if ( ! this.canManage ) {
+				return;
+			}
 
 			const state = this.state(),
 				selection = state.get( 'selection' ),

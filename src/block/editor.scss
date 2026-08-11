@@ -44,6 +44,17 @@ label[data-setting="description"] {
 	display: none !important;
 }
 
+/* Content editors may browse and select only. */
+.cloudflare-stream-media-frame--view-only {
+	.delete-attachment {
+		display: none !important;
+	}
+
+	label[data-setting="title"] input {
+		pointer-events: none;
+	}
+}
+
 .upload-ui,
 .max-upload-size {
 	display: none;

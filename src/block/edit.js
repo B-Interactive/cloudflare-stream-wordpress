@@ -48,15 +48,17 @@ const ENCODE_POLL_MAX_ATTEMPTS = 3;
 /**
  * Resolve the UI status from block attributes.
  *
- * @param {Object} attributes Block attributes.
+ * @param {Object}  attributes Block attributes.
+ * @param {boolean} canManage  Whether the user may upload and poll encoding.
  * @return {'idle'|'encoding'|'ready'} Derived status.
  */
-function statusFromAttributes( attributes ) {
+function statusFromAttributes( attributes, canManage = true ) {
 	if ( ! attributes.uid ) {
 		return 'idle';
 	}
 	if ( ! attributes.thumbnail ) {
-		return 'encoding';
+		// Encoding progress uses manage-only check-upload; editors preview instead.
+		return canManage ? 'encoding' : 'ready';
 	}
 	return 'ready';
 }
@@ -211,12 +213,19 @@ function CloudflareStreamEdit( {
 } ) {
 	const { autoplay, controls, loop, muted } = attributes;
 	const blockProps = useBlockProps();
+	// Explicit manage flag from PHP; nonce alone is not the upload gate.
 	const canManage = Boolean(
+		typeof cloudflareStream !== 'undefined' &&
+			( cloudflareStream.canManage === true ||
+				cloudflareStream.canManage === 1 ||
+				cloudflareStream.canManage === '1' )
+	);
+	const hasNonce = Boolean(
 		typeof cloudflareStream !== 'undefined' && cloudflareStream.nonce
 	);
 
 	const [ status, setStatus ] = useState( () =>
-		statusFromAttributes( attributes )
+		statusFromAttributes( attributes, canManage )
 	);
 	const [ progress, setProgress ] = useState( null );
 	const [ errorMessage, setErrorMessage ] = useState( '' );
@@ -311,50 +320,120 @@ function CloudflareStreamEdit( {
 	);
 
 	/**
-	 * Remove a video from the Stream library.
+	 * Remove a video from the Stream library after the server confirms delete.
 	 *
 	 * @param {Object} attachment Selected library attachment.
 	 */
 	const deleteAttachment = useCallback(
 		( attachment ) => {
-			const deletedUid = attachment && attachment.uid;
-
-			streamAjax( 'cloudflare-stream-delete', { uid: deletedUid } ).catch(
-				( error ) => {
-					console.error( error );
-				}
-			);
-
-			// Drop block binding when the embedded asset is removed.
-			const current = attributesRef.current;
-			if ( ! deletedUid || ! current.uid || deletedUid !== current.uid ) {
+			if ( ! canManage ) {
 				return;
 			}
 
-			invalidateUploadGeneration();
-			clearEncodingPoller();
-			abortUpload();
-			selectedFileRef.current = null;
-			retriedRef.current = false;
-			encodePollAttemptsRef.current = 0;
-			readySnapshotRef.current = null;
-			clearNotices();
+			const deletedUid = attachment && attachment.uid;
+			if ( ! deletedUid ) {
+				return;
+			}
 
-			setAttributes( {
-				uid: false,
-				fingerprint: false,
-				thumbnail: false,
-			} );
-			setStatus( 'idle' );
-			setProgress( null );
-			setErrorMessage( '' );
+			streamAjax( 'cloudflare-stream-delete', { uid: deletedUid } )
+				.then( ( response ) => {
+					const current = attributesRef.current;
+					const affectsBlock =
+						Boolean( current.uid ) && deletedUid === current.uid;
+
+					if ( ! response || ! response.success ) {
+						const detail = normaliseErrorMessage(
+							response && response.data
+						);
+						console.error( detail || response );
+						if ( affectsBlock ) {
+							showUploadError(
+								detail ||
+									__(
+										'Could not delete video.',
+										'cloudflare-stream'
+									),
+								response
+							);
+						}
+						return;
+					}
+
+					// Drop the library selection only after Cloudflare delete succeeds.
+					if (
+						mediaFrameRef.current &&
+						typeof mediaFrameRef.current.state === 'function'
+					) {
+						const state = mediaFrameRef.current.state();
+						const selection =
+							state && state.get
+								? state.get( 'selection' )
+								: null;
+						if ( selection ) {
+							const model =
+								( attachment &&
+									attachment._selectionModel ) ||
+								selection.get( deletedUid ) ||
+								selection.findWhere( { uid: deletedUid } ) ||
+								selection.findWhere( { id: deletedUid } );
+							if ( model ) {
+								selection.remove( model );
+							}
+						}
+						if ( state && typeof state.reset === 'function' ) {
+							state.reset();
+						}
+					}
+
+					// Drop block binding when the embedded asset is removed.
+					if ( ! affectsBlock ) {
+						return;
+					}
+
+					invalidateUploadGeneration();
+					clearEncodingPoller();
+					abortUpload();
+					selectedFileRef.current = null;
+					retriedRef.current = false;
+					encodePollAttemptsRef.current = 0;
+					readySnapshotRef.current = null;
+					clearNotices();
+
+					setAttributes( {
+						uid: false,
+						fingerprint: false,
+						thumbnail: false,
+					} );
+					setStatus( 'idle' );
+					setProgress( null );
+					setErrorMessage( '' );
+				} )
+				.catch( ( error ) => {
+					console.error( error );
+					const current = attributesRef.current;
+					if (
+						current.uid &&
+						deletedUid === current.uid
+					) {
+						showUploadError(
+							normaliseErrorMessage( error ) ||
+								__(
+									'Could not delete video.',
+									'cloudflare-stream'
+								),
+							error
+						);
+					}
+				} );
 		},
 		[
 			abortUpload,
+			canManage,
 			clearEncodingPoller,
 			clearNotices,
 			invalidateUploadGeneration,
 			setAttributes,
+			showUploadError,
 		]
 	);
 
@@ -415,21 +494,28 @@ function CloudflareStreamEdit( {
 					selectAttachmentRef.current( attachment );
 				}
 			);
-			mediaFrameRef.current.on( 'delete', ( attachment ) => {
-				deleteAttachmentRef.current( attachment );
-			} );
+			if ( canManage ) {
+				mediaFrameRef.current.on( 'delete', ( attachment ) => {
+					deleteAttachmentRef.current( attachment );
+				} );
+			}
 		}
 		mediaFrameRef.current.open();
-	}, [] );
+	}, [ canManage ] );
 
 	const instructions =
 		status === 'error'
 			? errorMessage
 			: {
-					idle: __(
-						'Select a file from your library.',
-						'cloudflare-stream'
-					),
+					idle: canManage
+						? __(
+								'Select a file from your library, or choose a video from Stream.',
+								'cloudflare-stream'
+						  )
+						: __(
+								'Choose a video from the Stream library. An administrator uploads new videos.',
+								'cloudflare-stream'
+						  ),
 					uploading: __(
 						'Uploading your video.',
 						'cloudflare-stream'
@@ -439,7 +525,15 @@ function CloudflareStreamEdit( {
 						'cloudflare-stream'
 					),
 			  }[ status ] ||
-			  __( 'Select a file from your library.', 'cloudflare-stream' );
+			  ( canManage
+					? __(
+							'Select a file from your library, or choose a video from Stream.',
+							'cloudflare-stream'
+					  )
+					: __(
+							'Choose a video from the Stream library. An administrator uploads new videos.',
+							'cloudflare-stream'
+					  ) );
 
 	/**
 	 * Return to the empty/edit placeholder so the user can pick another file.
@@ -503,7 +597,7 @@ function CloudflareStreamEdit( {
 			return;
 		}
 
-		// Abandoned new upload/encoding — clear so reload does not resume.
+		// Abandoned new upload/encoding - clear so reload does not resume.
 		setAttributes( {
 			uid: false,
 			fingerprint: false,
@@ -600,6 +694,11 @@ function CloudflareStreamEdit( {
 	 */
 	const encode = useCallback(
 		( generation ) => {
+			// check-upload is manage_options only; content editors skip polling.
+			if ( ! canManage ) {
+				return;
+			}
+
 			const activeGeneration =
 				typeof generation === 'number'
 					? generation
@@ -727,7 +826,7 @@ function CloudflareStreamEdit( {
 						return;
 					}
 
-					// Successful poll with progress still running — reset transient failures.
+					// Successful poll with progress still running - reset transient failures.
 					encodePollAttemptsRef.current = 0;
 					scheduleEncodePoll( activeGeneration, 5000 );
 
@@ -781,6 +880,7 @@ function CloudflareStreamEdit( {
 				} );
 		},
 		[
+			canManage,
 			clearEncodingPoller,
 			handleEncodePollFailure,
 			isCurrentGeneration,
@@ -796,6 +896,10 @@ function CloudflareStreamEdit( {
 	 */
 	const switchToEncoding = useCallback(
 		( generation ) => {
+			if ( ! canManage ) {
+				return;
+			}
+
 			const activeGeneration =
 				typeof generation === 'number'
 					? generation
@@ -807,7 +911,7 @@ function CloudflareStreamEdit( {
 			setErrorMessage( '' );
 			encode( activeGeneration );
 		},
-		[ encode ]
+		[ canManage, encode ]
 	);
 
 	/**
@@ -912,6 +1016,10 @@ function CloudflareStreamEdit( {
 	 */
 	const startUpload = useCallback(
 		( file ) => {
+			if ( ! canManage ) {
+				return;
+			}
+
 			clearNotices();
 			invalidateUploadGeneration();
 			clearEncodingPoller();
@@ -925,6 +1033,7 @@ function CloudflareStreamEdit( {
 		},
 		[
 			abortUpload,
+			canManage,
 			clearEncodingPoller,
 			clearNotices,
 			invalidateUploadGeneration,
@@ -988,7 +1097,7 @@ function CloudflareStreamEdit( {
 
 	// Resume encoding for blocks that already have a uid but no thumbnail.
 	useEffect( () => {
-		if ( attributes.uid && ! attributes.thumbnail ) {
+		if ( canManage && attributes.uid && ! attributes.thumbnail ) {
 			switchToEncoding();
 		}
 
@@ -1007,7 +1116,7 @@ function CloudflareStreamEdit( {
 				mediaFrameRef.current = null;
 			}
 		};
-		// Mount/unmount only — encoding resume uses the initial attributes.
+		// Mount/unmount only - encoding resume uses the initial attributes.
 		// eslint-disable-next-line react-hooks/exhaustive-deps -- intentional mount lifecycle
 	}, [] );
 
@@ -1032,7 +1141,7 @@ function CloudflareStreamEdit( {
 			) {
 				return;
 			}
-			// Attributes moved under us (undo/redo) — drop stale replace snapshot.
+			// Attributes moved under us (undo/redo) - drop stale replace snapshot.
 			readySnapshotRef.current = snapshotReadyAttributes( attributes );
 		}
 
@@ -1056,19 +1165,30 @@ function CloudflareStreamEdit( {
 			return;
 		}
 
-		// uid without thumbnail — resume processing with a fresh generation.
+		// uid without thumbnail: managers poll encoding; editors stay ready for preview.
 		readySnapshotRef.current = null;
-		switchToEncoding();
+		if ( canManage ) {
+			switchToEncoding();
+			return;
+		}
+
+		if ( status !== 'ready' ) {
+			setStatus( 'ready' );
+			setProgress( null );
+			setErrorMessage( '' );
+		}
 	}, [
 		attributes.fingerprint,
 		attributes.thumbnail,
 		attributes.uid,
+		canManage,
 		status,
 		switchToEncoding,
 	] );
 
 	// Mint signed preview URLs for the current video. Runs only when signed
 	// playback is on; unsigned sites keep building URLs entirely client-side.
+	// Editors with a uid and no thumbnail still use this read path for preview.
 	useEffect( () => {
 		if ( ! usesSignedUrls() || ! attributes.uid || status !== 'ready' ) {
 			return undefined;
@@ -1111,9 +1231,13 @@ function CloudflareStreamEdit( {
 		const showProgress =
 			status === 'uploading' || status === 'encoding';
 		const showRetry = status === 'error';
-		// MediaPlaceholder is idle/error only — progress keeps a plain Placeholder.
+		// Full MediaPlaceholder (with file drop) only when the user can upload.
 		const useMediaPlaceholder =
 			( status === 'idle' || status === 'error' ) && canManage;
+		const showLibraryOnly =
+			( status === 'idle' || status === 'error' ) &&
+			! canManage &&
+			hasNonce;
 
 		const progressAndActions = (
 			<>
@@ -1176,6 +1300,31 @@ function CloudflareStreamEdit( {
 						</Button>
 						{ progressAndActions }
 					</MediaPlaceholder>
+				</div>
+			);
+		}
+
+		if ( showLibraryOnly ) {
+			return (
+				<div { ...blockProps }>
+					<Placeholder
+						icon={ cloudflareStream.icon }
+						label={ __(
+							'Cloudflare Stream',
+							'cloudflare-stream'
+						) }
+						instructions={ instructions }
+						className="editor-media-placeholder"
+					>
+						{ noticeUI }
+						<Button variant="secondary" onClick={ open }>
+							{ __(
+								'Stream Library',
+								'cloudflare-stream'
+							) }
+						</Button>
+						{ progressAndActions }
+					</Placeholder>
 				</div>
 			);
 		}
