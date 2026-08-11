@@ -234,7 +234,11 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		$this->run_signing_key_action( $settings, 'store_db' );
 
 		$this->assertSame( 'valid-store-key-id', get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID ) );
-		$this->assertSame( $pem, get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+		$stored_pem = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+		$this->assertIsString( $stored_pem );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $stored_pem );
+		$this->assertStringNotContainsString( $pem, $stored_pem );
+		$this->assertSame( $pem, Cloudflare_Stream_API::instance()->get_signing_key_pem() );
 
 		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
 		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
@@ -337,12 +341,15 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, 'stable-db-key', false );
 		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, $pem, false );
 
+		$pem_before = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
 		// Default HTTP tripwire fails create_signing_key.
 		cfstream_test_clear_http_attempts();
 		$this->run_signing_key_action( $settings, 'rotate' );
 
 		$this->assertSame( 'stable-db-key', get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID ) );
-		$this->assertSame( $pem, get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+		$this->assertSame( $pem_before, get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+		$this->assertSame( $pem, Cloudflare_Stream_API::instance()->get_signing_key_pem() );
 		$this->assertNotEmpty( cfstream_test_get_http_attempts() );
 
 		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
@@ -445,6 +452,440 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, false ) );
 		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, false ) );
 		$this->assertSame( array(), $deleted, 'live constant key id must not be revoked on clear' );
+	}
+
+	/**
+	 * API token and signing PEM are stored as envelopes; reads return plaintext.
+	 */
+	public function test_secret_store_encrypts_and_decrypts_options() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$token = 'db-only-api-token-not-real';
+		$pem   = $this->generate_test_rsa_pem();
+		if ( '' === $pem ) {
+			$this->markTestSkipped( 'OpenSSL could not export a test RSA key.' );
+		}
+
+		delete_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+
+		$this->assertTrue( Cloudflare_Stream_Secret_Store::update_secret( Cloudflare_Stream_Settings::OPTION_API_TOKEN, $token ) );
+		$this->assertTrue( Cloudflare_Stream_Secret_Store::update_secret( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, $pem ) );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, 'enc-test-key-id', false );
+
+		$raw_token = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$raw_pem   = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $raw_token );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $raw_pem );
+		$this->assertStringNotContainsString( $token, $raw_token );
+		$this->assertStringNotContainsString( 'BEGIN PRIVATE KEY', $raw_pem );
+		$this->assertStringNotContainsString( $pem, $raw_pem );
+
+		$this->assertSame( $token, Cloudflare_Stream_Secret_Store::get_secret( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) );
+		$this->assertSame( $pem, Cloudflare_Stream_API::instance()->get_signing_key_pem() );
+		$this->assertTrue( Cloudflare_Stream_Settings::db_has_api_token_option() );
+		$this->assertTrue( Cloudflare_Stream_API::instance()->has_signing_key() );
+
+		// Constants still win for the live API token accessor.
+		$this->assertSame( 'test-token-not-real', Cloudflare_Stream_Settings::get_api_token() );
+
+		delete_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+	}
+
+	/**
+	 * Settings page auto-clean drops encrypted DB secrets when constants supply them.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_auto_clean_purges_encrypted_db_secrets_when_constants_ready() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$pem = $this->generate_test_rsa_pem();
+		if ( '' === $pem ) {
+			$this->markTestSkipped( 'OpenSSL could not export a test RSA key.' );
+		}
+
+		// API token constant is defined by the test MU helper; signing constants are local.
+		$this->assertTrue( Cloudflare_Stream_Settings::api_token_from_constant() );
+
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) ) {
+			define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'auto-clean-const-key-id' );
+		}
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) ) {
+			define( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM', $pem );
+		}
+
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		delete_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		$this->assertTrue(
+			Cloudflare_Stream_Secret_Store::update_secret(
+				Cloudflare_Stream_Settings::OPTION_API_TOKEN,
+				'leftover-db-token-not-real'
+			)
+		);
+		$this->assertTrue(
+			Cloudflare_Stream_Secret_Store::update_secret(
+				Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM,
+				$pem
+			)
+		);
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, 'leftover-db-key-id', false );
+
+		$raw_token = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$raw_pem   = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $raw_token );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $raw_pem );
+		$this->assertTrue( Cloudflare_Stream_Settings::db_has_api_token_option() );
+
+		$settings = Cloudflare_Stream_Settings::instance();
+		$ref      = new ReflectionClass( $settings );
+		$db_has   = $ref->getMethod( 'db_has_signing_key_options' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$db_has->setAccessible( true );
+		}
+		$this->assertTrue( $db_has->invoke( $settings ) );
+		$this->assertTrue( Cloudflare_Stream_API::instance()->has_signing_key_from_constants() );
+
+		$settings->maybe_auto_clean_constant_secrets();
+
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN, false ) );
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, false ) );
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, false ) );
+		$this->assertFalse( Cloudflare_Stream_Settings::db_has_api_token_option() );
+		$this->assertFalse( $db_has->invoke( $settings ) );
+
+		// Notice payload lists removed labels (not secret values).
+		$notice_name = Cloudflare_Stream_Settings::TRANSIENT_SECRETS_AUTO_CLEAN . get_current_user_id();
+		$removed     = get_transient( $notice_name );
+		$this->assertIsArray( $removed );
+		$this->assertNotEmpty( $removed );
+		$this->assertStringNotContainsString( 'leftover-db-token-not-real', wp_json_encode( $removed ) );
+		$this->assertStringNotContainsString( 'BEGIN PRIVATE KEY', wp_json_encode( $removed ) );
+	}
+
+	/**
+	 * Auto-clean removes unreadable envelopes by option key without needing decrypt.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_auto_clean_purges_unreadable_envelopes_without_decrypt() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$pem = $this->generate_test_rsa_pem();
+		if ( '' === $pem ) {
+			$this->markTestSkipped( 'OpenSSL could not export a test RSA key.' );
+		}
+
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) ) {
+			define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'auto-clean-unreadable-const-id' );
+		}
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) ) {
+			define( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM', $pem );
+		}
+
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		// Bogus envelope that cannot decrypt under the current key material.
+		$other_key = hash( 'sha256', 'auto-clean-unreadable-material', true );
+		$iv        = random_bytes( 12 );
+		$tag       = '';
+		$cipher    = openssl_encrypt( 'not-a-real-secret', 'aes-256-gcm', $other_key, OPENSSL_RAW_DATA, $iv, $tag, '', 16 );
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		$bogus_token = Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX . base64_encode( $iv . $tag . $cipher );
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		$bogus_pem = Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX . base64_encode( $iv . $tag . $cipher );
+
+		update_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN, $bogus_token, false );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, 'orphan-unreadable-id', false );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, $bogus_pem, false );
+
+		$this->assertTrue( Cloudflare_Stream_Settings::db_has_api_token_option() );
+		$this->assertTrue( Cloudflare_Stream_Secret_Store::has_stored_value( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+
+		$settings = Cloudflare_Stream_Settings::instance();
+		$settings->maybe_auto_clean_constant_secrets();
+
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN, false ) );
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, false ) );
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, false ) );
+		$this->assertFalse( Cloudflare_Stream_Settings::db_has_api_token_option() );
+		$this->assertFalse( Cloudflare_Stream_Secret_Store::has_stored_value( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID ) );
+		$this->assertFalse( Cloudflare_Stream_Secret_Store::has_stored_value( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+	}
+
+	/**
+	 * Half-configured signing constants must not auto-purge DB signing options.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_auto_clean_skips_signing_when_constants_not_ready() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$pem = $this->generate_test_rsa_pem();
+		if ( '' === $pem ) {
+			$this->markTestSkipped( 'OpenSSL could not export a test RSA key.' );
+		}
+
+		// Only the id constant: options are ignored for live reads, but not purged.
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) ) {
+			define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'half-configured-key-id' );
+		}
+
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$this->assertTrue(
+			Cloudflare_Stream_Secret_Store::update_secret(
+				Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM,
+				$pem
+			)
+		);
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, 'db-key-kept', false );
+
+		$settings = Cloudflare_Stream_Settings::instance();
+		$this->assertTrue( Cloudflare_Stream_API::instance()->signing_key_constants_present() );
+		$this->assertFalse( Cloudflare_Stream_API::instance()->has_signing_key_from_constants() );
+
+		$settings->maybe_auto_clean_constant_secrets();
+
+		$this->assertSame( 'db-key-kept', get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID ) );
+		$this->assertNotEmpty( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+	}
+
+	/**
+	 * confirm_moved deletes encrypted PEM/id rows after constants verify.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_confirm_moved_clears_encrypted_db_signing_options() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$pem = $this->generate_test_rsa_pem();
+		if ( '' === $pem ) {
+			$this->markTestSkipped( 'OpenSSL could not export a test RSA key.' );
+		}
+
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID' ) ) {
+			define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'confirm-enc-live-key-id' );
+		}
+		if ( ! defined( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' ) ) {
+			define( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM', $pem );
+		}
+
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$settings = Cloudflare_Stream_Settings::instance();
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, 'old-enc-db-key-id', false );
+		$this->assertTrue(
+			Cloudflare_Stream_Secret_Store::update_secret(
+				Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM,
+				$pem
+			)
+		);
+		$this->assertStringStartsWith(
+			Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX,
+			get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM )
+		);
+
+		$ref   = new ReflectionClass( $settings );
+		$stash = $ref->getMethod( 'stash_signing_key_reveal' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$stash->setAccessible( true );
+		}
+		$stash->invoke( $settings, 'confirm-enc-live-key-id', $pem, 'rotate' );
+
+		$deleted = array();
+		$filter  = function ( $response, $url ) use ( &$deleted ) {
+			if ( false !== strpos( (string) $url, 'stream/keys/' ) ) {
+				$deleted[] = (string) $url;
+				return $this->canned_cloudflare_success_response();
+			}
+			return $response;
+		};
+		add_filter( 'cfstream_test_pre_http_response', $filter, 10, 2 );
+
+		$this->run_signing_key_action( $settings, 'confirm_moved' );
+		remove_filter( 'cfstream_test_pre_http_response', $filter, 10 );
+
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, false ) );
+		$this->assertFalse( get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, false ) );
+		$this->assertNotEmpty( $deleted );
+		$this->assertStringContainsString( 'old-enc-db-key-id', $deleted[0] );
+	}
+
+	/**
+	 * Legacy plaintext rows are returned and rewritten as ciphertext on read.
+	 */
+	public function test_secret_store_migrates_legacy_plaintext_on_read() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$token = 'legacy-plaintext-token';
+		$pem   = $this->generate_test_rsa_pem();
+		if ( '' === $pem ) {
+			$this->markTestSkipped( 'OpenSSL could not export a test RSA key.' );
+		}
+
+		delete_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		// Drop encrypt filters so we can plant legacy plaintext rows.
+		$settings = Cloudflare_Stream_Settings::instance();
+		remove_filter( 'pre_update_option_' . Cloudflare_Stream_Settings::OPTION_API_TOKEN, array( $settings, 'pre_update_encrypt_secret' ), 20 );
+		remove_filter( 'pre_update_option_' . Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, array( $settings, 'pre_update_encrypt_secret' ), 20 );
+		remove_filter( 'pre_add_option_' . Cloudflare_Stream_Settings::OPTION_API_TOKEN, array( $settings, 'pre_add_encrypt_secret' ), 20 );
+		remove_filter( 'pre_add_option_' . Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, array( $settings, 'pre_add_encrypt_secret' ), 20 );
+
+		add_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN, $token, '', 'no' );
+		add_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, $pem, '', 'no' );
+
+		$this->assertSame( $token, get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) );
+		$this->assertSame( $pem, get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+		$this->assertFalse( Cloudflare_Stream_Secret_Store::is_envelope( get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) ) );
+
+		// Re-attach encrypt filters so migration rewrite stores envelopes.
+		add_filter( 'pre_update_option_' . Cloudflare_Stream_Settings::OPTION_API_TOKEN, array( $settings, 'pre_update_encrypt_secret' ), 20, 2 );
+		add_filter( 'pre_update_option_' . Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, array( $settings, 'pre_update_encrypt_secret' ), 20, 2 );
+		add_filter( 'pre_add_option_' . Cloudflare_Stream_Settings::OPTION_API_TOKEN, array( $settings, 'pre_add_encrypt_secret' ), 20, 2 );
+		add_filter( 'pre_add_option_' . Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, array( $settings, 'pre_add_encrypt_secret' ), 20, 2 );
+
+		$read_token = Cloudflare_Stream_Secret_Store::get_secret( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$read_pem   = Cloudflare_Stream_Secret_Store::get_secret( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		$this->assertSame( $token, $read_token );
+		$this->assertSame( $pem, $read_pem );
+
+		$raw_token = get_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		$raw_pem   = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $raw_token );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $raw_pem );
+		$this->assertSame( $token, Cloudflare_Stream_Secret_Store::get_secret( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) );
+		$this->assertSame( $pem, Cloudflare_Stream_Secret_Store::get_secret( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) );
+
+		delete_option( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+	}
+
+	/**
+	 * Wrong encryption material surfaces a clear health diagnosis.
+	 *
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_unreadable_signing_pem_health_diagnosis() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$pem = $this->generate_test_rsa_pem();
+		if ( '' === $pem ) {
+			$this->markTestSkipped( 'OpenSSL could not export a test RSA key.' );
+		}
+
+		if ( ! defined( 'CLOUDFLARE_STREAM_ENCRYPTION_KEY' ) ) {
+			define( 'CLOUDFLARE_STREAM_ENCRYPTION_KEY', str_repeat( 'a', 64 ) );
+		}
+
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, true );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID, 'unreadable-key-id', false );
+		$this->assertTrue(
+			Cloudflare_Stream_Secret_Store::update_secret(
+				Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM,
+				$pem
+			)
+		);
+
+		// Replace ciphertext with an envelope built under different key material.
+		$other_key = hash( 'sha256', 'different-encryption-material-for-test', true );
+		$iv        = random_bytes( 12 );
+		$tag       = '';
+		$cipher    = openssl_encrypt( $pem, 'aes-256-gcm', $other_key, OPENSSL_RAW_DATA, $iv, $tag, '', 16 );
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		$bogus     = Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX . base64_encode( $iv . $tag . $cipher );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, $bogus, false );
+
+		$this->assertTrue( Cloudflare_Stream_API::instance()->db_signing_key_pem_unreadable() );
+		$this->assertSame( '', Cloudflare_Stream_API::instance()->get_signing_key_pem() );
+		$this->assertFalse( Cloudflare_Stream_API::instance()->has_signing_key() );
+
+		// db_has still true for ciphertext presence.
+		$settings = Cloudflare_Stream_Settings::instance();
+		$ref      = new ReflectionClass( $settings );
+		$has      = $ref->getMethod( 'db_has_signing_key_options' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$has->setAccessible( true );
+		}
+		$this->assertTrue( $has->invoke( $settings ) );
+
+		$issue = Cloudflare_Stream_Signing_Health::instance()->get_issue();
+		$this->assertIsArray( $issue );
+		$this->assertSame( 'secret_unreadable', $issue['code'] );
+		$this->assertSame( 'error', $issue['severity'] );
+		$this->assertStringContainsString( 'local_key_unreadable', $issue['detail'] );
+
+		// Local sign path records the specific reason.
+		$api = Cloudflare_Stream_API::instance();
+		$api->create_signed_token_local( 'ffffffffffffffffffffffffffffffff', time() + 3600 );
+		$reason = new ReflectionProperty( $api, 'last_local_reason' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$reason->setAccessible( true );
+		}
+		$this->assertSame( 'local_key_unreadable', $reason->getValue( $api ) );
+
+		// Key id remains plaintext for revoke.
+		$this->assertSame( 'unreadable-key-id', get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID ) );
+
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+	}
+
+	/**
+	 * pre_update path encrypts a fresh API token value.
+	 */
+	public function test_pre_update_encrypts_api_token() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$settings = Cloudflare_Stream_Settings::instance();
+		$settings->action_admin_init();
+
+		$plain = 'fresh-token-via-settings-save';
+		// Simulate option write after sanitize (constant filter may block live token option
+		// when CLOUDFLARE_STREAM_API_TOKEN is defined; exercise prepare_for_storage directly).
+		$stored = Cloudflare_Stream_Secret_Store::prepare_for_storage( $plain, '' );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $stored );
+		$this->assertStringNotContainsString( $plain, $stored );
+		$this->assertSame( $plain, Cloudflare_Stream_Secret_Store::decrypt( $stored ) );
 	}
 
 	/**
