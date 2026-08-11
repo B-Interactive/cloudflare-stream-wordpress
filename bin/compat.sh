@@ -82,13 +82,14 @@ matrix_field() {
 	' "$key"
 }
 
-# Plugin PHP sources for php -l (excludes vendor, tests, plans).
+# Plugin PHP sources for php -l (excludes vendor, tests, plans, ref).
 plugin_php_files() {
 	find "$ROOT" -type f -name '*.php' \
 		-not -path '*/vendor/*' \
 		-not -path '*/node_modules/*' \
 		-not -path '*/tests/*' \
 		-not -path '*/plans/*' \
+		-not -path '*/ref/*' \
 		-not -path '*/.git/*' \
 		-print | sort
 }

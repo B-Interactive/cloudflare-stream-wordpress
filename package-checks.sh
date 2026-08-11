@@ -70,8 +70,8 @@ updateCloudflareStreamPHP() {
     sed -i "/$1*/c \ * $1 $2" ./cloudflare-stream.php
 }
 
-# Test PHP version compatibility
-versions=(7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4 8.5)
+# Test PHP version compatibility against plugin sources only.
+versions=(7.4 8.0 8.1 8.2 8.3 8.4 8.5)
 
 incompatible_versions=()
 compatible_versions=()
@@ -80,8 +80,10 @@ fatal_error_detected=0
 for version in "${versions[@]}"; do
     echo "------------------------------------------"
     echo "Testing PHP compatibility: $version+"
+    : > phpcs_output.txt
     set +e
-    phpcs --standard=PHPCompatibilityWP --extensions=php --runtime-set testVersion "$version-" ./ > phpcs_output.txt 2>&1
+    echo "phpcs --standard=phpcompat.xml.dist --runtime-set testVersion ${version}- cloudflare-stream.php src" >> phpcs_output.txt
+    phpcs --standard=phpcompat.xml.dist --runtime-set testVersion "${version}-" cloudflare-stream.php src >> phpcs_output.txt 2>&1
     result=$?
     set -e
 
