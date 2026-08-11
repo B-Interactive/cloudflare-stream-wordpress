@@ -43,6 +43,17 @@ define( 'CLOUDFLARE_STREAM_API_TOKEN', 'your-api-token' );
 
 Constants always override database values, and those fields become read only. Each field shows its status: **Stored in wp-config.php**, **Stored in the database**, or **Not set**. When you open the plugin settings with a constant set, the matching database copy is removed and a one-time notice tells you what was cleared. Any API key and account email left over from the official plugin are also deleted at that point. The API Token is never sent to the browser, and leaving its field blank on save keeps the stored value.
 
+When the API token or signing key PEM is kept in the database, the plugin stores it encrypted (AES-256-GCM). That protects database backups and similar option-table exposure. It does not protect against someone who can read `wp-config.php` or the filesystem, because the encryption key is derived from WordPress salts unless you set your own. Defining the token and signing key as PHP constants remains the stronger choice: the secrets never enter the database at all.
+
+Optional encryption key (recommended if you store secrets in the database and may rotate WordPress salts later):
+
+```php
+// 64-character hex (32 bytes) or any long random string.
+define( 'CLOUDFLARE_STREAM_ENCRYPTION_KEY', 'your-long-random-secret-or-64-hex-chars' );
+```
+
+Without that constant the plugin derives a key from `wp_salt()`. If salts change and no dedicated encryption key was set, stored secrets become unreadable until you save a new API token and generate a new signing key. The signing key id stays in plaintext so an unreadable PEM can still be revoked at Cloudflare by id.
+
 ### Signed URLs
 
 Three terms get used loosely and are worth separating:

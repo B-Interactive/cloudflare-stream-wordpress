@@ -134,6 +134,12 @@ class Cloudflare_Stream_Settings {
 				add_action( $prefix . $opt, array( $this, 'clear_signing_health_hot_state' ), 10, 0 );
 			}
 		}
+
+		// Encrypt API token and signing PEM on every option write, not only in admin.
+		add_filter( 'pre_update_option_' . self::OPTION_API_TOKEN, array( $this, 'pre_update_encrypt_secret' ), 20, 2 );
+		add_filter( 'pre_update_option_' . self::OPTION_SIGNING_KEY_PEM, array( $this, 'pre_update_encrypt_secret' ), 20, 2 );
+		add_filter( 'pre_add_option_' . self::OPTION_API_TOKEN, array( $this, 'pre_add_encrypt_secret' ), 20, 2 );
+		add_filter( 'pre_add_option_' . self::OPTION_SIGNING_KEY_PEM, array( $this, 'pre_add_encrypt_secret' ), 20, 2 );
 	}
 
 	/**
@@ -341,6 +347,8 @@ class Cloudflare_Stream_Settings {
 
 	/**
 	 * On settings page load, delete DB copies of secrets that PHP constants already supply.
+	 *
+	 * Deletes by option name only. Ciphertext envelopes are removed without decrypting.
 	 */
 	public function maybe_auto_clean_constant_secrets() {
 		if ( ! current_user_can( 'manage_options' ) ) {
@@ -359,8 +367,9 @@ class Cloudflare_Stream_Settings {
 			$removed[] = __( 'API account ID', 'cloudflare-stream' );
 		}
 
-		// Only when both signing constants are fully usable.
-		if ( $this->constants_signing_key_ready() && $this->db_has_signing_key_options() ) {
+		// Only when both signing constants are fully usable (same bar as live constant signing).
+		// Drop any leftover id and/or PEM row, including unreadable envelopes.
+		if ( $this->constants_signing_key_ready() && $this->db_has_any_signing_key_option() ) {
 			$this->delete_db_signing_key_options();
 			$removed[] = __( 'signing key', 'cloudflare-stream' );
 		}
@@ -452,7 +461,7 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * API token: constant first, then the stored option.
+	 * API token: constant first, then the stored option (decrypted when needed).
 	 *
 	 * @return string
 	 */
@@ -463,9 +472,7 @@ class Cloudflare_Stream_Settings {
 			return $constant;
 		}
 
-		$option = get_option( self::OPTION_API_TOKEN, '' );
-
-		return is_string( $option ) ? trim( $option ) : '';
+		return trim( Cloudflare_Stream_Secret_Store::get_secret( self::OPTION_API_TOKEN ) );
 	}
 
 	/**
@@ -488,12 +495,12 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Whether wp_options holds a non-empty API token (even if the constant overrides).
 	 *
+	 * Ciphertext counts as present; this does not decrypt.
+	 *
 	 * @return bool
 	 */
 	public static function db_has_api_token_option() {
-		$option = get_option( self::OPTION_API_TOKEN, '' );
-
-		return is_string( $option ) && '' !== trim( $option );
+		return Cloudflare_Stream_Secret_Store::has_stored_value( self::OPTION_API_TOKEN );
 	}
 
 	/**
@@ -509,6 +516,10 @@ class Cloudflare_Stream_Settings {
 
 	/**
 	 * Keep the stored token when the password field is left blank; ignore form when a constant is set.
+	 *
+	 * Returns the existing envelope when keeping the stored value so a blank save
+	 * does not force a decrypt/re-encrypt cycle. Fresh tokens are plaintext here;
+	 * pre_update_encrypt_secret wraps them before they hit the database.
 	 *
 	 * @param mixed $value Submitted option value.
 	 * @return string
@@ -527,6 +538,29 @@ class Cloudflare_Stream_Settings {
 		}
 
 		return sanitize_text_field( $value );
+	}
+
+	/**
+	 * Encrypt secret option values before they are written to the database.
+	 *
+	 * @param mixed $value     Proposed value.
+	 * @param mixed $old_value Existing value.
+	 * @return mixed
+	 */
+	public function pre_update_encrypt_secret( $value, $old_value ) {
+		return Cloudflare_Stream_Secret_Store::prepare_for_storage( $value, $old_value );
+	}
+
+	/**
+	 * Encrypt secret option values on first insert (add_option).
+	 *
+	 * @param mixed  $value  Proposed value.
+	 * @param string $option Option name (unused).
+	 * @return mixed
+	 */
+	public function pre_add_encrypt_secret( $value, $option = '' ) {
+		unset( $option );
+		return Cloudflare_Stream_Secret_Store::prepare_for_storage( $value, '' );
 	}
 
 	/**
@@ -952,6 +986,9 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Database signing key id only (ignores constants).
 	 *
+	 * Stored in plaintext on purpose: the id is not secret, and keeping it readable
+	 * lets an admin revoke the key at Cloudflare when the PEM envelope cannot be decrypted.
+	 *
 	 * @return string
 	 */
 	private function get_db_signing_key_id() {
@@ -978,21 +1015,69 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Whether wp_options holds a signing key id and PEM (even if constants override).
 	 *
+	 * Ciphertext counts as present; this does not decrypt the PEM.
+	 *
 	 * @return bool
 	 */
 	private function db_has_signing_key_options() {
-		$id  = get_option( self::OPTION_SIGNING_KEY_ID, '' );
-		$pem = get_option( self::OPTION_SIGNING_KEY_PEM, '' );
+		// Key id stays plaintext; PEM may be an envelope. Both must be non-empty rows.
+		$id_ok  = Cloudflare_Stream_Secret_Store::has_stored_value( self::OPTION_SIGNING_KEY_ID );
+		$pem_ok = Cloudflare_Stream_Secret_Store::has_stored_value( self::OPTION_SIGNING_KEY_PEM );
 
-		return is_string( $id ) && '' !== $id && is_string( $pem ) && '' !== $pem;
+		return $id_ok && $pem_ok;
 	}
 
 	/**
-	 * Remove signing key id/PEM from WordPress options.
+	 * Whether either signing key option row is non-empty (ciphertext counts).
+	 *
+	 * Used when constants are authoritative so orphan id-only or PEM-only rows are purged too.
+	 *
+	 * @return bool
+	 */
+	private function db_has_any_signing_key_option() {
+		return Cloudflare_Stream_Secret_Store::has_stored_value( self::OPTION_SIGNING_KEY_ID )
+			|| Cloudflare_Stream_Secret_Store::has_stored_value( self::OPTION_SIGNING_KEY_PEM );
+	}
+
+	/**
+	 * Remove signing key id/PEM from WordPress options by key (no decrypt).
 	 */
 	private function delete_db_signing_key_options() {
 		delete_option( self::OPTION_SIGNING_KEY_ID );
 		delete_option( self::OPTION_SIGNING_KEY_PEM );
+	}
+
+	/**
+	 * Write signing key id (plaintext) and PEM (encrypted envelope) to options.
+	 *
+	 * @param string $key_id Signing key id.
+	 * @param string $pem    PEM text or base64 PEM material.
+	 * @return bool True when both rows are present after the write.
+	 */
+	private function store_db_signing_key( $key_id, $pem ) {
+		$key_id = sanitize_text_field( (string) $key_id );
+		$pem    = is_string( $pem ) ? $pem : '';
+
+		if ( '' === $key_id || '' === $pem ) {
+			return false;
+		}
+
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			return false;
+		}
+
+		$envelope = Cloudflare_Stream_Secret_Store::encrypt( $pem );
+		if ( false === $envelope ) {
+			return false;
+		}
+
+		// Id is not secret; left readable so a lost PEM can still be revoked by id.
+		// update_option may return false when the value is unchanged; presence is what matters.
+		update_option( self::OPTION_SIGNING_KEY_ID, $key_id, false );
+		update_option( self::OPTION_SIGNING_KEY_PEM, $envelope, false );
+
+		return Cloudflare_Stream_Secret_Store::has_stored_value( self::OPTION_SIGNING_KEY_ID )
+			&& Cloudflare_Stream_Secret_Store::has_stored_value( self::OPTION_SIGNING_KEY_PEM );
 	}
 
 	/**
@@ -1470,8 +1555,9 @@ class Cloudflare_Stream_Settings {
 				$this->redirect_signing_key_notice( 'invalid' );
 			}
 
-			update_option( self::OPTION_SIGNING_KEY_ID, $pending['id'], false );
-			update_option( self::OPTION_SIGNING_KEY_PEM, $pending['pem'], false );
+			if ( ! $this->store_db_signing_key( $pending['id'], $pending['pem'] ) ) {
+				$this->redirect_signing_key_notice( 'store_failed' );
+			}
 
 			$this->clear_signing_key_reveal( false );
 			$this->clear_signing_health_hot_state();

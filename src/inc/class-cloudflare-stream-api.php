@@ -778,6 +778,7 @@ class Cloudflare_Stream_API {
 	 * Signing key id from constant, then stored option.
 	 *
 	 * Constants and options are never mixed, so a half-set pair cannot sign with the wrong id.
+	 * The database id is stored in plaintext so it remains usable for revoke when the PEM cannot be read.
 	 *
 	 * @return string
 	 */
@@ -792,7 +793,7 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Signing key PEM from constant, then stored option.
+	 * Signing key PEM from constant, then stored option (decrypted when needed).
 	 *
 	 * Constants may hold decoded PEM text or the base64 form Cloudflare returns once.
 	 *
@@ -802,8 +803,7 @@ class Cloudflare_Stream_API {
 		if ( $this->signing_key_constants_present() ) {
 			$raw = $this->constant_string( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM' );
 		} else {
-			$option = get_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM, '' );
-			$raw    = is_string( $option ) ? trim( $option ) : '';
+			$raw = Cloudflare_Stream_Secret_Store::get_secret( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
 		}
 
 		if ( '' === $raw ) {
@@ -813,6 +813,48 @@ class Cloudflare_Stream_API {
 		$pem = $this->decode_signing_key_material( $raw );
 
 		return $this->is_valid_signing_key_pem( $pem ) ? $pem : '';
+	}
+
+	/**
+	 * Whether the database holds a signing PEM envelope that cannot be decrypted.
+	 *
+	 * Ignores constants: only the options-backed PEM is considered.
+	 *
+	 * @return bool
+	 */
+	public function db_signing_key_pem_unreadable() {
+		if ( $this->signing_key_constants_present() ) {
+			return false;
+		}
+
+		if ( ! Cloudflare_Stream_Secret_Store::has_stored_value( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ) ) {
+			return false;
+		}
+
+		$status = Cloudflare_Stream_Secret_Store::probe( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		return in_array( $status, array( 'unreadable', 'unavailable' ), true );
+	}
+
+	/**
+	 * Whether the database holds an API token envelope that cannot be decrypted.
+	 *
+	 * Ignores the API token constant.
+	 *
+	 * @return bool
+	 */
+	public function db_api_token_unreadable() {
+		if ( Cloudflare_Stream_Settings::api_token_from_constant() ) {
+			return false;
+		}
+
+		if ( ! Cloudflare_Stream_Secret_Store::has_stored_value( Cloudflare_Stream_Settings::OPTION_API_TOKEN ) ) {
+			return false;
+		}
+
+		$status = Cloudflare_Stream_Secret_Store::probe( Cloudflare_Stream_Settings::OPTION_API_TOKEN );
+
+		return in_array( $status, array( 'unreadable', 'unavailable' ), true );
 	}
 
 	/**
@@ -933,7 +975,9 @@ class Cloudflare_Stream_API {
 			$pem    = $this->get_signing_key_pem();
 
 			if ( '' === $key_id || '' === $pem ) {
-				$this->last_local_reason = 'local_key_missing_at_sign';
+				$this->last_local_reason = $this->db_signing_key_pem_unreadable()
+					? 'local_key_unreadable'
+					: 'local_key_missing_at_sign';
 				return false;
 			}
 
@@ -1027,7 +1071,9 @@ class Cloudflare_Stream_API {
 		$token_api = Cloudflare_Stream_Settings::get_api_token();
 		$account   = Cloudflare_Stream_Settings::get_api_account();
 		if ( '' === $token_api || '' === $account ) {
-			$this->last_api_reason = 'api_credentials_missing';
+			$this->last_api_reason = ( '' === $token_api && $this->db_api_token_unreadable() )
+				? 'api_token_unreadable'
+				: 'api_credentials_missing';
 			return false;
 		}
 

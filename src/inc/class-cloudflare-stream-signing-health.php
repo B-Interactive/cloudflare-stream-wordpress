@@ -65,12 +65,14 @@ class Cloudflare_Stream_Signing_Health {
 	const REASON_CODES = array(
 		'local_openssl_missing',
 		'local_key_missing_at_sign',
+		'local_key_unreadable',
 		'local_exp_invalid',
 		'local_json_encode',
 		'local_openssl_sign',
 		'local_exception',
 		'local_unknown',
 		'api_credentials_missing',
+		'api_token_unreadable',
 		'api_http_error',
 		'api_token_failed',
 		'api_breaker_open',
@@ -497,6 +499,10 @@ class Cloudflare_Stream_Signing_Health {
 					'label' => __( 'Signing key was missing at sign time', 'cloudflare-stream' ),
 					'tip'   => __( 'Re-save or regenerate the signing key on the Cloudflare Stream settings page.', 'cloudflare-stream' ),
 				),
+				'local_key_unreadable'      => array(
+					'label' => __( 'Stored signing key cannot be decrypted', 'cloudflare-stream' ),
+					'tip'   => __( 'The signing key in the database cannot be read with the current encryption material. Generate a new signing key on the settings page (the key id stays readable so the old key can be revoked). Prefer defining CLOUDFLARE_STREAM_ENCRYPTION_KEY in wp-config.php before rotating WordPress salts, or store the signing key as PHP constants instead.', 'cloudflare-stream' ),
+				),
 				'local_exp_invalid'         => array(
 					'label' => __( 'Signed URL expiry was invalid', 'cloudflare-stream' ),
 					'tip'   => __( 'Check the Signed URL Expiration setting (1–1440 minutes).', 'cloudflare-stream' ),
@@ -520,6 +526,10 @@ class Cloudflare_Stream_Signing_Health {
 				'api_credentials_missing'   => array(
 					'label' => __( 'Cloudflare API credentials are missing', 'cloudflare-stream' ),
 					'tip'   => __( 'Add a valid API Account ID and API Token under Settings → Cloudflare Stream.', 'cloudflare-stream' ),
+				),
+				'api_token_unreadable'      => array(
+					'label' => __( 'Stored API token cannot be decrypted', 'cloudflare-stream' ),
+					'tip'   => __( 'The API token in the database cannot be read with the current encryption material. Save a new API token on the settings page, or define CLOUDFLARE_STREAM_API_TOKEN in wp-config.php. Prefer defining CLOUDFLARE_STREAM_ENCRYPTION_KEY before rotating WordPress salts.', 'cloudflare-stream' ),
 				),
 				'api_http_error'            => array(
 					'label' => __( 'Cloudflare API request failed', 'cloudflare-stream' ),
@@ -563,7 +573,7 @@ class Cloudflare_Stream_Signing_Health {
 		$local  = $local_reason ? $local_reason : 'local_unknown';
 		$tips[] = $this->reason_meta( $local )['tip'];
 
-		if ( in_array( $local, array( 'local_openssl_sign', 'local_exception', 'local_json_encode' ), true ) ) {
+		if ( in_array( $local, array( 'local_openssl_sign', 'local_exception', 'local_json_encode', 'local_key_unreadable' ), true ) ) {
 			$tips[] = __( 'Try removing the signing key and generating a new one.', 'cloudflare-stream' );
 		}
 		if ( $api_reason ) {
@@ -584,6 +594,45 @@ class Cloudflare_Stream_Signing_Health {
 		$state = null === $state ? $this->get_state() : $state;
 		$api   = Cloudflare_Stream_API::instance();
 		$now   = time();
+
+		// Unreadable ciphertext is reported before the generic "no key" path.
+		if ( $api->db_signing_key_pem_unreadable() ) {
+			$reason = 'local_key_unreadable';
+			return array(
+				'severity' => 'error',
+				'code'     => 'secret_unreadable',
+				'title'    => __( 'Stored signing key cannot be decrypted', 'cloudflare-stream' ),
+				'body'     => __( 'A signing key is present in the database but cannot be read with the current encryption material. Local signing is unavailable until you generate a new key or restore the previous encryption key.', 'cloudflare-stream' ),
+				'detail'   => sprintf(
+					/* translators: %s: reason code */
+					__( 'Reason: %s.', 'cloudflare-stream' ),
+					$reason
+				),
+				'tips'     => $this->resolution_tips( $reason, $api->db_api_token_unreadable() ? 'api_token_unreadable' : '' ),
+				'label'    => $this->reason_label( $reason ),
+			);
+		}
+
+		if ( $api->db_api_token_unreadable() ) {
+			$reason = 'api_token_unreadable';
+			$signed = (bool) get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS );
+			// Surface whenever signed mode needs the API, or when no local key is available.
+			if ( $signed && ! $api->has_signing_key() ) {
+				return array(
+					'severity' => 'error',
+					'code'     => 'secret_unreadable',
+					'title'    => __( 'Stored API token cannot be decrypted', 'cloudflare-stream' ),
+					'body'     => __( 'An API token is present in the database but cannot be read with the current encryption material. Signed playback via the Cloudflare API cannot run until you save a new token or restore the previous encryption key.', 'cloudflare-stream' ),
+					'detail'   => sprintf(
+						/* translators: %s: reason code */
+						__( 'Reason: %s.', 'cloudflare-stream' ),
+						$reason
+					),
+					'tips'     => $this->resolution_tips( 'local_key_missing_at_sign', $reason ),
+					'label'    => $this->reason_label( $reason ),
+				);
+			}
+		}
 
 		if ( ! $api->has_signing_key() ) {
 			if ( ! get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS ) ) {

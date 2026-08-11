@@ -21,6 +21,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Encrypted option storage for API token and signing key PEM
+ */
+require_once plugin_dir_path( __FILE__ ) . 'src/inc/class-cloudflare-stream-secret-store.php';
+
+/**
  * Cloudflare Stream Settings Page
  */
 require_once plugin_dir_path( __FILE__ ) . 'src/inc/class-cloudflare-stream-settings.php';
