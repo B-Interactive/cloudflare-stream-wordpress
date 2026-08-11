@@ -30,8 +30,57 @@ class Test_CFStream_Registration extends WP_UnitTestCase {
 		$smoke->s17_no_wp_editor_usage();
 		$smoke->s18_block_script_deps();
 
+		$skips = $smoke->get_skips();
+		if ( ! empty( $skips ) ) {
+			$this->markTestSkipped( implode( "\n", $skips ) );
+		}
+
 		$failures = $smoke->get_failures();
 		$this->assertSame( array(), $failures, implode( "\n", $failures ) );
+	}
+
+	/**
+	 * Option defaults after admin_menu for a manage_options user who is not a super admin.
+	 */
+	public function test_option_defaults_for_manage_options_user() {
+		$this->assertTrue(
+			function_exists( 'cfstream_test_create_manage_options_user' ),
+			'cfstream_test_create_manage_options_user() helper must be available'
+		);
+
+		// Remove any values left by other tests so seeding is observable.
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION );
+		delete_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
+		delete_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME );
+
+		$user_id = cfstream_test_create_manage_options_user();
+		$this->assertNotSame( 0, $user_id, 'manage_options test user could not be created' );
+
+		wp_set_current_user( $user_id );
+
+		$this->assertTrue( user_can( $user_id, 'manage_options' ) );
+		$this->assertFalse(
+			is_super_admin( $user_id ),
+			'test user must not be a super admin'
+		);
+
+		do_action( 'admin_menu' );
+
+		$signed = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, null );
+		$this->assertTrue(
+			true === $signed || 1 === $signed || '1' === $signed,
+			'signed_urls default should be true for a manage_options user'
+		);
+
+		$duration = get_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION, null );
+		$this->assertSame( 60, (int) $duration, 'signed_urls_duration default should be 60' );
+
+		$domain = get_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN, null );
+		$this->assertSame( 'cloudflarestream.com', $domain, 'media_domain default should be cloudflarestream.com' );
+
+		$poster = get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME, null );
+		$this->assertSame( 0, (int) $poster, 'poster_time default should be 0' );
 	}
 
 	/**

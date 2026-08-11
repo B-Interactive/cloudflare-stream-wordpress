@@ -82,4 +82,51 @@ if ( ! defined( 'CFSTREAM_TEST_HELPERS_LOADED' ) ) {
 	}
 
 	add_filter( 'pre_http_request', 'cfstream_test_pre_http_request', 1, 3 );
+
+	/**
+	 * Create a user with manage_options who is not a super admin.
+	 *
+	 * On single site, is_super_admin() is true for anyone with delete_users.
+	 * A dedicated role grants manage_options without delete_users so the two
+	 * gates can be tested apart.
+	 *
+	 * @return int User ID, or 0 on failure.
+	 */
+	function cfstream_test_create_manage_options_user() {
+		if ( ! function_exists( 'wp_insert_user' ) ) {
+			return 0;
+		}
+
+		$role = 'cfstream_options_manager';
+		if ( ! get_role( $role ) ) {
+			add_role(
+				$role,
+				'Cloudflare Stream Options Manager',
+				array(
+					'read'           => true,
+					'manage_options' => true,
+				)
+			);
+		}
+
+		$login = 'cfstream_manage_options_' . wp_generate_password( 6, false, false );
+		$id    = wp_insert_user(
+			array(
+				'user_login' => $login,
+				'user_pass'  => wp_generate_password( 16, true, true ),
+				'user_email' => $login . '@example.com',
+				'role'       => $role,
+			)
+		);
+
+		if ( is_wp_error( $id ) ) {
+			return 0;
+		}
+
+		if ( is_multisite() && function_exists( 'revoke_super_admin' ) ) {
+			revoke_super_admin( (int) $id );
+		}
+
+		return (int) $id;
+	}
 }

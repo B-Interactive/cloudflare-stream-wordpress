@@ -21,12 +21,16 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 		'query-cloudflare-stream-upload',
 		'cloudflare-stream-delete',
 		'cloudflare-stream-update',
+		'cloudflare-stream-playback-urls',
 	);
 
 	/**
 	 * Subscriber with a valid nonce must be rejected by each handler.
 	 */
 	public function test_subscriber_forbidden_with_valid_nonce() {
+		$this->assertCount( 6, $this->actions, 'capability suite must cover six AJAX actions' );
+		$this->assertContains( 'cloudflare-stream-playback-urls', $this->actions );
+
 		$subscriber_id = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		wp_set_current_user( $subscriber_id );
 		$this->assertFalse( current_user_can( 'manage_options' ) );

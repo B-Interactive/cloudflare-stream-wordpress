@@ -23,6 +23,7 @@ class CFStream_Smoke_Assertions {
 		'query-cloudflare-stream-upload',
 		'cloudflare-stream-delete',
 		'cloudflare-stream-update',
+		'cloudflare-stream-playback-urls',
 	);
 
 	const BLOCK_NAME     = 'cloudflare-stream/block-video';
@@ -52,6 +53,13 @@ class CFStream_Smoke_Assertions {
 	private $failures = array();
 
 	/**
+	 * Collected skip messages (checks that need a built dist/).
+	 *
+	 * @var string[]
+	 */
+	private $skips = array();
+
+	/**
 	 * @param string      $profile     full|bootstrap.
 	 * @param string|null $plugin_root Absolute plugin root; default parent of tests/.
 	 */
@@ -67,6 +75,7 @@ class CFStream_Smoke_Assertions {
 	 */
 	public function run() {
 		$this->failures = array();
+		$this->skips    = array();
 
 		$this->s1_plugin_loaded();
 		$this->s2_classes_exist();
@@ -114,10 +123,33 @@ class CFStream_Smoke_Assertions {
 	}
 
 	/**
+	 * @return string[]
+	 */
+	public function get_skips() {
+		return $this->skips;
+	}
+
+	/**
 	 * @param string $message Failure text.
 	 */
 	private function fail( $message ) {
 		$this->failures[] = $message;
+	}
+
+	/**
+	 * @param string $message Skip text.
+	 */
+	private function skip( $message ) {
+		$this->skips[] = $message;
+	}
+
+	/**
+	 * Whether the built editor assets directory is present.
+	 *
+	 * @return bool
+	 */
+	private function dist_directory_present() {
+		return is_dir( $this->plugin_root . '/dist' );
 	}
 
 	/**
@@ -341,7 +373,7 @@ class CFStream_Smoke_Assertions {
 	}
 
 	/**
-	 * All five AJAX actions have handlers.
+	 * All known AJAX actions have handlers.
 	 */
 	public function s9_ajax_actions_registered() {
 		foreach ( self::AJAX_ACTIONS as $action ) {
@@ -418,8 +450,15 @@ class CFStream_Smoke_Assertions {
 
 	/**
 	 * Built dist assets exist and are non-empty.
+	 *
+	 * When dist/ is absent (clean checkout without a build), the check is skipped.
 	 */
 	public function s13_dist_assets() {
+		if ( ! $this->dist_directory_present() ) {
+			$this->skip( 'S13: dist/ is absent; run the front-end build before checking built assets' );
+			return;
+		}
+
 		$files = array(
 			'dist/blocks.build.js',
 			'dist/blocks.css',
@@ -594,8 +633,15 @@ class CFStream_Smoke_Assertions {
 	 *
 	 * The build emits dist/blocks.build.asset.php; the enqueue adds media-views
 	 * for the Stream library frame and nothing from jQuery UI.
+	 *
+	 * When dist/ is absent (clean checkout without a build), the check is skipped.
 	 */
 	public function s18_block_script_deps() {
+		if ( ! $this->dist_directory_present() ) {
+			$this->skip( 'S18: dist/ is absent; run the front-end build before checking block script dependencies' );
+			return;
+		}
+
 		$asset_path = $this->plugin_root . '/dist/blocks.build.asset.php';
 		if ( ! is_readable( $asset_path ) ) {
 			$this->fail( 'S18: missing dist/blocks.build.asset.php' );
