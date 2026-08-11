@@ -187,6 +187,7 @@ class Cloudflare_Stream_Settings {
 			);
 		}
 
+		// Token rows are transient-named; flush so object-cache backends drop them after a key change.
 		wp_cache_flush();
 	}
 
@@ -932,31 +933,6 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Allow the setup panel to show the PEM again after a failed constants check.
-	 *
-	 * @return void
-	 */
-	private function unmark_signing_key_reveal_shown() {
-		$payload = $this->get_signing_key_reveal();
-		if ( null === $payload || '' === $payload['pem'] ) {
-			return;
-		}
-
-		$stored = array(
-			'id'      => $payload['id'],
-			'pem'     => $payload['pem'],
-			'context' => $payload['context'],
-			'shown'   => false,
-		);
-		set_transient(
-			$this->signing_key_reveal_transient_name(),
-			$stored,
-			self::SIGNING_KEY_REVEAL_TTL
-		);
-		$this->signing_key_reveal_for_request = $stored;
-	}
-
-	/**
 	 * Revoke a newly minted key that was never stored (abandoned setup or rotate).
 	 *
 	 * @return void
@@ -1451,8 +1427,7 @@ class Cloudflare_Stream_Settings {
 
 		if ( 'confirm_constants' === $do || 'confirm_moved' === $do ) {
 			if ( ! $this->constants_signing_key_ready() ) {
-				// Allow the setup panel to print the lines again after a failed check.
-				$this->unmark_signing_key_reveal_shown();
+				// Keep confirm/store actions available; do not reprint the private key.
 				$this->redirect_signing_key_notice( 'constants_missing' );
 			}
 
@@ -1485,18 +1460,18 @@ class Cloudflare_Stream_Settings {
 			}
 
 			$pending = $this->get_signing_key_reveal();
-			if ( null === $pending || 'setup' !== $pending['context'] || '' === $pending['pem'] ) {
+			if ( null === $pending || 'setup' !== $pending['context'] || '' === $pending['pem'] || '' === $pending['id'] ) {
 				$this->redirect_signing_key_notice( 'store_failed' );
+			}
+
+			// Validate before any option write so a bad key never lands in the database.
+			if ( ! $api->signing_key_material_is_usable( $pending['id'], $pending['pem'] ) ) {
+				$this->clear_signing_key_reveal( true );
+				$this->redirect_signing_key_notice( 'invalid' );
 			}
 
 			update_option( self::OPTION_SIGNING_KEY_ID, $pending['id'], false );
 			update_option( self::OPTION_SIGNING_KEY_PEM, $pending['pem'], false );
-
-			if ( ! $api->has_signing_key() ) {
-				$this->delete_db_signing_key_options();
-				$this->clear_signing_key_reveal( true );
-				$this->redirect_signing_key_notice( 'invalid' );
-			}
 
 			$this->clear_signing_key_reveal( false );
 			$this->clear_signing_health_hot_state();
@@ -1640,7 +1615,7 @@ class Cloudflare_Stream_Settings {
 			),
 			'constants_missing'     => array(
 				'type' => 'error',
-				'text' => __( 'The PHP constants are not working yet. Check them, then try again. The new key is still available below for a short time.', 'cloudflare-stream' ),
+				'text' => __( 'The PHP constants are not working yet. Check them, then try again. Confirm and save actions stay available for a short time. The private key is not shown again; cancel and start again if you need the lines reprinted.', 'cloudflare-stream' ),
 			),
 			'generate_failed'       => array(
 				'type' => 'error',

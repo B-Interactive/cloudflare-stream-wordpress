@@ -825,6 +825,26 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Whether candidate id + PEM material can be used for local signing.
+	 *
+	 * Accepts decoded PEM text or the base64 form Cloudflare returns once.
+	 *
+	 * @param string $key_id Signing key id.
+	 * @param string $pem    PEM text or base64-encoded PEM.
+	 * @return bool
+	 */
+	public function signing_key_material_is_usable( $key_id, $pem ) {
+		$key_id = sanitize_text_field( (string) $key_id );
+		if ( '' === $key_id ) {
+			return false;
+		}
+
+		$decoded = $this->decode_signing_key_material( is_string( $pem ) ? $pem : '' );
+
+		return $this->is_valid_signing_key_pem( $decoded );
+	}
+
+	/**
 	 * Whether PHP constants alone provide a usable signing key (ignores options).
 	 *
 	 * @return bool
@@ -1213,7 +1233,8 @@ class Cloudflare_Stream_API {
 	/**
 	 * Build a tus Upload-Metadata header value (comma-separated key/value pairs).
 	 *
-	 * Keys are plain text. Values are base64. Flag keys omit the value.
+	 * Keys are plain text with Cloudflare's expected spelling preserved. Values are
+	 * base64. Flag keys omit the value.
 	 *
 	 * @param array $pairs Map of metadata key => string value, or null for flags.
 	 * @return string Upload-Metadata header value.
@@ -1221,11 +1242,24 @@ class Cloudflare_Stream_API {
 	private function build_tus_upload_metadata( $pairs ) {
 		$parts = array();
 
+		// Cloudflare documents these spellings in Upload-Metadata (case-sensitive).
+		$canonical_keys = array(
+			'maxdurationseconds'  => 'maxDurationSeconds',
+			'requiresignedurls'  => 'requiresignedurls',
+			'allowedorigins'     => 'allowedOrigins',
+			'expiry'             => 'expiry',
+			'name'               => 'name',
+			'filetype'           => 'filetype',
+		);
+
 		foreach ( $pairs as $key => $value ) {
-			$key = strtolower( preg_replace( '/[^a-z0-9]/i', '', (string) $key ) );
-			if ( '' === $key ) {
+			$raw_key = preg_replace( '/[^a-zA-Z0-9]/', '', (string) $key );
+			if ( ! is_string( $raw_key ) || '' === $raw_key ) {
 				continue;
 			}
+
+			$lookup = strtolower( $raw_key );
+			$key    = isset( $canonical_keys[ $lookup ] ) ? $canonical_keys[ $lookup ] : $lookup;
 
 			if ( null === $value ) {
 				$parts[] = $key;
@@ -1401,7 +1435,7 @@ class Cloudflare_Stream_API {
 		$expiry = gmdate( 'Y-m-d\TH:i:s\Z', time() + ( 30 * MINUTE_IN_SECONDS ) );
 
 		$metadata = array(
-			'maxdurationseconds' => (string) $this->get_upload_max_duration_seconds(),
+			'maxDurationSeconds' => (string) $this->get_upload_max_duration_seconds(),
 			'expiry'             => $expiry,
 		);
 
@@ -1424,7 +1458,7 @@ class Cloudflare_Stream_API {
 				)
 			);
 			if ( ! empty( $origins ) ) {
-				$metadata['allowedorigins'] = implode( ',', $origins );
+				$metadata['allowedOrigins'] = implode( ',', $origins );
 			}
 		}
 
