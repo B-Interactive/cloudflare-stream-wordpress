@@ -110,7 +110,7 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 			$uid,
 			array(
 				'posterurl' => 'https://evil.example/tracker.jpg',
-				'controls'  => 'true',
+				'controls'  => true,
 			)
 		);
 		$this->assertStringNotContainsString( 'evil.example', $evil );
@@ -122,7 +122,7 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 			$uid,
 			array(
 				'posterurl' => $good,
-				'controls'  => 'true',
+				'controls'  => true,
 			)
 		);
 		$this->assertStringNotContainsString( 'evil.example', $ok );

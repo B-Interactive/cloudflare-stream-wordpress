@@ -70,8 +70,11 @@ const playbackQueryString = function ( attributes, extra, poster ) {
 		queryElements.push( 'poster=' + encodeURIComponent( poster ) );
 	}
 
+	// Browsers block autoplay with sound; the Stream player docs match that rule.
+	const effectiveMuted = Boolean( muted ) || Boolean( autoplay );
+
 	// Add other boolean parameters if they are set.
-	const params = { controls, autoplay, loop, muted };
+	const params = { controls, autoplay, loop, muted: effectiveMuted };
 	for ( const param in params ) {
 		if ( typeof params[ param ] !== 'undefined' && params[ param ] ) {
 			queryElements.push( param + '=true' );

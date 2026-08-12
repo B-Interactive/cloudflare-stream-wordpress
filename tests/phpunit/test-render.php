@@ -242,7 +242,8 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 	 * Embed HTML for shortcode and block attribute combinations.
 	 *
 	 * Covers controls, autoplay, muted, loop, and preload. Signed playback is
-	 * off so the bare UID appears in the iframe src.
+	 * off so the bare UID appears in the iframe src. Autoplay always implies
+	 * muted in the emitted query string.
 	 */
 	public function test_embed_attribute_matrix_snapshots() {
 		cfstream_test_clear_http_attempts();
@@ -256,22 +257,22 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 		$flags = array( 'controls', 'autoplay', 'muted', 'loop', 'preload' );
 
 		// Defaults, all-on, controls off, and each non-default flag alone.
-		$cases                   = array();
-		$cases['defaults']       = array(
+		$cases                 = array();
+		$cases['defaults']     = array(
 			'controls' => true,
 			'autoplay' => false,
 			'muted'    => false,
 			'loop'     => false,
 			'preload'  => false,
 		);
-		$cases['all_on']         = array(
+		$cases['all_on']       = array(
 			'controls' => true,
 			'autoplay' => true,
 			'muted'    => true,
 			'loop'     => true,
 			'preload'  => true,
 		);
-		$cases['controls_off']   = array(
+		$cases['controls_off'] = array(
 			'controls' => false,
 			'autoplay' => false,
 			'muted'    => false,
@@ -284,21 +285,27 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 			$cases[ $only . '_on' ] = $row;
 		}
 
+		// Autoplay without muted still emits muted=true in the query string.
+		$cases['autoplay_forces_muted'] = array(
+			'controls' => true,
+			'autoplay' => true,
+			'muted'    => false,
+			'loop'     => false,
+			'preload'  => false,
+		);
+
 		$shortcode = Cloudflare_Stream_Shortcode::instance();
 		$api       = Cloudflare_Stream_API::instance();
 
-		// Block boolean controls=false is tracked separately so other matrix rows stay green.
-		$block_controls_false_gaps = array();
-
 		foreach ( $cases as $label => $bools ) {
-			// Shortcode attributes are string booleans after shortcode_atts.
+			// Shortcode attributes arrive as strings; the handler normalises them.
 			$sc_atts = array( 'uid' => $uid );
 			foreach ( $flags as $flag ) {
 				$sc_atts[ $flag ] = ! empty( $bools[ $flag ] ) ? 'true' : 'false';
 			}
 			$sc_html = $shortcode->video_shortcode_handler( $sc_atts );
 			$this->assertNotSame( '', $sc_html, "shortcode embed empty for {$label}" );
-			$this->assert_embed_flags( $sc_html, $bools, 'shortcode:' . $label, false );
+			$this->assert_embed_flags( $sc_html, $bools, 'shortcode:' . $label );
 
 			// Block attributes are real booleans (same types the render callback passes).
 			$block_atts = array_merge( array( 'uid' => $uid ), $bools );
@@ -306,10 +313,7 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 			// comparable without requiring a full block supports render context.
 			$block_html = $api->get_video_embed( $uid, $block_atts );
 			$this->assertNotSame( '', $block_html, "block embed empty for {$label}" );
-			$block_gap = $this->assert_embed_flags( $block_html, $bools, 'block:' . $label, true );
-			if ( null !== $block_gap ) {
-				$block_controls_false_gaps[] = $block_gap;
-			}
+			$this->assert_embed_flags( $block_html, $bools, 'block:' . $label );
 
 			// Also exercise the render callback wrapper once per matrix run shape.
 			$wrapped = $this->with_block_render_context(
@@ -319,55 +323,58 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 				}
 			);
 			$this->assertStringContainsString( '<figure', $wrapped, "block wrapper missing for {$label}" );
-			$render_gap = $this->assert_embed_flags( $wrapped, $bools, 'block-render:' . $label, true );
-			if ( null !== $render_gap ) {
-				$block_controls_false_gaps[] = $render_gap;
-			}
+			$this->assert_embed_flags( $wrapped, $bools, 'block-render:' . $label );
 		}
 
-		// Direct template call with string form for controls=false.
+		// Template expects real booleans from its callers.
 		$direct = $api->get_video_embed_template(
 			$uid,
 			array(
-				'controls' => 'false',
-				'autoplay' => 'false',
-				'muted'    => 'false',
-				'loop'     => 'false',
-				'preload'  => 'false',
+				'controls' => false,
+				'autoplay' => false,
+				'muted'    => false,
+				'loop'     => false,
+				'preload'  => false,
 			)
 		);
-		$this->assertStringContainsString( 'controls=false', $direct, 'template must honour controls=false string' );
+		$this->assertStringContainsString( 'controls=false', $direct, 'template must honour controls=false' );
 
-		if ( ! empty( $block_controls_false_gaps ) ) {
-			// Block boolean false currently omits controls=false; shortcode/string paths include it.
-			$this->markTestIncomplete(
-				'Block controls=false does not emit controls=false in iframe output ('
-				. implode( ', ', $block_controls_false_gaps )
-				. '). Shortcode and string template paths already do.'
-			);
-		}
+		// Shortcode string "true"/"false" values normalise before the template.
+		$this->assertTrue( Cloudflare_Stream_API::normalize_bool( 'true' ) );
+		$this->assertFalse( Cloudflare_Stream_API::normalize_bool( 'false' ) );
+		$this->assertTrue( Cloudflare_Stream_API::normalize_bool( true ) );
+		$this->assertFalse( Cloudflare_Stream_API::normalize_bool( false ) );
 	}
 
 	/**
 	 * Assert playback query flags on an embed HTML string.
 	 *
-	 * @param string $html       Embed HTML.
-	 * @param array  $bools      Expected flag values.
-	 * @param string $label      Case label for messages.
-	 * @param bool   $from_block Whether the HTML came from the block render path.
-	 * @return string|null Gap label when block controls=false is missing, else null.
+	 * @param string $html  Embed HTML.
+	 * @param array  $bools Requested flag values (autoplay implies muted in output).
+	 * @param string $label Case label for messages.
 	 */
-	private function assert_embed_flags( $html, array $bools, $label, $from_block = false ) {
+	private function assert_embed_flags( $html, array $bools, $label ) {
 		$this->assertStringContainsString( 'iframe.', $html, "{$label}: iframe host missing" );
 		$this->assertStringContainsString( 'poster=', $html, "{$label}: poster missing" );
 
-		foreach ( array( 'autoplay', 'muted', 'loop' ) as $flag ) {
-			$needle = $flag . '=true';
-			if ( ! empty( $bools[ $flag ] ) ) {
-				$this->assertStringContainsString( $needle, $html, "{$label}: expected {$needle}" );
-			} else {
-				$this->assertStringNotContainsString( $needle, $html, "{$label}: unexpected {$needle}" );
-			}
+		if ( ! empty( $bools['autoplay'] ) ) {
+			$this->assertStringContainsString( 'autoplay=true', $html, "{$label}: expected autoplay=true" );
+		} else {
+			$this->assertStringNotContainsString( 'autoplay=true', $html, "{$label}: unexpected autoplay=true" );
+		}
+
+		// Autoplay always forces muted in the emitted query string.
+		$expect_muted = ! empty( $bools['muted'] ) || ! empty( $bools['autoplay'] );
+		if ( $expect_muted ) {
+			$this->assertStringContainsString( 'muted=true', $html, "{$label}: expected muted=true" );
+		} else {
+			$this->assertStringNotContainsString( 'muted=true', $html, "{$label}: unexpected muted=true" );
+		}
+
+		if ( ! empty( $bools['loop'] ) ) {
+			$this->assertStringContainsString( 'loop=true', $html, "{$label}: expected loop=true" );
+		} else {
+			$this->assertStringNotContainsString( 'loop=true', $html, "{$label}: unexpected loop=true" );
 		}
 
 		if ( ! empty( $bools['preload'] ) ) {
@@ -378,24 +385,10 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 
 		// controls=false is only written when controls is explicitly off.
 		if ( empty( $bools['controls'] ) ) {
-			if ( $from_block ) {
-				// Block path uses real booleans; false does not currently yield controls=false.
-				if ( false === strpos( (string) $html, 'controls=false' ) ) {
-					return $label;
-				}
-				$this->assertStringContainsString(
-					'controls=false',
-					$html,
-					"{$label}: block controls=false should emit controls=false"
-				);
-			} else {
-				$this->assertStringContainsString( 'controls=false', $html, "{$label}: expected controls=false" );
-			}
+			$this->assertStringContainsString( 'controls=false', $html, "{$label}: expected controls=false" );
 		} else {
 			$this->assertStringNotContainsString( 'controls=false', $html, "{$label}: unexpected controls=false" );
 		}
-
-		return null;
 	}
 
 	/**

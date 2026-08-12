@@ -645,10 +645,26 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
+	 * Convert playback flag to true boolean.
+	 *
+	 * Accepts PHP booleans and the string forms shortcodes commonly pass.
+	 *
+	 * @param mixed $value Raw flag value.
+	 * @return bool
+	 */
+	public static function normalize_bool( $value ) {
+		if ( is_bool( $value ) ) {
+			return $value;
+		}
+
+		return (bool) filter_var( $value, FILTER_VALIDATE_BOOLEAN );
+	}
+
+	/**
 	 * Get the video embed with placeholder UID
 	 *
 	 * @param string $uid  Unique Video ID or signed token.
-	 * @param array  $args Additional API arguments.
+	 * @param array  $args Additional API arguments. Playback flags should be booleans.
 	 *
 	 * @since 1.0.9.4
 	 */
@@ -669,13 +685,26 @@ class Cloudflare_Stream_API {
 		// Escape the poster URL, then encode it as a query value (same idea as encodeURIComponent in JS).
 		$poster_url = esc_url( $poster_url );
 
+		// Callers pass real booleans; defaults match the player when a flag is omitted.
+		$autoplay = ! empty( $args['autoplay'] );
+		$loop     = ! empty( $args['loop'] );
+		$preload  = ! empty( $args['preload'] );
+		$muted    = ! empty( $args['muted'] );
+		// Controls stay on unless the caller turns them off.
+		$controls = ! isset( $args['controls'] ) || $args['controls'];
+
+		// Browsers block autoplay with sound; the Stream player docs match that rule.
+		if ( $autoplay ) {
+			$muted = true;
+		}
+
 		$video_embed = '<div class="cloudflare-stream" style="position: relative; padding-top: 56.25%"><iframe'
 			. ' src="' . esc_url( $src_uri )
-			. ( filter_var( $args['muted'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'muted=true&' : '' )
-			. ( filter_var( $args['loop'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'loop=true&' : '' )
-			. ( filter_var( $args['autoplay'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'autoplay=true&' : '' )
-			. ( filter_var( $args['preload'] ?? false, FILTER_VALIDATE_BOOLEAN ) ? 'preload=auto&' : '' )
-			. ( filter_var( $args['controls'] ?? true, FILTER_VALIDATE_BOOLEAN ) || ! isset( $args['controls'] ) || strlen( trim( (string) $args['controls'] ) ) === 0 ? '' : 'controls=false&' )
+			. ( $muted ? 'muted=true&' : '' )
+			. ( $loop ? 'loop=true&' : '' )
+			. ( $autoplay ? 'autoplay=true&' : '' )
+			. ( $preload ? 'preload=auto&' : '' )
+			. ( $controls ? '' : 'controls=false&' )
 			. 'poster=' . rawurlencode( $poster_url ) . '"'
 			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '

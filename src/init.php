@@ -145,16 +145,23 @@ function cloudflare_stream_render_block( $block_attributes, $content ) {
 		return $content;
 	}
 
-	// Apply default attributes.
+	// Defaults for flags the block always carries. Preload is left unset so the
+	// embed template default applies unless the block attribute is present.
 	$defaults = array(
 		'controls' => true,
 		'autoplay' => false,
 		'loop'     => false,
-		'preload'  => false,
 		'muted'    => false,
 	);
 
 	$attributes = wp_parse_args( $block_attributes, $defaults );
+
+	// Pass real booleans to the embed builder.
+	foreach ( array( 'controls', 'autoplay', 'loop', 'preload', 'muted' ) as $flag ) {
+		if ( array_key_exists( $flag, $attributes ) ) {
+			$attributes[ $flag ] = Cloudflare_Stream_API::normalize_bool( $attributes[ $flag ] );
+		}
+	}
 
 	$api   = Cloudflare_Stream_API::instance();
 	$embed = $api->get_video_embed( $attributes['uid'], $attributes );

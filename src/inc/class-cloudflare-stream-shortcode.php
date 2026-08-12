@@ -88,8 +88,9 @@ class Cloudflare_Stream_Shortcode {
 		$attributes['postertime'] = ( '' !== $attributes['postertime'] ) ? absint( $attributes['postertime'] ) : '';
 		$attributes['posterurl']  = ( '' !== $attributes['posterurl'] ) ? esc_url_raw( $attributes['posterurl'] ) : '';
 
+		// Hand real booleans to the embed builder (shortcode_atts leaves strings).
 		foreach ( array( 'controls', 'autoplay', 'loop', 'preload', 'muted' ) as $flag ) {
-			$attributes[ $flag ] = filter_var( $attributes[ $flag ], FILTER_VALIDATE_BOOLEAN ) ? 'true' : 'false';
+			$attributes[ $flag ] = Cloudflare_Stream_API::normalize_bool( $attributes[ $flag ] );
 		}
 
 		$stream_api    = Cloudflare_Stream_API::instance();
