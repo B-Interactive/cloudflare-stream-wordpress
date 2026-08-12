@@ -9,7 +9,7 @@
  * Ciphertext is bound to the option name via GCM additional authenticated data.
  *
  * @package cloudflare-stream
- * @since   1.1.8
+ * @since   1.1.7
  */
 
 // Exit if accessed directly.
@@ -452,7 +452,7 @@ class Cloudflare_Stream_Secret_Store {
 		}
 
 		if ( ! self::is_crypto_available() ) {
-			$old = get_option( $option_name, '' );
+			$old  = get_option( $option_name, '' );
 			$mode = ( ! is_string( $old ) || '' === trim( $old ) ) ? 'add' : 'keep';
 			self::set_storage_error( $option_name, 'crypto_unavailable', $mode );
 			return false;

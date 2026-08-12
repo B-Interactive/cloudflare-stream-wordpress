@@ -1319,7 +1319,7 @@ class Cloudflare_Stream_API {
 
 		// Cloudflare documents these spellings in Upload-Metadata (case-sensitive).
 		$canonical_keys = array(
-			'maxdurationseconds'  => 'maxDurationSeconds',
+			'maxdurationseconds' => 'maxDurationSeconds',
 			'requiresignedurls'  => 'requiresignedurls',
 			'allowedorigins'     => 'allowedOrigins',
 			'expiry'             => 'expiry',

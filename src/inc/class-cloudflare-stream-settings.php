@@ -60,17 +60,17 @@ class Cloudflare_Stream_Settings {
 	const OPTION_MEDIA_DOMAIN         = 'cloudflare_stream_media_domain';
 	const OPTION_POSTER_TIME          = 'cloudflare_stream_poster_time';
 	// Standard iframe hosts (iframe.{domain}). Asset URLs always use videodelivery.net for these.
-	const STANDARD_MEDIA_DOMAINS       = array( 'cloudflarestream.com', 'videodelivery.net' );
-	const ADMIN_ACTION_SIGNING_KEY     = 'cloudflare_stream_signing_key';
-	const SIGNING_KEY_FORM_ID          = 'cloudflare-stream-signing-key-form';
+	const STANDARD_MEDIA_DOMAINS         = array( 'cloudflarestream.com', 'videodelivery.net' );
+	const ADMIN_ACTION_SIGNING_KEY       = 'cloudflare_stream_signing_key';
+	const SIGNING_KEY_FORM_ID            = 'cloudflare-stream-signing-key-form';
 	const TRANSIENT_SIGNING_KEY_REVEAL   = 'cfstream_sk_reveal_';
 	const TRANSIENT_SIGNING_KEY_NOTICE   = 'cfstream_sk_notice_';
 	const TRANSIENT_PENDING_NEW_KEY      = 'cfstream_sk_pending_';
 	const TRANSIENT_SECRETS_AUTO_CLEAN   = 'cfstream_secrets_auto_clean_';
 	const TRANSIENT_SECRET_STORAGE_ERROR = 'cfstream_secret_storage_';
 	const DEFAULT_SIGNED_URLS            = true;
-	const DEFAULT_SIGNED_URLS_DURATION = 60;
-	const DEFAULT_POSTER_TIME          = 0;
+	const DEFAULT_SIGNED_URLS_DURATION   = 60;
+	const DEFAULT_POSTER_TIME            = 0;
 	// Reveal lifetime in seconds for a freshly issued private key (copy into wp-config.php).
 	const SIGNING_KEY_REVEAL_TTL = 300;
 
@@ -146,7 +146,7 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Seed option defaults without depending on the current user.
 	 *
-	 * add_option() only writes when the row is missing, so existing values stay put.
+	 * The add_option() method only writes when the row is missing, so existing values stay put.
 	 *
 	 * @return void
 	 */
@@ -1805,63 +1805,65 @@ class Cloudflare_Stream_Settings {
 		}
 
 		$messages = array(
-			'generated'             => array(
+			'generated'                => array(
 				'type' => 'success',
 				'text' => __( 'Signing key created. Choose below where to keep it. Nothing is saved yet.', 'cloudflare-stream' ),
 			),
-			'rotate_started'        => array(
+			'rotate_started'           => array(
 				'type' => 'success',
 				'text' => __( 'A new signing key was created. Add the lines below to wp-config.php, then confirm. The previous key stays valid until you confirm.', 'cloudflare-stream' ),
 			),
-			'constants_ok'          => array(
+			'constants_ok'             => array(
 				'type' => 'success',
 				'text' => __( 'Signing key is now read from PHP constants.', 'cloudflare-stream' ),
 			),
-			'moved'                 => array(
+			'moved'                    => array(
 				'type' => 'success',
 				'text' => __( 'Signing key is now read from PHP constants. The database copy was removed and the previous key was revoked in Cloudflare.', 'cloudflare-stream' ),
 			),
-			'moved_revoke_failed'   => array(
+			'moved_revoke_failed'      => array(
 				'type' => 'warning',
+				/* translators: %s: Cloudflare signing key id */
 				'text' => __( 'Signing key is now read from PHP constants and the database copy was removed, but the previous key could not be revoked in Cloudflare. Revoke it in the Cloudflare dashboard. Key id: %s', 'cloudflare-stream' ),
 			),
-			'stored'                => array(
+			'stored'                   => array(
 				'type' => 'success',
 				'text' => __( 'Signing key saved in the database.', 'cloudflare-stream' ),
 			),
-			'cleared'               => array(
+			'cleared'                  => array(
 				'type' => 'success',
 				'text' => __( 'Signing key removed from the database.', 'cloudflare-stream' ),
 			),
-			'cleared_revoked'       => array(
+			'cleared_revoked'          => array(
 				'type' => 'success',
 				'text' => __( 'Signing key removed from the database and revoked in Cloudflare.', 'cloudflare-stream' ),
 			),
-			'cleared_revoke_failed' => array(
+			'cleared_revoke_failed'    => array(
 				'type' => 'warning',
+				/* translators: %s: Cloudflare signing key id */
 				'text' => __( 'Signing key removed from the database, but it could not be revoked in Cloudflare. Revoke it in the Cloudflare dashboard. Key id: %s', 'cloudflare-stream' ),
 			),
-			'dismissed'             => array(
+			'dismissed'                => array(
 				'type' => 'success',
 				'text' => __( 'Cancelled. The existing database signing key is unchanged. Any unused new key was discarded.', 'cloudflare-stream' ),
 			),
-			'constants_missing'     => array(
+			'constants_missing'        => array(
 				'type' => 'error',
 				'text' => __( 'The PHP constants are not working yet. Check them, then try again. Confirm and save actions stay available for a short time. The private key is not shown again; cancel and start again if you need the lines reprinted.', 'cloudflare-stream' ),
 			),
-			'generate_failed'       => array(
+			'generate_failed'          => array(
 				'type' => 'error',
 				'text' => __( 'Could not create a signing key. Check the API token and account ID.', 'cloudflare-stream' ),
 			),
-			'rotate_create_failed'  => array(
+			'rotate_create_failed'     => array(
 				'type' => 'error',
 				'text' => __( 'Could not create a new signing key, so nothing was changed. The database key is still in place.', 'cloudflare-stream' ),
 			),
-			'rotate_failed'         => array(
+			'rotate_failed'            => array(
 				'type' => 'error',
 				'text' => __( 'There is no database signing key to move, or PHP constants already supply the key.', 'cloudflare-stream' ),
 			),
-			'invalid'               => array(
+			'invalid'                  => array(
 				'type' => 'error',
 				'text' => __( 'That signing key could not be used. Nothing was saved.', 'cloudflare-stream' ),
 			),
