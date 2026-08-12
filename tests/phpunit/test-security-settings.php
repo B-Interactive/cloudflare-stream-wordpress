@@ -1286,6 +1286,10 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 			return '';
 		}
 
-		return $pem;
+		// Match production PEM shape: LF line endings and a single trailing newline.
+		$pem = str_replace( array( "\r\n", "\r" ), "\n", $pem );
+		$pem = trim( $pem );
+
+		return '' === $pem ? '' : $pem . "\n";
 	}
 }

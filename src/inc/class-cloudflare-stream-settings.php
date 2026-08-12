@@ -1199,7 +1199,8 @@ class Cloudflare_Stream_Settings {
 	 */
 	private function store_db_signing_key( $key_id, $pem ) {
 		$key_id = sanitize_text_field( (string) $key_id );
-		$pem    = is_string( $pem ) ? $pem : '';
+		// Same decode and PEM shape as get_signing_key_pem() / local signing.
+		$pem = Cloudflare_Stream_API::instance()->normalize_signing_key_material( $pem );
 
 		if ( '' === $key_id || '' === $pem ) {
 			return false;
@@ -1726,7 +1727,7 @@ class Cloudflare_Stream_Settings {
 			}
 
 			$key_id  = sanitize_text_field( (string) $result->id );
-			$pem_raw = trim( $result->pem );
+			$pem_raw = $api->normalize_signing_key_material( $result->pem );
 
 			if ( '' === $key_id || '' === $pem_raw ) {
 				$this->redirect_signing_key_notice( 'invalid' );
@@ -1750,7 +1751,7 @@ class Cloudflare_Stream_Settings {
 			}
 
 			$key_id  = sanitize_text_field( (string) $result->id );
-			$pem_raw = trim( $result->pem );
+			$pem_raw = $api->normalize_signing_key_material( $result->pem );
 
 			if ( '' === $key_id || '' === $pem_raw ) {
 				$this->redirect_signing_key_notice( 'rotate_create_failed' );

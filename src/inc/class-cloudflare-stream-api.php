@@ -729,7 +729,8 @@ class Cloudflare_Stream_API {
 	/**
 	 * Decode PEM/JWK material that Cloudflare returns base64-encoded.
 	 *
-	 * Accepts already-decoded PEM text as well.
+	 * Accepts already-decoded PEM text as well. PEM text is normalised so line
+	 * endings are LF and the block ends with a single trailing newline.
 	 *
 	 * @param string $value Base64 blob or PEM text.
 	 * @return string
@@ -742,17 +743,49 @@ class Cloudflare_Stream_API {
 		}
 
 		if ( false !== strpos( $value, 'BEGIN' ) ) {
-			return $value;
+			return $this->canonicalize_signing_key_pem( $value );
 		}
 
 		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_decode -- Cloudflare returns PEM signing material base64-encoded.
 		$decoded = base64_decode( $value, true );
 
 		if ( false !== $decoded && '' !== $decoded && false !== strpos( $decoded, 'BEGIN' ) ) {
-			return $decoded;
+			return $this->canonicalize_signing_key_pem( $decoded );
 		}
 
 		return $value;
+	}
+
+	/**
+	 * Normalise PEM text for storage and local signing.
+	 *
+	 * Line endings become LF. Surrounding whitespace is removed. A single
+	 * trailing newline is kept so the shape matches common OpenSSL PEM export.
+	 *
+	 * @param string $pem PEM text (already decoded).
+	 * @return string
+	 */
+	private function canonicalize_signing_key_pem( $pem ) {
+		$pem = str_replace( array( "\r\n", "\r" ), "\n", (string) $pem );
+		$pem = trim( $pem );
+
+		if ( '' === $pem ) {
+			return '';
+		}
+
+		return $pem . "\n";
+	}
+
+	/**
+	 * Decode and normalise signing key material for storage or validation.
+	 *
+	 * Accepts PEM text or the base64 form Cloudflare returns once.
+	 *
+	 * @param string $value Base64 blob or PEM text.
+	 * @return string Normalised PEM text, or empty string when empty.
+	 */
+	public function normalize_signing_key_material( $value ) {
+		return $this->decode_signing_key_material( is_string( $value ) ? $value : '' );
 	}
 
 	/**
