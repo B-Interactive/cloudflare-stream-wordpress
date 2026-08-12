@@ -63,11 +63,12 @@ class Cloudflare_Stream_Settings {
 	const STANDARD_MEDIA_DOMAINS       = array( 'cloudflarestream.com', 'videodelivery.net' );
 	const ADMIN_ACTION_SIGNING_KEY     = 'cloudflare_stream_signing_key';
 	const SIGNING_KEY_FORM_ID          = 'cloudflare-stream-signing-key-form';
-	const TRANSIENT_SIGNING_KEY_REVEAL = 'cfstream_sk_reveal_';
-	const TRANSIENT_SIGNING_KEY_NOTICE = 'cfstream_sk_notice_';
-	const TRANSIENT_PENDING_NEW_KEY    = 'cfstream_sk_pending_';
-	const TRANSIENT_SECRETS_AUTO_CLEAN = 'cfstream_secrets_auto_clean_';
-	const DEFAULT_SIGNED_URLS          = true;
+	const TRANSIENT_SIGNING_KEY_REVEAL   = 'cfstream_sk_reveal_';
+	const TRANSIENT_SIGNING_KEY_NOTICE   = 'cfstream_sk_notice_';
+	const TRANSIENT_PENDING_NEW_KEY      = 'cfstream_sk_pending_';
+	const TRANSIENT_SECRETS_AUTO_CLEAN   = 'cfstream_secrets_auto_clean_';
+	const TRANSIENT_SECRET_STORAGE_ERROR = 'cfstream_secret_storage_';
+	const DEFAULT_SIGNED_URLS            = true;
 	const DEFAULT_SIGNED_URLS_DURATION = 60;
 	const DEFAULT_POSTER_TIME          = 0;
 	// Reveal lifetime in seconds for a freshly issued private key (copy into wp-config.php).
@@ -136,8 +137,8 @@ class Cloudflare_Stream_Settings {
 		}
 
 		// Encrypt API token and signing PEM on every option write, not only in admin.
-		add_filter( 'pre_update_option_' . self::OPTION_API_TOKEN, array( $this, 'pre_update_encrypt_secret' ), 20, 2 );
-		add_filter( 'pre_update_option_' . self::OPTION_SIGNING_KEY_PEM, array( $this, 'pre_update_encrypt_secret' ), 20, 2 );
+		add_filter( 'pre_update_option_' . self::OPTION_API_TOKEN, array( $this, 'pre_update_encrypt_secret' ), 20, 3 );
+		add_filter( 'pre_update_option_' . self::OPTION_SIGNING_KEY_PEM, array( $this, 'pre_update_encrypt_secret' ), 20, 3 );
 		add_filter( 'pre_add_option_' . self::OPTION_API_TOKEN, array( $this, 'pre_add_encrypt_secret' ), 20, 2 );
 		add_filter( 'pre_add_option_' . self::OPTION_SIGNING_KEY_PEM, array( $this, 'pre_add_encrypt_secret' ), 20, 2 );
 	}
@@ -330,6 +331,7 @@ class Cloudflare_Stream_Settings {
 		add_action( 'admin_notices', array( $this, 'signing_key_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'signing_health_admin_notices' ) );
 		add_action( 'admin_notices', array( $this, 'secrets_auto_clean_admin_notices' ) );
+		add_action( 'admin_notices', array( $this, 'secret_storage_admin_notices' ) );
 
 		// When a constant is active, do not rewrite the matching option from the settings form.
 		add_filter( 'pre_update_option_' . self::OPTION_API_TOKEN, array( $this, 'pre_update_api_token' ), 10, 2 );
@@ -543,24 +545,165 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Encrypt secret option values before they are written to the database.
 	 *
-	 * @param mixed $value     Proposed value.
-	 * @param mixed $old_value Existing value.
+	 * @param mixed  $value     Proposed value.
+	 * @param mixed  $old_value Existing value.
+	 * @param string $option    Option name (AAD binding).
 	 * @return mixed
 	 */
-	public function pre_update_encrypt_secret( $value, $old_value ) {
-		return Cloudflare_Stream_Secret_Store::prepare_for_storage( $value, $old_value );
+	public function pre_update_encrypt_secret( $value, $old_value, $option = '' ) {
+		$option = $this->resolve_secret_option_name( $option, 'pre_update_option_' );
+		$result = Cloudflare_Stream_Secret_Store::prepare_for_storage( $value, $old_value, $option );
+		$this->maybe_queue_secret_storage_notice();
+		return $result;
 	}
 
 	/**
 	 * Encrypt secret option values on first insert (add_option).
 	 *
 	 * @param mixed  $value  Proposed value.
-	 * @param string $option Option name (unused).
+	 * @param string $option Option name (AAD binding).
 	 * @return mixed
 	 */
 	public function pre_add_encrypt_secret( $value, $option = '' ) {
-		unset( $option );
-		return Cloudflare_Stream_Secret_Store::prepare_for_storage( $value, '' );
+		$option = $this->resolve_secret_option_name( $option, 'pre_add_option_' );
+		$result = Cloudflare_Stream_Secret_Store::prepare_for_storage( $value, '', $option );
+		$this->maybe_queue_secret_storage_notice();
+		return $result;
+	}
+
+	/**
+	 * Resolve the secret option name from a filter argument or the current filter.
+	 *
+	 * @param string $option        Option name from the filter callback.
+	 * @param string $filter_prefix Expected current_filter() prefix.
+	 * @return string
+	 */
+	private function resolve_secret_option_name( $option, $filter_prefix ) {
+		if ( is_string( $option ) && '' !== $option ) {
+			return $option;
+		}
+
+		$filter = function_exists( 'current_filter' ) ? (string) current_filter() : '';
+		if ( '' !== $filter_prefix && 0 === strpos( $filter, $filter_prefix ) ) {
+			return substr( $filter, strlen( $filter_prefix ) );
+		}
+
+		return '';
+	}
+
+	/**
+	 * User-specific transient for a refused secret write notice.
+	 *
+	 * @return string
+	 */
+	private function secret_storage_notice_transient_name() {
+		return self::TRANSIENT_SECRET_STORAGE_ERROR . get_current_user_id();
+	}
+
+	/**
+	 * Human label for a secret option name (never the secret value).
+	 *
+	 * @param string $option_name Option name.
+	 * @return string
+	 */
+	private function secret_option_label( $option_name ) {
+		if ( self::OPTION_API_TOKEN === $option_name ) {
+			return __( 'API token', 'cloudflare-stream' );
+		}
+		if ( self::OPTION_SIGNING_KEY_PEM === $option_name ) {
+			return __( 'signing key', 'cloudflare-stream' );
+		}
+		return __( 'secret', 'cloudflare-stream' );
+	}
+
+	/**
+	 * After a refused encrypt, stash an admin notice for the current user.
+	 *
+	 * @return void
+	 */
+	private function maybe_queue_secret_storage_notice() {
+		$error = Cloudflare_Stream_Secret_Store::get_last_storage_error();
+		if ( ! is_array( $error ) ) {
+			return;
+		}
+
+		$reason = isset( $error['reason'] ) ? (string) $error['reason'] : '';
+		if ( 'crypto_unavailable' !== $reason && 'encrypt_failed' !== $reason ) {
+			return;
+		}
+
+		if ( ! function_exists( 'get_current_user_id' ) || get_current_user_id() < 1 ) {
+			return;
+		}
+
+		$option = isset( $error['option'] ) ? (string) $error['option'] : '';
+		$mode   = isset( $error['mode'] ) ? (string) $error['mode'] : 'keep';
+
+		// User-specific transient only (same pattern as auto-clean). Avoids a double
+		// print with the Settings API settings_errors flash after options.php redirects.
+		set_transient(
+			$this->secret_storage_notice_transient_name(),
+			array(
+				'option' => $option,
+				'reason' => $reason,
+				'mode'   => ( 'add' === $mode ) ? 'add' : 'keep',
+			),
+			HOUR_IN_SECONDS
+		);
+
+		Cloudflare_Stream_Secret_Store::clear_last_storage_error();
+	}
+
+	/**
+	 * Admin-facing copy when a secret could not be encrypted for storage.
+	 *
+	 * @param string $option_name Option name.
+	 * @param string $mode        keep|add.
+	 * @return string
+	 */
+	private function format_secret_storage_notice_text( $option_name, $mode ) {
+		$label = $this->secret_option_label( $option_name );
+
+		if ( 'add' === $mode ) {
+			return sprintf(
+				/* translators: %s: secret field label (not a secret value) */
+				__( 'The %s could not be saved because encryption is unavailable on this server. Nothing was stored.', 'cloudflare-stream' ),
+				$label
+			);
+		}
+
+		return sprintf(
+			/* translators: %s: secret field label (not a secret value) */
+			__( 'The %s could not be saved because encryption is unavailable on this server. The previous stored value was kept.', 'cloudflare-stream' ),
+			$label
+		);
+	}
+
+	/**
+	 * One-shot notice when a secret write was refused because encryption failed.
+	 *
+	 * @return void
+	 */
+	public function secret_storage_admin_notices() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$raw = get_transient( $this->secret_storage_notice_transient_name() );
+		if ( ! is_array( $raw ) ) {
+			return;
+		}
+
+		delete_transient( $this->secret_storage_notice_transient_name() );
+
+		$option = isset( $raw['option'] ) ? (string) $raw['option'] : '';
+		$mode   = isset( $raw['mode'] ) && 'add' === $raw['mode'] ? 'add' : 'keep';
+		$text   = $this->format_secret_storage_notice_text( $option, $mode );
+
+		printf(
+			'<div class="notice notice-error is-dismissible"><p>%s</p></div>',
+			esc_html( $text )
+		);
 	}
 
 	/**
@@ -1066,7 +1209,7 @@ class Cloudflare_Stream_Settings {
 			return false;
 		}
 
-		$envelope = Cloudflare_Stream_Secret_Store::encrypt( $pem );
+		$envelope = Cloudflare_Stream_Secret_Store::encrypt( $pem, self::OPTION_SIGNING_KEY_PEM );
 		if ( false === $envelope ) {
 			return false;
 		}
@@ -1556,6 +1699,9 @@ class Cloudflare_Stream_Settings {
 			}
 
 			if ( ! $this->store_db_signing_key( $pending['id'], $pending['pem'] ) ) {
+				if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+					$this->redirect_signing_key_notice( 'store_crypto_unavailable' );
+				}
 				$this->redirect_signing_key_notice( 'store_failed' );
 			}
 
@@ -1719,11 +1865,15 @@ class Cloudflare_Stream_Settings {
 				'type' => 'error',
 				'text' => __( 'That signing key could not be used. Nothing was saved.', 'cloudflare-stream' ),
 			),
-			'store_failed'          => array(
+			'store_failed'             => array(
 				'type' => 'error',
 				'text' => __( 'There is no new signing key to save. Generate one again.', 'cloudflare-stream' ),
 			),
-			'constants'             => array(
+			'store_crypto_unavailable' => array(
+				'type' => 'error',
+				'text' => __( 'The signing key could not be saved because encryption is unavailable on this server. The previous stored value was kept, or nothing was stored if none existed.', 'cloudflare-stream' ),
+			),
+			'constants'                => array(
 				'type' => 'error',
 				'text' => __( 'The signing key is set as PHP constants, so that action was skipped.', 'cloudflare-stream' ),
 			),

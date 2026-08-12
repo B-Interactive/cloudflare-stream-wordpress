@@ -19,6 +19,11 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 			cfstream_test_clear_http_attempts();
 		}
 
+		if ( class_exists( 'Cloudflare_Stream_Secret_Store' ) ) {
+			Cloudflare_Stream_Secret_Store::set_crypto_available_override( null );
+			Cloudflare_Stream_Secret_Store::clear_last_storage_error();
+		}
+
 		// Settings is a process-wide singleton; drop any in-request reveal cache.
 		if ( class_exists( 'Cloudflare_Stream_Settings' ) ) {
 			$settings = Cloudflare_Stream_Settings::instance();
@@ -879,13 +884,169 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		$settings = Cloudflare_Stream_Settings::instance();
 		$settings->action_admin_init();
 
-		$plain = 'fresh-token-via-settings-save';
+		$plain  = 'fresh-token-via-settings-save';
+		$option = Cloudflare_Stream_Settings::OPTION_API_TOKEN;
 		// Simulate option write after sanitize (constant filter may block live token option
 		// when CLOUDFLARE_STREAM_API_TOKEN is defined; exercise prepare_for_storage directly).
-		$stored = Cloudflare_Stream_Secret_Store::prepare_for_storage( $plain, '' );
+		$stored = Cloudflare_Stream_Secret_Store::prepare_for_storage( $plain, '', $option );
 		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $stored );
 		$this->assertStringNotContainsString( $plain, $stored );
-		$this->assertSame( $plain, Cloudflare_Stream_Secret_Store::decrypt( $stored ) );
+		$this->assertSame( $plain, Cloudflare_Stream_Secret_Store::decrypt( $stored, $option ) );
+	}
+
+	/**
+	 * Ciphertext bound to one option name must not decrypt under another.
+	 */
+	public function test_secret_store_aad_binds_option_name() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$token_opt = Cloudflare_Stream_Settings::OPTION_API_TOKEN;
+		$pem_opt   = Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM;
+		$secret    = 'aad-bound-secret-value-not-real';
+
+		$envelope = Cloudflare_Stream_Secret_Store::encrypt( $secret, $token_opt );
+		$this->assertIsString( $envelope );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $envelope );
+
+		$this->assertSame( $secret, Cloudflare_Stream_Secret_Store::decrypt( $envelope, $token_opt ) );
+		$this->assertFalse( Cloudflare_Stream_Secret_Store::decrypt( $envelope, $pem_opt ) );
+		$this->assertFalse( Cloudflare_Stream_Secret_Store::last_decrypt_used_empty_aad() );
+
+		$pem_envelope = Cloudflare_Stream_Secret_Store::encrypt( $secret, $pem_opt );
+		$this->assertIsString( $pem_envelope );
+		$this->assertSame( $secret, Cloudflare_Stream_Secret_Store::decrypt( $pem_envelope, $pem_opt ) );
+		$this->assertFalse( Cloudflare_Stream_Secret_Store::decrypt( $pem_envelope, $token_opt ) );
+	}
+
+	/**
+	 * Empty-AAD envelopes remain readable and are re-sealed with option AAD on get_secret.
+	 */
+	public function test_secret_store_migrates_empty_aad_envelope_on_read() {
+		if ( ! Cloudflare_Stream_Secret_Store::is_crypto_available() ) {
+			$this->markTestSkipped( 'AES-256-GCM is not available.' );
+		}
+
+		$option = Cloudflare_Stream_Settings::OPTION_API_TOKEN;
+		$secret = 'legacy-empty-aad-token-not-real';
+
+		$key = Cloudflare_Stream_Secret_Store::get_encryption_key();
+		$this->assertNotFalse( $key );
+
+		$iv  = random_bytes( Cloudflare_Stream_Secret_Store::IV_LENGTH );
+		$tag = '';
+		// Empty AAD matches envelopes written before option-name binding.
+		$cipher = openssl_encrypt(
+			$secret,
+			Cloudflare_Stream_Secret_Store::CIPHER,
+			$key,
+			OPENSSL_RAW_DATA,
+			$iv,
+			$tag,
+			'',
+			Cloudflare_Stream_Secret_Store::TAG_LENGTH
+		);
+		$this->assertIsString( $cipher );
+		// phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+		$legacy = Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX . base64_encode( $iv . $tag . $cipher );
+
+		delete_option( $option );
+		update_option( $option, $legacy, false );
+
+		$read = Cloudflare_Stream_Secret_Store::get_secret( $option );
+		$this->assertSame( $secret, $read );
+
+		$raw_after = get_option( $option );
+		$this->assertIsString( $raw_after );
+		$this->assertStringStartsWith( Cloudflare_Stream_Secret_Store::ENVELOPE_PREFIX, $raw_after );
+		$this->assertNotSame( $legacy, $raw_after, 'empty-AAD envelope should be rewritten with option AAD' );
+		$this->assertSame( $secret, Cloudflare_Stream_Secret_Store::decrypt( $raw_after, $option ) );
+		$this->assertFalse(
+			Cloudflare_Stream_Secret_Store::decrypt( $raw_after, Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM ),
+			're-sealed envelope must not decrypt under a different option name'
+		);
+
+		delete_option( $option );
+	}
+
+	/**
+	 * When crypto is unavailable, prepare_for_storage keeps the old value and records the failure.
+	 */
+	public function test_prepare_for_storage_records_crypto_unavailable() {
+		Cloudflare_Stream_Secret_Store::clear_last_storage_error();
+		Cloudflare_Stream_Secret_Store::set_crypto_available_override( false );
+
+		$option   = Cloudflare_Stream_Settings::OPTION_API_TOKEN;
+		$old      = 'cfstream_enc_v1:existing-envelope-placeholder';
+		$proposed = 'new-plaintext-token-must-not-store';
+
+		$result = Cloudflare_Stream_Secret_Store::prepare_for_storage( $proposed, $old, $option );
+		$this->assertSame( $old, $result );
+
+		$error = Cloudflare_Stream_Secret_Store::get_last_storage_error();
+		$this->assertIsArray( $error );
+		$this->assertSame( 'crypto_unavailable', $error['reason'] );
+		$this->assertSame( $option, $error['option'] );
+		$this->assertSame( 'keep', $error['mode'] );
+
+		// First insert with no prior value.
+		Cloudflare_Stream_Secret_Store::clear_last_storage_error();
+		$result_add = Cloudflare_Stream_Secret_Store::prepare_for_storage( $proposed, '', $option );
+		$this->assertSame( '', $result_add );
+		$error_add = Cloudflare_Stream_Secret_Store::get_last_storage_error();
+		$this->assertIsArray( $error_add );
+		$this->assertSame( 'add', $error_add['mode'] );
+
+		Cloudflare_Stream_Secret_Store::set_crypto_available_override( null );
+		Cloudflare_Stream_Secret_Store::clear_last_storage_error();
+	}
+
+	/**
+	 * Settings encrypt hooks queue a translated admin notice when crypto is unavailable.
+	 */
+	public function test_secret_storage_notice_queued_when_crypto_unavailable() {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$settings = Cloudflare_Stream_Settings::instance();
+		Cloudflare_Stream_Secret_Store::clear_last_storage_error();
+		Cloudflare_Stream_Secret_Store::set_crypto_available_override( false );
+
+		$option = Cloudflare_Stream_Settings::OPTION_API_TOKEN;
+		$old    = 'cfstream_enc_v1:kept-value';
+		$out    = $settings->pre_update_encrypt_secret( 'fresh-token-blocked', $old, $option );
+		$this->assertSame( $old, $out );
+
+		$notice_name = Cloudflare_Stream_Settings::TRANSIENT_SECRET_STORAGE_ERROR . get_current_user_id();
+		$payload     = get_transient( $notice_name );
+		$this->assertIsArray( $payload );
+		$this->assertSame( 'crypto_unavailable', $payload['reason'] );
+		$this->assertSame( $option, $payload['option'] );
+		$this->assertSame( 'keep', $payload['mode'] );
+
+		// Notice copy is translated and never includes the proposed secret.
+		$ref = new ReflectionClass( $settings );
+		$fmt = $ref->getMethod( 'format_secret_storage_notice_text' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$fmt->setAccessible( true );
+		}
+		$text = $fmt->invoke( $settings, $option, 'keep' );
+		$this->assertStringContainsString( 'encryption is unavailable', $text );
+		$this->assertStringContainsString( 'previous stored value was kept', $text );
+		$this->assertStringNotContainsString( 'fresh-token-blocked', $text );
+
+		ob_start();
+		$settings->secret_storage_admin_notices();
+		$html = (string) ob_get_clean();
+		$this->assertStringContainsString( 'encryption is unavailable', $html );
+		$this->assertStringContainsString( 'notice-error', $html );
+		$this->assertStringContainsString( 'previous stored value was kept', $html );
+		$this->assertStringNotContainsString( 'fresh-token-blocked', $html );
+		$this->assertFalse( get_transient( $notice_name ) );
+
+		Cloudflare_Stream_Secret_Store::set_crypto_available_override( null );
+		Cloudflare_Stream_Secret_Store::clear_last_storage_error();
 	}
 
 	/**
