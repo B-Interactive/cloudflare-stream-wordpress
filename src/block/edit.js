@@ -1042,8 +1042,7 @@ function CloudflareStreamEdit( {
 	);
 
 	/**
-	 * Handle files from MediaPlaceholder (upload or drop).
-	 * With handleUpload false, onSelect receives a FileList, not WP attachments.
+	 * Start upload from a MediaPlaceholder file selection or drop, gracefully handling browser files.
 	 *
 	 * @param {FileList|Array|Object} input Selected files or media object.
 	 */
@@ -1055,7 +1054,14 @@ function CloudflareStreamEdit( {
 					? input[ 0 ]
 					: input;
 
-			if ( ! ( candidate instanceof window.File ) ) {
+			const isBrowserFile =
+				candidate &&
+				typeof candidate === 'object' &&
+				typeof candidate.name === 'string' &&
+				typeof candidate.size === 'number' &&
+				typeof candidate.type === 'string';
+
+			if ( ! isBrowserFile ) {
 				return;
 			}
 

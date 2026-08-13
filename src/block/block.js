@@ -51,7 +51,7 @@ cloudflareStream.icon = createElement(
 registerBlockType(
 	'cloudflare-stream/block-video',
 	{
-		apiVersion: 2,
+		apiVersion: 3,
 		title: __( 'Cloudflare Stream Video', 'cloudflare-stream' ),
 		icon: cloudflareStream.icon,
 		category: 'embed',
