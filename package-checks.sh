@@ -138,6 +138,7 @@ read -p "Update plugin version to (blank for unchanged): " -r pluginVer
 if [[ $pluginVer =~ [0-9] ]]; then
     echo "Updating plugin version from $currentVer to $pluginVer."
     updateReadme "$lineMatch" "$pluginVer"
+    updateReadme "Stable tag:" "$pluginVer"
     updateCloudflareStreamPHP "$lineMatch" "$pluginVer"
 
     # Update package.json and package-lock.json root version only

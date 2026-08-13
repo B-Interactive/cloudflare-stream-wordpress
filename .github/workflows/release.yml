@@ -1,0 +1,123 @@
+# Build the plugin ZIP and publish it on version tags.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches metadata versions
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          if [ -z "$version" ]; then
+            echo "::error::Could not derive release version from tag '${tag}'."
+            exit 1
+          fi
+          echo "Release tag: ${tag}"
+          echo "Required version: ${version}"
+          php bin/check-metadata.php --version="${version}"
+
+      - name: Build package ZIP
+        run: npm run package
+
+      - name: Verify release ZIP
+        run: |
+          set -euo pipefail
+          zip_path="cloudflare-stream.zip"
+          if [ ! -f "$zip_path" ]; then
+            echo "::error file=$zip_path::Expected release ZIP was not created."
+            ls -la
+            exit 1
+          fi
+          echo "OK: $zip_path ($(wc -c < "$zip_path") bytes)"
+
+          mapfile -t entries < <(unzip -Z1 "$zip_path")
+          if [ "${#entries[@]}" -eq 0 ]; then
+            echo "::error::$zip_path is empty."
+            exit 1
+          fi
+
+          missing=0
+          required=(
+            "cloudflare-stream/cloudflare-stream.php"
+            "cloudflare-stream/readme.txt"
+            "cloudflare-stream/dist/blocks.build.js"
+            "cloudflare-stream/dist/blocks.css"
+            "cloudflare-stream/dist/style-blocks.css"
+          )
+          for path in "${required[@]}"; do
+            found=0
+            for entry in "${entries[@]}"; do
+              if [ "$entry" = "$path" ]; then
+                found=1
+                break
+              fi
+            done
+            if [ "$found" -ne 1 ]; then
+              echo "::error::$zip_path is missing required path: $path"
+              missing=1
+            else
+              echo "OK: $path"
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Release ZIP failed structure checks."
+            printf '%s\n' "${entries[@]}" | head -n 80
+            exit 1
+          fi
+
+      - name: Generate release checksums
+        run: |
+          set -euo pipefail
+          zip_path="cloudflare-stream.zip"
+          sha256sum "$zip_path" > cloudflare-stream.zip.sha256
+          b2sum "$zip_path" > cloudflare-stream.zip.blake2
+          echo "SHA256:"
+          cat cloudflare-stream.zip.sha256
+          echo "BLAKE2b (b2sum):"
+          cat cloudflare-stream.zip.blake2
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          files: |
+            cloudflare-stream.zip
+            cloudflare-stream.zip.sha256
+            cloudflare-stream.zip.blake2
+          body: |
+            ## Checksums
+
+            SHA256 and BLAKE2b (via `b2sum`) digests for `cloudflare-stream.zip` are attached as `cloudflare-stream.zip.sha256` and `cloudflare-stream.zip.blake2`. Use them for manual supply-chain verification; WordPress does not verify these files automatically.
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

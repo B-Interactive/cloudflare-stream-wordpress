@@ -18,6 +18,8 @@ Description: Securely embeds videos hosted with Cloudflare Stream, in your WordP
 
 == Description ==
 
+This fork is distributed from GitHub Releases rather than wordpress.org. Install the release ZIP from the project repository, and WordPress will offer later updates from GitHub on the Plugins screen.
+
 - Block native player
 - Multiple playback options
 - Distribute videos with unique URLs or embed code
@@ -95,6 +97,10 @@ For new uploads only: when Use Signed URLs is enabled, the plugin sets requireSi
 9) Can I set the API token outside the database?
 
 Yes. Prefer CLOUDFLARE_STREAM_API_TOKEN (and optionally CLOUDFLARE_STREAM_API_ACCOUNT) in wp-config.php above "That's all, stop editing!". Constants are used instead of Settings options and keep the token out of database backups. Settings shows which one is in use. The matching database copy is removed when you open Settings → Cloudflare Stream with the constants set. Without constants, options still work; leave the token field blank on save to keep a stored token.
+
+10) Where do plugin updates come from?
+
+This plugin is not listed on wordpress.org. Updates come from GitHub Releases for the B-Interactive/cloudflare-stream-wordpress repository. After you install a release ZIP, newer versions appear on the WordPress Plugins screen, and the automatic updates toggle works like other plugins.
 
 == Screenshots ==
 

@@ -25,6 +25,12 @@ Upload, browse and embed [Cloudflare Stream](https://developers.cloudflare.com/s
 
 The block and library browser only load once an Account ID and API Token are saved.
 
+## Updates
+
+This plugin is distributed from GitHub Releases, not from wordpress.org. After you install it from a release ZIP, WordPress checks GitHub for newer releases and shows updates on the Plugins screen like other plugins. You can turn automatic updates on or off there in the usual way.
+
+Release tags must match the version in the plugin header, `readme.txt`, `package.json`, and `package-lock.json` (`1.1.7` or `v1.1.7`). Each release attaches `cloudflare-stream.zip` plus SHA256 (`cloudflare-stream.zip.sha256`) and BLAKE2b (`cloudflare-stream.zip.blake2`) checksum files for manual verification. WordPress does not check those digests automatically.
+
 ## Configuration
 
 ### API credentials
@@ -165,13 +171,15 @@ Clone the repository, then from the project directory:
 npm install
 npm run build:dev   # development build, easier browser debugging
 npm run build       # production build
-npm run package     # production build plus plugin ZIP
+npm run check:meta  # version, lockfile, and Update URI checks
+npm run package     # metadata check, production build, and plugin ZIP
 ```
 
 Checks:
 
 ```bash
 npm run lint:css     # stylelint
+npm run check:meta   # version, lockfile, and Update URI checks
 npm run test:compat  # PHPCompatibility and PHPCS
 npm run test:php     # PHPUnit via wp-env, skipped when Docker is unavailable
 ```

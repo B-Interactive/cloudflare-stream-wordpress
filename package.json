@@ -21,7 +21,8 @@
     "dist",
     "src",
     "LICENSE",
-    "cloudflare-stream.php"
+    "cloudflare-stream.php",
+    "readme.txt"
   ],
   "main": "webpack.config.js",
   "engines": {
@@ -46,7 +47,8 @@
     "lint:pkg-json": "wp-scripts lint-pkg-json",
     "packages-update": "wp-scripts packages-update",
     "zip": "wp-scripts plugin-zip",
-    "package": "wp-scripts build && wp-scripts plugin-zip",
+    "check:meta": "php bin/check-metadata.php",
+    "package": "php bin/check-metadata.php && wp-scripts build && wp-scripts plugin-zip",
     "test:compat": "bin/compat.sh static",
     "test:php": "bin/compat.sh test"
   }

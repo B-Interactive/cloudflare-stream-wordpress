@@ -178,6 +178,7 @@ class CFStream_Smoke_Assertions {
 			'Cloudflare_Stream_API',
 			'Cloudflare_Stream_Shortcode',
 			'Cloudflare_Stream_Signing_Health',
+			'Cloudflare_Stream_Updater',
 		);
 		foreach ( $classes as $class ) {
 			if ( ! class_exists( $class ) ) {
