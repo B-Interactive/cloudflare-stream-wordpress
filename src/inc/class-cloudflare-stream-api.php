@@ -1532,7 +1532,9 @@ class Cloudflare_Stream_API {
 	/**
 	 * Whether a poster URL host is allowed for embeds.
 	 *
-	 * Allows the configured media asset host and the standard Cloudflare hosts.
+	 * Allows exact media asset hosts only: videodelivery.net, the configured
+	 * asset host (including a custom media domain), and customer-*.cloudflarestream.com.
+	 * Bare apex hosts and lookalike suffixes are rejected.
 	 *
 	 * @param string $url Candidate poster URL.
 	 * @return bool
@@ -1545,20 +1547,30 @@ class Cloudflare_Stream_API {
 
 		$host = strtolower( $host );
 
-		$allowed = array(
-			strtolower( $this->get_media_asset_host() ),
+		// Exact hosts used for generated posters and standard thumbnails.
+		$allowed_exact = array(
 			'videodelivery.net',
-			'cloudflarestream.com',
+			strtolower( (string) $this->get_media_asset_host() ),
 		);
 
-		$configured = strtolower( $this->get_media_domain() );
-		if ( '' !== $configured ) {
-			$allowed[] = $configured;
+		$configured = strtolower( (string) $this->get_media_domain() );
+		if ( '' !== $configured && ! $this->is_standard_media_domain( $configured ) ) {
+			// Custom media domains are used as the poster host as-is.
+			$allowed_exact[] = $configured;
 		}
 
-		$allowed = array_values( array_unique( array_filter( $allowed ) ) );
+		$allowed_exact = array_values( array_unique( array_filter( $allowed_exact ) ) );
 
-		return in_array( $host, $allowed, true );
+		if ( in_array( $host, $allowed_exact, true ) ) {
+			return true;
+		}
+
+		// Customer delivery subdomains only (host-exact shape, no suffix bypass).
+		if ( 1 === preg_match( '/^customer-[a-z0-9-]+\.cloudflarestream\.com$/', $host ) ) {
+			return true;
+		}
+
+		return false;
 	}
 
 	/**
