@@ -1,0 +1,46 @@
+{
+	"$schema": "https://schemas.wp.org/trunk/block.json",
+	"apiVersion": 3,
+	"name": "cloudflare-stream/block-video",
+	"title": "Cloudflare Stream Video",
+	"category": "embed",
+	"icon": "format-video",
+	"description": "Embed a video from Cloudflare Stream.",
+	"keywords": [ "Cloudflare", "Stream", "video" ],
+	"textdomain": "cloudflare-stream",
+	"attributes": {
+		"uid": {
+			"type": "string",
+			"default": ""
+		},
+		"fingerprint": {
+			"type": "string",
+			"default": ""
+		},
+		"thumbnail": {
+			"type": "string",
+			"default": ""
+		},
+		"autoplay": {
+			"type": "boolean",
+			"default": false
+		},
+		"loop": {
+			"type": "boolean",
+			"default": false
+		},
+		"muted": {
+			"type": "boolean",
+			"default": false
+		},
+		"controls": {
+			"type": "boolean",
+			"default": true
+		}
+	},
+	"supports": {
+		"align": true
+	},
+	"style": "cloudflare-stream-block-style-css",
+	"editorStyle": "cloudflare-stream-block-editor-css"
+}

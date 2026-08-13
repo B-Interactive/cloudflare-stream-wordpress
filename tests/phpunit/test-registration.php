@@ -96,4 +96,30 @@ class Test_CFStream_Registration extends WP_UnitTestCase {
 		$this->assertSame( 'cloudflare_stream_media_domain', Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN );
 		$this->assertSame( 'cloudflare_stream_poster_time', Cloudflare_Stream_Settings::OPTION_POSTER_TIME );
 	}
+
+	/**
+	 * Block metadata registration exposes attributes and supports server-side.
+	 */
+	public function test_block_metadata_attributes_and_supports() {
+		if ( ! did_action( 'init' ) ) {
+			do_action( 'init' );
+		}
+
+		$registry = WP_Block_Type_Registry::get_instance();
+		$this->assertTrue( $registry->is_registered( 'cloudflare-stream/block-video' ) );
+
+		$block = $registry->get_registered( 'cloudflare-stream/block-video' );
+		$this->assertSame( 'cloudflare_stream_render_block', $block->render_callback );
+		$this->assertNotEmpty( $block->attributes );
+		$this->assertArrayHasKey( 'uid', $block->attributes );
+		$this->assertSame( 'string', $block->attributes['uid']['type'] );
+		$this->assertSame( '', $block->attributes['uid']['default'] );
+		$this->assertArrayHasKey( 'fingerprint', $block->attributes );
+		$this->assertSame( '', $block->attributes['fingerprint']['default'] );
+		$this->assertArrayHasKey( 'thumbnail', $block->attributes );
+		$this->assertSame( '', $block->attributes['thumbnail']['default'] );
+		$this->assertArrayNotHasKey( 'alignment', $block->attributes );
+		$this->assertArrayNotHasKey( 'transform', $block->attributes );
+		$this->assertTrue( ! empty( $block->supports['align'] ) );
+	}
 }

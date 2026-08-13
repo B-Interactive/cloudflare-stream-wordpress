@@ -661,19 +661,20 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Get the video embed with placeholder UID
+	 * Build the Stream iframe src from a playback id and playback options.
+	 *
+	 * Poster is encoded once as a query value. Playback flags should be booleans.
 	 *
 	 * @param string $uid  Unique Video ID or signed token.
-	 * @param array  $args Additional API arguments. Playback flags should be booleans.
-	 *
-	 * @since 1.0.9.4
+	 * @param array  $args Playback options and optional posterurl / postertime.
+	 * @return string Full iframe URL including query string.
 	 */
-	public function get_video_embed_template( $uid, $args = array() ) {
+	public function build_iframe_src( $uid, $args = array() ) {
 		if ( ! is_array( $args ) ) {
 			$args = array();
 		}
 
-		$src_uri = $this->get_iframe_url( $uid ) . '?';
+		$base = $this->get_iframe_url( $uid );
 
 		$poster_time = empty( $args['postertime'] )
 			? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME, Cloudflare_Stream_Settings::DEFAULT_POSTER_TIME )
@@ -682,8 +683,6 @@ class Cloudflare_Stream_API {
 		$poster_url  = empty( $args['posterurl'] )
 			? $this->get_poster_url( $uid, $poster_time )
 			: $this->sanitize_poster_url( $args['posterurl'], $uid, $poster_time );
-		// Escape the poster URL, then encode it as a query value (same idea as encodeURIComponent in JS).
-		$poster_url = esc_url( $poster_url );
 
 		// Callers pass real booleans; defaults match the player when a flag is omitted.
 		$autoplay = ! empty( $args['autoplay'] );
@@ -698,18 +697,77 @@ class Cloudflare_Stream_API {
 			$muted = true;
 		}
 
+		$query = array(
+			'poster' => $poster_url,
+		);
+
+		if ( $muted ) {
+			$query['muted'] = 'true';
+		}
+		if ( $loop ) {
+			$query['loop'] = 'true';
+		}
+		if ( $autoplay ) {
+			$query['autoplay'] = 'true';
+		}
+		if ( $preload ) {
+			$query['preload'] = 'auto';
+		}
+		if ( ! $controls ) {
+			$query['controls'] = 'false';
+		}
+
+		return add_query_arg( $query, $base );
+	}
+
+	/**
+	 * Stable iframe element id derived from the video uid or token.
+	 *
+	 * @param string $uid Unique Video ID or signed token.
+	 * @return string
+	 */
+	public function get_stream_player_id( $uid ) {
+		$raw = strtolower( (string) $uid );
+		$raw = preg_replace( '/[^a-z0-9_-]+/', '-', $raw );
+		$raw = trim( (string) $raw, '-' );
+
+		if ( '' === $raw ) {
+			$raw = 'video';
+		}
+
+		// Keep ids short enough for HTML while remaining unique per playback id.
+		if ( strlen( $raw ) > 48 ) {
+			$raw = substr( $raw, 0, 40 ) . '-' . substr( md5( (string) $uid ), 0, 8 );
+		}
+
+		return 'stream-player-' . $raw;
+	}
+
+	/**
+	 * Get the video embed with placeholder UID
+	 *
+	 * @param string $uid  Unique Video ID or signed token.
+	 * @param array  $args Additional API arguments. Playback flags should be booleans.
+	 *
+	 * @since 1.0.9.4
+	 */
+	public function get_video_embed_template( $uid, $args = array() ) {
+		if ( ! is_array( $args ) ) {
+			$args = array();
+		}
+
+		$src       = $this->build_iframe_src( $uid, $args );
+		$player_id = $this->get_stream_player_id( $uid );
+		$title     = __( 'Cloudflare Stream video', 'cloudflare-stream' );
+
 		$video_embed = '<div class="cloudflare-stream" style="position: relative; padding-top: 56.25%"><iframe'
-			. ' src="' . esc_url( $src_uri )
-			. ( $muted ? 'muted=true&' : '' )
-			. ( $loop ? 'loop=true&' : '' )
-			. ( $autoplay ? 'autoplay=true&' : '' )
-			. ( $preload ? 'preload=auto&' : '' )
-			. ( $controls ? '' : 'controls=false&' )
-			. 'poster=' . rawurlencode( $poster_url ) . '"'
+			. ' class="stream-player"'
+			. ' src="' . esc_url( $src ) . '"'
 			. ' style="border: none; position: absolute; top: 0; height: 100%; width: 100%" '
 			. 'allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" '
 			. 'allowfullscreen="true" '
-			. 'id="stream-player"'
+			. 'id="' . esc_attr( $player_id ) . '" '
+			. 'title="' . esc_attr( $title ) . '"'
 			. '></iframe></div>';
 
 		return $video_embed;

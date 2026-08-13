@@ -53,6 +53,8 @@ export const usesSignedUrls = function () {
 /**
  * Build the playback option query string shared by signed and unsigned URLs.
  *
+ * Used by deprecated saved markup that must keep matching old post content.
+ *
  * @param {Object} attributes Block attributes.
  * @param {string} extra      Params already present on the base URL.
  * @param {string} poster     Poster URL to use, if any.
@@ -85,10 +87,10 @@ const playbackQueryString = function ( attributes, extra, poster ) {
 };
 
 /**
- * Build the Stream iframe src for editor preview.
+ * Build the Stream iframe src for deprecated saved markup.
  *
- * Unsigned playback only. When signed URLs are on the base URL must come from
- * the server (it carries a playback token), so use signedIframeSource instead.
+ * The current block preview uses a server-built URL instead. This helper stays
+ * so deprecated_iframe can reproduce the old public UID embed shape.
  *
  * @param {Object} attributes Block attributes.
  * @return {string} Iframe URL.
@@ -116,20 +118,26 @@ export const streamIframeSource = function ( attributes ) {
 };
 
 /**
- * Apply playback options to a server-minted signed iframe URL.
+ * Resolve a server-built preview iframe src.
  *
- * The token lives in the base URL path, so it is never rebuilt here.
+ * Prefers iframeSrc (full URL from the server). Falls back to a base iframeUrl
+ * only when no full src is present.
  *
- * @param {Object} attributes Block attributes.
- * @param {Object} urls       Server response with iframeUrl and posterUrl.
+ * @param {Object|null} urls Server response with iframeSrc and/or iframeUrl.
  * @return {string} Iframe URL, or an empty string when not yet resolved.
  */
-export const signedIframeSource = function ( attributes, urls ) {
-	if ( ! urls || ! urls.iframeUrl ) {
+export const previewIframeSource = function ( urls ) {
+	if ( ! urls ) {
 		return '';
 	}
 
-	return (
-		urls.iframeUrl + playbackQueryString( attributes, '', urls.posterUrl )
-	);
+	if ( urls.iframeSrc ) {
+		return urls.iframeSrc;
+	}
+
+	if ( urls.iframeUrl ) {
+		return urls.iframeUrl;
+	}
+
+	return '';
 };

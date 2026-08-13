@@ -12,6 +12,34 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 /**
+ * Register block stylesheets referenced by block.json handles.
+ *
+ * @since 1.0.0
+ */
+function cloudflare_stream_register_block_styles() {
+	$style_path = plugin_dir_path( __DIR__ ) . 'dist/style-blocks.css';
+	if ( file_exists( $style_path ) ) {
+		wp_register_style(
+			'cloudflare-stream-block-style-css',
+			plugins_url( 'dist/style-blocks.css', __DIR__ ),
+			array( 'wp-block-library' ),
+			filemtime( $style_path )
+		);
+	}
+
+	$editor_style_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.css';
+	if ( file_exists( $editor_style_path ) ) {
+		wp_register_style(
+			'cloudflare-stream-block-editor-css',
+			plugins_url( 'dist/blocks.css', __DIR__ ),
+			array( 'wp-edit-blocks' ),
+			filemtime( $editor_style_path )
+		);
+	}
+}
+add_action( 'init', 'cloudflare_stream_register_block_styles', 5 );
+
+/**
  * Enqueue the block stylesheets.
  *
  * Both sheets go through `enqueue_block_assets` so the editor canvas iframe
@@ -20,28 +48,18 @@ if ( ! defined( 'ABSPATH' ) ) {
  * @since 1.0.0
  */
 function cloudflare_stream_block_assets() {
-	$style_path = plugin_dir_path( __DIR__ ) . 'dist/style-blocks.css';
-	if ( file_exists( $style_path ) ) {
-		wp_enqueue_style(
-			'cloudflare-stream-block-style-css',
-			plugins_url( 'dist/style-blocks.css', __DIR__ ),
-			array( 'wp-block-library' ),
-			filemtime( $style_path )
-		);
+	cloudflare_stream_register_block_styles();
+
+	if ( wp_style_is( 'cloudflare-stream-block-style-css', 'registered' ) ) {
+		wp_enqueue_style( 'cloudflare-stream-block-style-css' );
 	}
 
 	if ( ! is_admin() ) {
 		return;
 	}
 
-	$editor_style_path = plugin_dir_path( __DIR__ ) . 'dist/blocks.css';
-	if ( file_exists( $editor_style_path ) ) {
-		wp_enqueue_style(
-			'cloudflare-stream-block-editor-css',
-			plugins_url( 'dist/blocks.css', __DIR__ ),
-			array( 'wp-edit-blocks' ),
-			filemtime( $editor_style_path )
-		);
+	if ( wp_style_is( 'cloudflare-stream-block-editor-css', 'registered' ) ) {
+		wp_enqueue_style( 'cloudflare-stream-block-editor-css' );
 	}
 } // End function cloudflare_stream_block_assets().
 
@@ -116,13 +134,13 @@ function cloudflare_stream_block_editor_assets() {
 add_action( 'enqueue_block_editor_assets', 'cloudflare_stream_block_editor_assets' );
 
 /**
- * Register the video block with its server-side render callback.
+ * Register the video block from block.json metadata plus the render callback.
  *
  * @since 1.0.0
  */
 function cloudflare_stream_register_block() {
 	register_block_type(
-		'cloudflare-stream/block-video',
+		__DIR__ . '/block',
 		array(
 			'render_callback' => 'cloudflare_stream_render_block',
 		)
@@ -380,9 +398,10 @@ add_action( 'wp_ajax_cloudflare-stream-check-upload', 'cloudflare_stream_ajax_ch
 /**
  * AJAX method for resolving editor preview URLs for a video.
  *
- * When signed playback is on these URLs carry a short-lived playback token, so
- * they are minted here rather than in the browser. Only the playback token is
- * ever returned; the Cloudflare API token stays on the server.
+ * Returns a full iframe src built on the server for both signed and unsigned
+ * playback so the editor and front end share one URL builder. When signed
+ * playback is on the path carries a short-lived token. Only the playback token
+ * is ever returned; the Cloudflare API token stays on the server.
  *
  * @since 1.1.7
  */
@@ -399,15 +418,41 @@ function cloudflare_stream_ajax_playback_urls() {
 		// Fail closed, exactly as the front end does: no unsigned fallback.
 		wp_send_json_error(
 			array(
-				'message' => __( 'Could not create a signed preview for this video.', 'cloudflare-stream' ),
+				'message' => __( 'Could not create a playback preview for this video.', 'cloudflare-stream' ),
 			)
 		);
 	}
 
+	$args = array();
+	foreach ( array( 'controls', 'autoplay', 'loop', 'muted', 'preload' ) as $flag ) {
+		if ( ! array_key_exists( $flag, $_REQUEST ) ) {
+			continue;
+		}
+		$raw            = sanitize_text_field( wp_unslash( $_REQUEST[ $flag ] ) );
+		$args[ $flag ] = Cloudflare_Stream_API::normalize_bool( $raw );
+	}
+
+	if ( isset( $_REQUEST['posterurl'] ) ) {
+		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['posterurl'] ) );
+	}
+
+	// Prefer the token-free thumbnail stored on the block when present.
+	if ( empty( $args['posterurl'] ) && isset( $_REQUEST['thumbnail'] ) ) {
+		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['thumbnail'] ) );
+	}
+
+	$iframe_src = $api->build_iframe_src( $playback_id, $args );
+	$poster_url = empty( $args['posterurl'] )
+		? $api->get_poster_url( $playback_id, cloudflare_stream_poster_time() )
+		: $api->sanitize_poster_url( $args['posterurl'], $playback_id, cloudflare_stream_poster_time() );
+
 	wp_send_json_success(
 		array(
+			// Full src including query; preferred by the current editor preview.
+			'iframeSrc' => $iframe_src,
+			// Base URL kept for older callers that append their own query.
 			'iframeUrl' => $api->get_iframe_url( $playback_id ),
-			'posterUrl' => $api->get_poster_url( $playback_id, cloudflare_stream_poster_time() ),
+			'posterUrl' => $poster_url,
 		)
 	);
 }

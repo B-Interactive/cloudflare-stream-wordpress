@@ -13,13 +13,13 @@ import './editor.scss';
 import edit from './edit';
 import { deprecated_108 } from './deprecated_108';
 import { deprecated_iframe } from './deprecated_iframe';
+import metadata from './block.json';
 
 /* global cloudflareStream */
 
 /**
  * WordPress dependencies
  */
-import { __ } from '@wordpress/i18n';
 import { registerBlockType } from '@wordpress/blocks';
 import { createElement } from '@wordpress/element';
 
@@ -48,71 +48,20 @@ cloudflareStream.icon = createElement(
 	)
 );
 
-registerBlockType(
-	'cloudflare-stream/block-video',
-	{
-		apiVersion: 3,
-		title: __( 'Cloudflare Stream Video', 'cloudflare-stream' ),
-		icon: cloudflareStream.icon,
-		category: 'embed',
-		keywords: [
-			__( 'Cloudflare', 'cloudflare-stream' ),
-			__( 'Stream', 'cloudflare-stream' ),
-			__( 'video', 'cloudflare-stream' ),
-		],
-		// Newest deprecations first so iframe posts match before the old stream tag version.
-		deprecated: [ deprecated_iframe, deprecated_108 ],
-		attributes: {
-			alignment: {
-				type: 'string',
-			},
-			uid: {
-				type: 'string',
-				default: false,
-			},
-			fingerprint: {
-				type: 'string',
-				default: false,
-			},
-			thumbnail: {
-				type: 'string',
-				default: false,
-			},
-			autoplay: {
-				type: 'boolean',
-				default: false,
-			},
-			loop: {
-				type: 'boolean',
-				default: false,
-			},
-			muted: {
-				type: 'boolean',
-				default: false,
-			},
-			controls: {
-				type: 'boolean',
-				default: true,
-			},
-			transform: {
-				type: 'boolean',
-				default: false,
-			},
-		},
-		supports: {
-			align: true,
-		},
+registerBlockType( metadata.name, {
+	...metadata,
+	icon: cloudflareStream.icon,
+	// Newest deprecations first so iframe posts match before the old stream tag version.
+	deprecated: [ deprecated_iframe, deprecated_108 ],
+	edit,
 
-		edit,
-
-		/**
-		 * Dynamic block: nothing is stored in post content except attributes.
-		 * Front-end markup comes from the PHP render callback.
-		 *
-		 * @return {null} Null save output for dynamic rendering.
-		 */
-		save() {
-			return null;
-		},
-	}
-);
+	/**
+	 * Dynamic block: nothing is stored in post content except attributes.
+	 * Front-end markup comes from the PHP render callback.
+	 *
+	 * @return {null} Null save output for dynamic rendering.
+	 */
+	save() {
+		return null;
+	},
+} );

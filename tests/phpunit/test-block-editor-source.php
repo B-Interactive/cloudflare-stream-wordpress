@@ -40,20 +40,33 @@ class Test_CFStream_Block_Editor_Source extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Current block registration uses apiVersion 3 and a null save.
+	 * Current block registration uses apiVersion 3, block.json metadata, and a null save.
 	 */
 	public function test_current_block_api_version_and_save() {
-		$block = $this->read_src( 'src/block/block.js' );
+		$block    = $this->read_src( 'src/block/block.js' );
+		$metadata = $this->read_src( 'src/block/block.json' );
+		$meta     = json_decode( $metadata, true );
 
-		$this->assertMatchesRegularExpression(
-			'/\bapiVersion\s*:\s*3\b/',
+		$this->assertIsArray( $meta, 'block.json must be valid JSON' );
+		$this->assertSame( 3, (int) $meta['apiVersion'], 'block.json must declare apiVersion 3' );
+		$this->assertSame( 'cloudflare-stream/block-video', $meta['name'] );
+		$this->assertArrayHasKey( 'attributes', $meta );
+		$this->assertArrayHasKey( 'supports', $meta );
+		$this->assertTrue( ! empty( $meta['supports']['align'] ) );
+
+		foreach ( array( 'uid', 'fingerprint', 'thumbnail' ) as $string_attr ) {
+			$this->assertArrayHasKey( $string_attr, $meta['attributes'] );
+			$this->assertSame( 'string', $meta['attributes'][ $string_attr ]['type'] );
+			$this->assertSame( '', $meta['attributes'][ $string_attr ]['default'] );
+		}
+
+		$this->assertArrayNotHasKey( 'alignment', $meta['attributes'] );
+		$this->assertArrayNotHasKey( 'transform', $meta['attributes'] );
+
+		$this->assertStringContainsString(
+			"import metadata from './block.json'",
 			$block,
-			'current block must declare apiVersion 3'
-		);
-		$this->assertDoesNotMatchRegularExpression(
-			'/\bapiVersion\s*:\s*[12]\b/',
-			$block,
-			'current block must not declare apiVersion 1 or 2'
+			'current block must register from block.json metadata'
 		);
 		$this->assertStringContainsString(
 			'deprecated: [ deprecated_iframe, deprecated_108 ]',
@@ -65,6 +78,26 @@ class Test_CFStream_Block_Editor_Source extends WP_UnitTestCase {
 			$block,
 			'current block save must remain null for dynamic rendering'
 		);
+		$this->assertDoesNotMatchRegularExpression(
+			'/\bapiVersion\s*:\s*[12]\b/',
+			$block,
+			'current block must not declare apiVersion 1 or 2'
+		);
+	}
+
+	/**
+	 * Current editor preview uses a server-built iframe src for all modes.
+	 */
+	public function test_current_preview_uses_server_built_src() {
+		$edit = $this->read_src( 'src/block/edit.js' );
+		$lib  = $this->read_src( 'src/block/lib.js' );
+
+		$this->assertStringContainsString( 'previewIframeSource', $edit );
+		$this->assertStringContainsString( 'cloudflare-stream-playback-urls', $edit );
+		$this->assertStringNotContainsString( 'streamIframeSource(', $edit );
+		$this->assertStringNotContainsString( 'signedIframeSource(', $edit );
+		$this->assertStringContainsString( 'export const streamIframeSource', $lib );
+		$this->assertStringContainsString( 'export const previewIframeSource', $lib );
 	}
 
 	/**

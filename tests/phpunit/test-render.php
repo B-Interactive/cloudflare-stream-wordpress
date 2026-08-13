@@ -338,6 +338,23 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 			)
 		);
 		$this->assertStringContainsString( 'controls=false', $direct, 'template must honour controls=false' );
+		$this->assertStringContainsString( 'id="stream-player-' . $uid . '"', $direct, 'template must emit a uid-derived iframe id' );
+		$this->assertStringContainsString( 'class="stream-player"', $direct, 'template must emit the stream-player class' );
+		$this->assertStringContainsString( 'title="', $direct, 'template must emit an accessible iframe title' );
+
+		$other_uid = 'cccccccccccccccccccccccccccccccc';
+		$other     = $api->get_video_embed_template(
+			$other_uid,
+			array(
+				'controls' => true,
+			)
+		);
+		$this->assertStringContainsString( 'id="stream-player-' . $other_uid . '"', $other );
+		$this->assertNotSame(
+			$api->get_stream_player_id( $uid ),
+			$api->get_stream_player_id( $other_uid ),
+			'two videos must receive distinct iframe ids'
+		);
 
 		// Shortcode string "true"/"false" values normalise before the template.
 		$this->assertTrue( Cloudflare_Stream_API::normalize_bool( 'true' ) );

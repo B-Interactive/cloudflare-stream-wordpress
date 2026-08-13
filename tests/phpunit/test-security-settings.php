@@ -115,9 +115,10 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		);
 		$this->assertStringNotContainsString( 'evil.example', $evil );
 		$this->assertStringContainsString( 'videodelivery.net', $evil );
-		$this->assertStringContainsString( 'poster=' . rawurlencode( esc_url( $api->get_poster_url( $uid, '0s' ) ) ), $evil );
+		$fallback_poster = $api->get_poster_url( $uid, '0s' );
+		$this->assertStringContainsString( 'poster=' . rawurlencode( $fallback_poster ), $evil );
 
-		$good = 'https://videodelivery.net/' . $uid . '/thumbnails/thumbnail.jpg?time=0s';
+		$good = 'https://videodelivery.net/' . $uid . '/thumbnails/thumbnail.jpg?time=0s&x=1';
 		$ok   = $api->get_video_embed_template(
 			$uid,
 			array(
@@ -126,7 +127,9 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 			)
 		);
 		$this->assertStringNotContainsString( 'evil.example', $ok );
-		$this->assertStringContainsString( 'poster=' . rawurlencode( esc_url( $good ) ), $ok );
+		// Poster is encoded once as a query value; a raw & must not split the query.
+		$this->assertStringContainsString( 'poster=' . rawurlencode( $good ), $ok );
+		$this->assertStringNotContainsString( 'poster=' . $good, $ok );
 	}
 
 	/**

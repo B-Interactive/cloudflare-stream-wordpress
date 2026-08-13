@@ -6,7 +6,7 @@
  * Author URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
  * Plugin URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
  * Update URI: https://github.com/B-Interactive/cloudflare-stream-wordpress
- * Version: 1.1.7
+ * Version: 1.1.8
  * Requires at least: 6.9
  * Requires PHP: 7.4
  * License: GPL2+
