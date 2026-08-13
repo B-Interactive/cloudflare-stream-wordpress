@@ -97,6 +97,9 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 
 	/**
 	 * Foreign poster hosts fall back to the generated poster; allowed hosts keep the URL.
+	 *
+	 * Poster is encoded once as a query value so raw "&" cannot inject sibling
+	 * player params such as ad-url.
 	 */
 	public function test_posterurl_host_allowlist() {
 		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, false );
@@ -116,9 +119,10 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'evil.example', $evil );
 		$this->assertStringContainsString( 'videodelivery.net', $evil );
 		$fallback_poster = $api->get_poster_url( $uid, '0s' );
-		$this->assertStringContainsString( 'poster=' . rawurlencode( $fallback_poster ), $evil );
+		$this->assert_iframe_poster_query( $evil, $fallback_poster, 'evil-host fallback' );
 
-		$good = 'https://videodelivery.net/' . $uid . '/thumbnails/thumbnail.jpg?time=0s&x=1';
+		// Allowed host with query chars that would split the iframe query if left raw.
+		$good = 'https://videodelivery.net/' . $uid . '/thumbnails/thumbnail.jpg?time=0s&ad-url=https://evil.example/x';
 		$ok   = $api->get_video_embed_template(
 			$uid,
 			array(
@@ -126,10 +130,67 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 				'controls'  => true,
 			)
 		);
-		$this->assertStringNotContainsString( 'evil.example', $ok );
-		// Poster is encoded once as a query value; a raw & must not split the query.
-		$this->assertStringContainsString( 'poster=' . rawurlencode( $good ), $ok );
-		$this->assertStringNotContainsString( 'poster=' . $good, $ok );
+		// Host text may still appear inside the encoded poster value; the guard is
+		// that ad-url must not become a top-level iframe query key.
+		$this->assert_iframe_poster_query( $ok, $good, 'allowed poster with embedded query' );
+
+		// Direct builder path must match the template encoding rules.
+		$src = $api->build_iframe_src(
+			$uid,
+			array(
+				'posterurl' => $good,
+				'controls'  => true,
+			)
+		);
+		$this->assert_iframe_poster_query( 'src="' . esc_url( $src ) . '"', $good, 'build_iframe_src' );
+	}
+
+	/**
+	 * Assert iframe HTML/src carries one encoded poster value and no sibling ad-url.
+	 *
+	 * @param string $html          Embed HTML or a src attribute fragment.
+	 * @param string $expected_url  Decoded poster URL expected in the query.
+	 * @param string $label         Case label for assertion messages.
+	 */
+	private function assert_iframe_poster_query( $html, $expected_url, $label ) {
+		if ( preg_match( '/\bsrc="([^"]+)"/', $html, $m ) ) {
+			$src = $m[1];
+		} else {
+			// Bare iframe URL from build_iframe_src().
+			$src = $html;
+		}
+
+		// esc_url() turns top-level "&" into entities in attribute context.
+		$src = html_entity_decode( $src, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+
+		$this->assertNotSame( '', $src, "{$label}: iframe src missing" );
+
+		$query = wp_parse_url( $src, PHP_URL_QUERY );
+		$this->assertIsString( $query, "{$label}: iframe src query missing" );
+
+		$params = array();
+		wp_parse_str( $query, $params );
+
+		$this->assertArrayHasKey( 'poster', $params, "{$label}: poster query key missing" );
+		$this->assertArrayNotHasKey( 'ad-url', $params, "{$label}: ad-url must not be a sibling query key" );
+		$this->assertIsString( $params['poster'], "{$label}: poster must be a single string value" );
+		$this->assertSame(
+			$expected_url,
+			$params['poster'],
+			"{$label}: decoded poster must match the expected URL"
+		);
+
+		// Encoded form appears in the raw src; the unencoded URL must not.
+		$this->assertStringContainsString(
+			'poster=' . rawurlencode( $expected_url ),
+			$src,
+			"{$label}: poster must appear once-encoded in the src"
+		);
+		$this->assertStringNotContainsString(
+			'poster=' . $expected_url,
+			$src,
+			"{$label}: unencoded poster must not appear in the src"
+		);
 	}
 
 	/**

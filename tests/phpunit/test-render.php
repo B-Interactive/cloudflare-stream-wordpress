@@ -235,6 +235,31 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 		$this->assertNotSame( '', $embed2, 'canned token must produce a non-empty embed' );
 		$this->assertStringContainsString( 'canned-signed-token-for-fail-closed-test', $embed2 );
 
+		// Iframe element id stays tied to the video uid, not the short-lived token.
+		$expected_id = $api2->get_stream_player_id( $uid );
+		$this->assertStringContainsString(
+			'id="' . $expected_id . '"',
+			$embed2,
+			'signed embed iframe id must use the original video uid'
+		);
+		$this->assertStringNotContainsString(
+			'id="stream-player-canned-signed-token',
+			$embed2,
+			'signed embed iframe id must not be derived from the playback token'
+		);
+		$this->assertStringNotContainsString(
+			'canned-signed-token-for-fail-closed-test',
+			$expected_id,
+			'player id helper output must not contain the playback token'
+		);
+
+		$other_uid = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+		$this->assertNotSame(
+			$api2->get_stream_player_id( $uid ),
+			$api2->get_stream_player_id( $other_uid ),
+			'two video uids must receive distinct iframe ids'
+		);
+
 		cfstream_test_clear_http_attempts();
 	}
 

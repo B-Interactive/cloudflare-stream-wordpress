@@ -629,19 +629,23 @@ class Cloudflare_Stream_API {
 			Cloudflare_Stream_Settings::DEFAULT_SIGNED_URLS
 		);
 
+		// Keep the original video uid for a stable iframe element id.
+		$id_source_uid = $uid;
+		$playback_id   = $uid;
+
 		if ( $signed_urls ) {
 			$token = $this->get_signed_video_token( $uid );
 			if ( ! is_string( $token ) || '' === $token ) {
 				// Fail closed: do not fall back to a public UID embed.
 				return '';
 			}
-			$uid = $token;
+			$playback_id = $token;
 			$this->mark_signed_embed_uncacheable();
 		} elseif ( ! $this->is_valid_video_uid( $uid ) ) {
 			return '';
 		}
 
-		return $this->get_video_embed_template( $uid, $args );
+		return $this->get_video_embed_template( $playback_id, $args, $id_source_uid );
 	}
 
 	/**
@@ -676,10 +680,10 @@ class Cloudflare_Stream_API {
 
 		$base = $this->get_iframe_url( $uid );
 
+		// postertime is a whole number of seconds; the helper already adds the unit.
 		$poster_time = empty( $args['postertime'] )
-			? get_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME, Cloudflare_Stream_Settings::DEFAULT_POSTER_TIME )
-			: $args['postertime'];
-		$poster_time = $poster_time . 's';
+			? cloudflare_stream_poster_time()
+			: absint( $args['postertime'] ) . 's';
 		$poster_url  = empty( $args['posterurl'] )
 			? $this->get_poster_url( $uid, $poster_time )
 			: $this->sanitize_poster_url( $args['posterurl'], $uid, $poster_time );
@@ -697,8 +701,10 @@ class Cloudflare_Stream_API {
 			$muted = true;
 		}
 
+		// add_query_arg() does not encode new values; encode poster once so raw
+		// "&" inside the poster URL cannot become sibling player query params.
 		$query = array(
-			'poster' => $poster_url,
+			'poster' => rawurlencode( (string) $poster_url ),
 		);
 
 		if ( $muted ) {
@@ -721,9 +727,9 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Stable iframe element id derived from the video uid or token.
+	 * Stable iframe element id derived from the video uid.
 	 *
-	 * @param string $uid Unique Video ID or signed token.
+	 * @param string $uid Unique Video ID (not a short-lived playback token).
 	 * @return string
 	 */
 	public function get_stream_player_id( $uid ) {
@@ -735,7 +741,7 @@ class Cloudflare_Stream_API {
 			$raw = 'video';
 		}
 
-		// Keep ids short enough for HTML while remaining unique per playback id.
+		// Keep ids short enough for HTML while remaining unique per video uid.
 		if ( strlen( $raw ) > 48 ) {
 			$raw = substr( $raw, 0, 40 ) . '-' . substr( md5( (string) $uid ), 0, 8 );
 		}
@@ -744,20 +750,24 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Get the video embed with placeholder UID
+	 * Build the iframe embed markup for a playback id.
 	 *
-	 * @param string $uid  Unique Video ID or signed token.
-	 * @param array  $args Additional API arguments. Playback flags should be booleans.
+	 * @param string      $uid           Unique Video ID or signed playback token used in the iframe src.
+	 * @param array       $args          Additional API arguments. Playback flags should be booleans.
+	 * @param string|null $id_source_uid Optional video uid used only for the iframe element id.
 	 *
 	 * @since 1.0.9.4
 	 */
-	public function get_video_embed_template( $uid, $args = array() ) {
+	public function get_video_embed_template( $uid, $args = array(), $id_source_uid = null ) {
 		if ( ! is_array( $args ) ) {
 			$args = array();
 		}
 
-		$src       = $this->build_iframe_src( $uid, $args );
-		$player_id = $this->get_stream_player_id( $uid );
+		$src = $this->build_iframe_src( $uid, $args );
+
+		// Element id uses the video uid; the src path may carry a short-lived token.
+		$id_seed   = ( is_string( $id_source_uid ) && '' !== $id_source_uid ) ? $id_source_uid : $uid;
+		$player_id = $this->get_stream_player_id( $id_seed );
 		$title     = __( 'Cloudflare Stream video', 'cloudflare-stream' );
 
 		$video_embed = '<div class="cloudflare-stream" style="position: relative; padding-top: 56.25%"><iframe'

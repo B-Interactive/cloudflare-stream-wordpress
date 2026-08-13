@@ -14,9 +14,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Register block stylesheets referenced by block.json handles.
  *
+ * Front-end `style` is registered only; WordPress loads it when the block is
+ * present. Editor CSS is enqueued separately for the canvas iframe.
+ *
  * @since 1.0.0
  */
 function cloudflare_stream_register_block_styles() {
+	static $registered = false;
+	if ( $registered ) {
+		return;
+	}
+	$registered = true;
+
 	$style_path = plugin_dir_path( __DIR__ ) . 'dist/style-blocks.css';
 	if ( file_exists( $style_path ) ) {
 		wp_register_style(
@@ -40,22 +49,23 @@ function cloudflare_stream_register_block_styles() {
 add_action( 'init', 'cloudflare_stream_register_block_styles', 5 );
 
 /**
- * Enqueue the block stylesheets.
+ * Enqueue editor block styles for the canvas iframe.
  *
- * Both sheets go through `enqueue_block_assets` so the editor canvas iframe
- * receives them; the editor sheet is admin-only.
+ * Front-end block style is left to block.json registration so it loads only
+ * when the block is present on the page.
  *
  * @since 1.0.0
  */
 function cloudflare_stream_block_assets() {
-	cloudflare_stream_register_block_styles();
-
-	if ( wp_style_is( 'cloudflare-stream-block-style-css', 'registered' ) ) {
-		wp_enqueue_style( 'cloudflare-stream-block-style-css' );
-	}
-
 	if ( ! is_admin() ) {
 		return;
+	}
+
+	cloudflare_stream_register_block_styles();
+
+	// Front-end style is also needed inside the editor canvas iframe.
+	if ( wp_style_is( 'cloudflare-stream-block-style-css', 'registered' ) ) {
+		wp_enqueue_style( 'cloudflare-stream-block-style-css' );
 	}
 
 	if ( wp_style_is( 'cloudflare-stream-block-editor-css', 'registered' ) ) {
@@ -433,12 +443,15 @@ function cloudflare_stream_ajax_playback_urls() {
 	}
 
 	if ( isset( $_REQUEST['posterurl'] ) ) {
-		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['posterurl'] ) );
+		$raw_poster = wp_unslash( $_REQUEST['posterurl'] );
+		// Arrays and non-strings are ignored; matches sanitize_poster_url.
+		$args['posterurl'] = is_string( $raw_poster ) ? esc_url_raw( $raw_poster ) : '';
 	}
 
 	// Prefer the token-free thumbnail stored on the block when present.
 	if ( empty( $args['posterurl'] ) && isset( $_REQUEST['thumbnail'] ) ) {
-		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['thumbnail'] ) );
+		$raw_thumb = wp_unslash( $_REQUEST['thumbnail'] );
+		$args['posterurl'] = is_string( $raw_thumb ) ? esc_url_raw( $raw_thumb ) : '';
 	}
 
 	$iframe_src = $api->build_iframe_src( $playback_id, $args );
