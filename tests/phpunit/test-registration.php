@@ -122,4 +122,80 @@ class Test_CFStream_Registration extends WP_UnitTestCase {
 		$this->assertArrayNotHasKey( 'transform', $block->attributes );
 		$this->assertTrue( ! empty( $block->supports['align'] ) );
 	}
+
+	/**
+	 * Front-end block style is registered but not force-enqueued by block assets.
+	 *
+	 * WordPress may still enqueue the style when the block is rendered; this only
+	 * asserts cloudflare_stream_block_assets() does not globally enqueue on the
+	 * front end, while admin still receives editor and canvas styles.
+	 */
+	public function test_block_style_enqueue_admin_only_from_block_assets() {
+		if ( ! did_action( 'init' ) ) {
+			do_action( 'init' );
+		}
+
+		if ( function_exists( 'cloudflare_stream_register_block_styles' ) ) {
+			cloudflare_stream_register_block_styles();
+		}
+
+		$style_handle  = 'cloudflare-stream-block-style-css';
+		$editor_handle = 'cloudflare-stream-block-editor-css';
+
+		if ( ! wp_style_is( $style_handle, 'registered' ) ) {
+			$this->markTestSkipped( 'Front-end block style handle is not registered (dist CSS missing).' );
+		}
+
+		$this->assertTrue(
+			wp_style_is( $style_handle, 'registered' ),
+			'block.json front-end style handle must be registered after init'
+		);
+
+		// Isolate queue state from other tests.
+		wp_dequeue_style( $style_handle );
+		wp_dequeue_style( $editor_handle );
+		wp_styles()->queue = array_values(
+			array_diff(
+				(array) wp_styles()->queue,
+				array( $style_handle, $editor_handle )
+			)
+		);
+
+		// Simulated front-end request: no current admin screen.
+		unset( $GLOBALS['current_screen'] );
+		$this->assertFalse( is_admin(), 'front-end simulation must not report is_admin()' );
+
+		cloudflare_stream_block_assets();
+
+		$this->assertFalse(
+			wp_style_is( $style_handle, 'enqueued' ),
+			'cloudflare_stream_block_assets must not globally enqueue front-end block style'
+		);
+		$this->assertFalse(
+			wp_style_is( $editor_handle, 'enqueued' ),
+			'editor style must not be enqueued on the front end by block assets'
+		);
+
+		// Admin / editor canvas path still enqueues registered styles.
+		set_current_screen( 'edit-post' );
+		$this->assertTrue( is_admin(), 'edit-post screen must report is_admin()' );
+
+		cloudflare_stream_block_assets();
+
+		$this->assertTrue(
+			wp_style_is( $style_handle, 'enqueued' ),
+			'admin block assets should enqueue the canvas front-end style handle'
+		);
+		if ( wp_style_is( $editor_handle, 'registered' ) ) {
+			$this->assertTrue(
+				wp_style_is( $editor_handle, 'enqueued' ),
+				'admin block assets should enqueue the editor style handle'
+			);
+		}
+
+		// Leave the suite without an admin screen sticky for later tests.
+		unset( $GLOBALS['current_screen'] );
+		wp_dequeue_style( $style_handle );
+		wp_dequeue_style( $editor_handle );
+	}
 }

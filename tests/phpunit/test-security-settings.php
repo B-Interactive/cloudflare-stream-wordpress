@@ -109,6 +109,42 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		$uid = 'dddddddddddddddddddddddddddddddd';
 		$api = Cloudflare_Stream_API::instance();
 
+		// Allowed shapes for standard and customer delivery hosts.
+		$this->assertTrue(
+			$api->is_allowed_poster_host( 'https://videodelivery.net/' . $uid . '/thumbnails/thumbnail.jpg' ),
+			'videodelivery.net is an allowed poster host'
+		);
+		$this->assertTrue(
+			$api->is_allowed_poster_host( 'https://customer-abc123.cloudflarestream.com/' . $uid . '/thumbnails/thumbnail.jpg' ),
+			'customer-*.cloudflarestream.com is an allowed poster host'
+		);
+
+		// Reject foreign hosts, lookalike suffixes, and bare apex (not a thumbnail host).
+		$this->assertFalse(
+			$api->is_allowed_poster_host( 'https://evil.example/tracker.jpg' ),
+			'foreign hosts must be rejected'
+		);
+		$this->assertFalse(
+			$api->is_allowed_poster_host( 'https://evil-cloudflarestream.com/tracker.jpg' ),
+			'lookalike suffix hosts must be rejected'
+		);
+		$this->assertFalse(
+			$api->is_allowed_poster_host( 'https://cloudflarestream.com/' . $uid . '/thumbnails/thumbnail.jpg' ),
+			'bare cloudflarestream.com apex is not a poster host'
+		);
+		$this->assertFalse(
+			$api->is_allowed_poster_host( 'https://notcustomer.cloudflarestream.com/tracker.jpg' ),
+			'non-customer cloudflarestream.com subdomains must be rejected'
+		);
+
+		// Configured custom media domain is allowed exactly.
+		update_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN, 'customer-configured.cloudflarestream.com' );
+		$this->assertTrue(
+			$api->is_allowed_poster_host( 'https://customer-configured.cloudflarestream.com/' . $uid . '/thumbnails/thumbnail.jpg' ),
+			'configured customer media domain must be allowed'
+		);
+		update_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN, 'cloudflarestream.com' );
+
 		$evil = $api->get_video_embed_template(
 			$uid,
 			array(
@@ -120,6 +156,17 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'videodelivery.net', $evil );
 		$fallback_poster = $api->get_poster_url( $uid, '0s' );
 		$this->assert_iframe_poster_query( $evil, $fallback_poster, 'evil-host fallback' );
+
+		// Lookalike host must also fall back, not pass through.
+		$lookalike = $api->get_video_embed_template(
+			$uid,
+			array(
+				'posterurl' => 'https://evil-cloudflarestream.com/tracker.jpg',
+				'controls'  => true,
+			)
+		);
+		$this->assertStringNotContainsString( 'evil-cloudflarestream.com', $lookalike );
+		$this->assert_iframe_poster_query( $lookalike, $fallback_poster, 'lookalike-host fallback' );
 
 		// Allowed host with query chars that would split the iframe query if left raw.
 		$good = 'https://videodelivery.net/' . $uid . '/thumbnails/thumbnail.jpg?time=0s&ad-url=https://evil.example/x';
@@ -143,6 +190,17 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 			)
 		);
 		$this->assert_iframe_poster_query( 'src="' . esc_url( $src ) . '"', $good, 'build_iframe_src' );
+
+		// Customer subdomain poster is kept when allowed.
+		$customer_poster = 'https://customer-abc123.cloudflarestream.com/' . $uid . '/thumbnails/thumbnail.jpg?time=0s';
+		$customer_embed  = $api->get_video_embed_template(
+			$uid,
+			array(
+				'posterurl' => $customer_poster,
+				'controls'  => true,
+			)
+		);
+		$this->assert_iframe_poster_query( $customer_embed, $customer_poster, 'customer subdomain poster' );
 	}
 
 	/**
