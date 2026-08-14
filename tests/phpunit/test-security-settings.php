@@ -1384,6 +1384,65 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Signed-mode security defaults include home and distinct site hosts.
+	 */
+	public function test_default_video_security_args_include_home_and_site_hosts() {
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, false );
+		$api = Cloudflare_Stream_API::instance();
+		$this->assertSame( array(), $api->get_default_video_security_args() );
+
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, true );
+
+		// Same home and site host: a single origin entry.
+		update_option( 'home', 'https://www.example.com' );
+		update_option( 'siteurl', 'https://www.example.com' );
+		$same = $api->get_default_video_security_args();
+		$this->assertTrue( ! empty( $same['requireSignedURLs'] ) );
+		$this->assertSame( array( 'www.example.com' ), $same['allowedOrigins'] );
+
+		// Distinct WordPress address host is added without duplicates.
+		update_option( 'home', 'https://www.example.com' );
+		update_option( 'siteurl', 'https://cms.example.com' );
+		$split = $api->get_default_video_security_args();
+		$this->assertTrue( ! empty( $split['requireSignedURLs'] ) );
+		$this->assertSame(
+			array( 'www.example.com', 'cms.example.com' ),
+			$split['allowedOrigins']
+		);
+
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, false );
+	}
+
+	/**
+	 * Editor playback-urls returns a same-origin bridge URL, not a Cloudflare host.
+	 */
+	public function test_playback_urls_returns_same_origin_bridge() {
+		$admin_id = self::factory()->user->create( array( 'role' => 'administrator' ) );
+		wp_set_current_user( $admin_id );
+
+		$uid  = 'dddddddddddddddddddddddddddddddd';
+		$args = array(
+			'controls' => true,
+			'autoplay' => false,
+			'loop'     => false,
+			'muted'    => false,
+		);
+		$url  = cloudflare_stream_build_preview_bridge_url( $uid, $args );
+
+		$this->assertStringContainsString( 'admin-ajax.php', $url );
+		$this->assertStringContainsString( 'action=cloudflare-stream-preview-bridge', $url );
+		$this->assertStringContainsString( 'uid=' . $uid, $url );
+		$this->assertStringContainsString( 'nonce=', $url );
+		$this->assertStringNotContainsString( 'cloudflarestream.com', $url );
+		$this->assertStringNotContainsString( 'videodelivery.net', $url );
+
+		// Bridge host matches this site so the nested player can send a site Referer.
+		$bridge_host = wp_parse_url( $url, PHP_URL_HOST );
+		$admin_host  = wp_parse_url( admin_url(), PHP_URL_HOST );
+		$this->assertSame( $admin_host, $bridge_host );
+	}
+
+	/**
 	 * Build a disposable RSA private key PEM for local validation tests.
 	 *
 	 * @return string PEM or empty string on failure.

@@ -24,6 +24,7 @@ class CFStream_Smoke_Assertions {
 		'cloudflare-stream-delete',
 		'cloudflare-stream-update',
 		'cloudflare-stream-playback-urls',
+		'cloudflare-stream-preview-bridge',
 	);
 
 	const BLOCK_NAME     = 'cloudflare-stream/block-video';

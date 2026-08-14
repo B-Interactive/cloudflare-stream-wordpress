@@ -22,14 +22,16 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 		'cloudflare-stream-delete',
 		'cloudflare-stream-update',
 		'cloudflare-stream-playback-urls',
+		'cloudflare-stream-preview-bridge',
 	);
 
 	/**
 	 * Subscriber with a valid nonce must be rejected by each handler.
 	 */
 	public function test_subscriber_forbidden_with_valid_nonce() {
-		$this->assertCount( 6, $this->actions, 'capability suite must cover six AJAX actions' );
+		$this->assertCount( 7, $this->actions, 'capability suite must cover seven AJAX actions' );
 		$this->assertContains( 'cloudflare-stream-playback-urls', $this->actions );
+		$this->assertContains( 'cloudflare-stream-preview-bridge', $this->actions );
 
 		$subscriber_id = self::factory()->user->create( array( 'role' => 'subscriber' ) );
 		wp_set_current_user( $subscriber_id );
@@ -128,6 +130,7 @@ class Test_CFStream_Ajax_Capabilities extends WP_Ajax_UnitTestCase {
 		$read   = array(
 			'query-cloudflare-stream-attachments',
 			'cloudflare-stream-playback-urls',
+			'cloudflare-stream-preview-bridge',
 		);
 
 		$editor_id = self::factory()->user->create( array( 'role' => 'editor' ) );

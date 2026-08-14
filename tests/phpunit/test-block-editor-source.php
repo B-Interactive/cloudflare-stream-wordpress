@@ -86,18 +86,37 @@ class Test_CFStream_Block_Editor_Source extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Current editor preview uses a server-built iframe src for all modes.
+	 * Current editor preview uses a server-built same-origin bridge src.
 	 */
 	public function test_current_preview_uses_server_built_src() {
 		$edit = $this->read_src( 'src/block/edit.js' );
 		$lib  = $this->read_src( 'src/block/lib.js' );
+		$init = $this->read_src( 'src/init.php' );
 
 		$this->assertStringContainsString( 'previewIframeSource', $edit );
 		$this->assertStringContainsString( 'cloudflare-stream-playback-urls', $edit );
 		$this->assertStringNotContainsString( 'streamIframeSource(', $edit );
 		$this->assertStringNotContainsString( 'signedIframeSource(', $edit );
+		$this->assertStringNotContainsString( 'CFSTREAM_DEBUG', $edit );
 		$this->assertStringContainsString( 'export const streamIframeSource', $lib );
 		$this->assertStringContainsString( 'export const previewIframeSource', $lib );
+
+		$this->assertStringContainsString(
+			'cloudflare_stream_build_preview_bridge_url',
+			$init,
+			'playback-urls must hand the editor a same-origin bridge URL'
+		);
+		$this->assertStringContainsString(
+			'cloudflare-stream-preview-bridge',
+			$init,
+			'preview bridge AJAX action must be registered'
+		);
+		$this->assertStringContainsString(
+			"frame-ancestors 'self'",
+			$init,
+			'bridge must restrict framing to this site'
+		);
+		$this->assertStringNotContainsString( 'CFSTREAM_DEBUG', $init );
 	}
 
 	/**

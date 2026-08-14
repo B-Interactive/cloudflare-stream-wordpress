@@ -1289,6 +1289,10 @@ function CloudflareStreamEdit( {
 		status,
 	] );
 
+	// Wait for the server-built same-origin bridge URL so host and query stay
+	// server-owned and the nested Stream player receives a site Referer.
+	const previewSource = previewIframeSource( previewUrls );
+
 	if ( status !== 'ready' ) {
 		const showProgress =
 			status === 'uploading' || status === 'encoding';
@@ -1408,9 +1412,6 @@ function CloudflareStreamEdit( {
 			</div>
 		);
 	}
-
-	// Wait for the server-built preview URL so host and query stay server-owned.
-	const previewSource = previewIframeSource( previewUrls );
 
 	return (
 		<>

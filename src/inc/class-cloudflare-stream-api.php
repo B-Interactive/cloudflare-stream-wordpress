@@ -1368,8 +1368,8 @@ class Cloudflare_Stream_API {
 	 * Default requireSignedURLs / allowedOrigins for new videos.
 	 *
 	 * Only when Use Signed URLs is on: require signed playback and allow this
-	 * site host (from home_url). When off, returns empty so public uploads
-	 * are left alone.
+	 * site's public host (home_url) plus the WordPress address host (site_url)
+	 * when that differs. When off, returns empty so public uploads are left alone.
 	 *
 	 * @return array Fragment to merge into create/update bodies.
 	 */
@@ -1382,9 +1382,16 @@ class Cloudflare_Stream_API {
 			'requireSignedURLs' => true,
 		);
 
-		$host = wp_parse_url( home_url(), PHP_URL_HOST );
-		if ( is_string( $host ) && '' !== $host ) {
-			$args['allowedOrigins'] = array( $host );
+		$origins = array();
+		foreach ( array( home_url(), site_url() ) as $url ) {
+			$host = wp_parse_url( $url, PHP_URL_HOST );
+			if ( is_string( $host ) && '' !== $host ) {
+				$origins[] = $host;
+			}
+		}
+		$origins = array_values( array_unique( $origins ) );
+		if ( ! empty( $origins ) ) {
+			$args['allowedOrigins'] = $origins;
 		}
 
 		return $args;

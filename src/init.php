@@ -588,33 +588,11 @@ function cloudflare_stream_ajax_check_upload() {
 add_action( 'wp_ajax_cloudflare-stream-check-upload', 'cloudflare_stream_ajax_check_upload' );
 
 /**
- * AJAX method for resolving editor preview URLs for a video.
+ * Collect playback flags and optional poster from an AJAX request.
  *
- * Returns a full iframe src built on the server for both signed and unsigned
- * playback so the editor and front end share one URL builder. When signed
- * playback is on the path carries a short-lived token. Only the playback token
- * is ever returned; the Cloudflare API token stays on the server.
- *
- * @since 1.1.7
+ * @return array Args suitable for build_iframe_src() / get_video_embed_template().
  */
-function cloudflare_stream_ajax_playback_urls() {
-	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
-	cloudflare_stream_verify_ajax_capability( cloudflare_stream_ajax_edit_capability() );
-
-	$uid = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
-
-	$api         = Cloudflare_Stream_API::instance();
-	$playback_id = $api->get_playback_id( $uid );
-
-	if ( false === $playback_id ) {
-		// Fail closed, exactly as the front end does: no unsigned fallback.
-		wp_send_json_error(
-			array(
-				'message' => __( 'Could not create a playback preview for this video.', 'cloudflare-stream' ),
-			)
-		);
-	}
-
+function cloudflare_stream_playback_args_from_request() {
 	$args = array();
 	foreach ( array( 'controls', 'autoplay', 'loop', 'muted', 'preload' ) as $flag ) {
 		if ( ! array_key_exists( $flag, $_REQUEST ) ) {
@@ -633,22 +611,162 @@ function cloudflare_stream_ajax_playback_urls() {
 		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['thumbnail'] ) );
 	}
 
-	$iframe_src = $api->build_iframe_src( $playback_id, $args );
+	return $args;
+}
+
+/**
+ * Build a same-origin editor preview bridge URL for a video.
+ *
+ * The bridge is a real https document on this site so the nested Stream player
+ * receives a site Referer and matches allowedOrigins. The playback token is
+ * minted inside the bridge response, not placed in this URL.
+ *
+ * @param string $uid  Video uid.
+ * @param array  $args Playback flags and optional posterurl.
+ * @return string Absolute admin-ajax URL.
+ */
+function cloudflare_stream_build_preview_bridge_url( $uid, $args = array() ) {
+	$query = array(
+		'action' => 'cloudflare-stream-preview-bridge',
+		'uid'    => (string) $uid,
+		'nonce'  => wp_create_nonce( Cloudflare_Stream_Settings::NONCE ),
+	);
+
+	foreach ( array( 'controls', 'autoplay', 'loop', 'muted', 'preload' ) as $flag ) {
+		if ( ! array_key_exists( $flag, $args ) ) {
+			continue;
+		}
+		$query[ $flag ] = ! empty( $args[ $flag ] ) ? 'true' : 'false';
+	}
+
+	if ( ! empty( $args['posterurl'] ) && is_string( $args['posterurl'] ) ) {
+		$query['posterurl'] = $args['posterurl'];
+	}
+
+	return add_query_arg( $query, admin_url( 'admin-ajax.php' ) );
+}
+
+/**
+ * AJAX method for resolving editor preview URLs for a video.
+ *
+ * Returns a same-origin bridge URL as iframeSrc so the block editor canvas
+ * (including the blob document used with apiVersion 3) can embed Stream without
+ * losing the site Referer that allowedOrigins requires. The Cloudflare API
+ * token stays on the server; the playback token is minted only inside the bridge.
+ *
+ * @since 1.1.7
+ */
+function cloudflare_stream_ajax_playback_urls() {
+	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+	cloudflare_stream_verify_ajax_capability( cloudflare_stream_ajax_edit_capability() );
+
+	$uid = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
+	if ( '' === $uid ) {
+		wp_send_json_error(
+			array(
+				'message' => __( 'Could not create a playback preview for this video.', 'cloudflare-stream' ),
+			)
+		);
+	}
+
+	$api  = Cloudflare_Stream_API::instance();
+	$args = cloudflare_stream_playback_args_from_request();
+
+	// Fail closed early when signed playback cannot be prepared.
+	if ( $api->is_signed_playback_enabled() ) {
+		$playback_id = $api->get_playback_id( $uid );
+		if ( false === $playback_id ) {
+			wp_send_json_error(
+				array(
+					'message' => __( 'Could not create a playback preview for this video.', 'cloudflare-stream' ),
+				)
+			);
+		}
+	}
+
+	$bridge_src = cloudflare_stream_build_preview_bridge_url( $uid, $args );
+
+	// Poster uses the stable video uid so library and attributes stay token-free.
 	$poster_url = empty( $args['posterurl'] )
-		? $api->get_poster_url( $playback_id, cloudflare_stream_poster_time() )
-		: $api->sanitize_poster_url( $args['posterurl'], $playback_id, cloudflare_stream_poster_time() );
+		? $api->get_poster_url( $uid, cloudflare_stream_poster_time() )
+		: $api->sanitize_poster_url( $args['posterurl'], $uid, cloudflare_stream_poster_time() );
 
 	wp_send_json_success(
 		array(
-			// Full src including query; preferred by the current editor preview.
-			'iframeSrc' => $iframe_src,
-			// Base URL kept for older callers that append their own query.
-			'iframeUrl' => $api->get_iframe_url( $playback_id ),
+			// Same-origin bridge; preferred by the current editor preview.
+			'iframeSrc' => $bridge_src,
+			// Alias kept for older callers that read iframeUrl as the full src.
+			'iframeUrl' => $bridge_src,
 			'posterUrl' => $poster_url,
 		)
 	);
 }
 add_action( 'wp_ajax_cloudflare-stream-playback-urls', 'cloudflare_stream_ajax_playback_urls' );
+
+/**
+ * Same-origin HTML bridge that embeds the Stream player for the block editor.
+ *
+ * Served only to logged-in users who can edit content. The response is framed
+ * only by this site (frame-ancestors self) so third parties cannot borrow the
+ * site origin. The playback token appears only in this HTML, never in post content.
+ *
+ * @since 1.1.8
+ */
+function cloudflare_stream_ajax_preview_bridge() {
+	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
+
+	if ( ! current_user_can( cloudflare_stream_ajax_edit_capability() ) ) {
+		status_header( 403 );
+		nocache_headers();
+		header( 'Content-Type: text/html; charset=utf-8' );
+		echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'
+			. esc_html__( 'Preview unavailable', 'cloudflare-stream' )
+			. '</title></head><body><p>'
+			. esc_html__( 'You do not have permission to preview this video.', 'cloudflare-stream' )
+			. '</p></body></html>';
+		exit;
+	}
+
+	$uid         = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
+	$api         = Cloudflare_Stream_API::instance();
+	$playback_id = $api->get_playback_id( $uid );
+
+	nocache_headers();
+	header( 'Content-Type: text/html; charset=utf-8' );
+	// Only this site may frame the bridge; keeps allowedOrigins meaningful.
+	header( "Content-Security-Policy: frame-ancestors 'self'" );
+	header( 'X-Frame-Options: SAMEORIGIN' );
+
+	if ( false === $playback_id ) {
+		// Not a capability refusal; keep 403 for auth only so AJAX tests stay accurate.
+		status_header( 502 );
+		echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>'
+			. esc_html__( 'Preview unavailable', 'cloudflare-stream' )
+			. '</title></head><body><p>'
+			. esc_html__( 'Could not create a playback preview for this video.', 'cloudflare-stream' )
+			. '</p></body></html>';
+		exit;
+	}
+
+	$args = cloudflare_stream_playback_args_from_request();
+	// Element id stays on the stable uid; src path may carry a short-lived token.
+	$embed = $api->get_video_embed_template( $playback_id, $args, $uid );
+
+	status_header( 200 );
+	echo '<!DOCTYPE html><html><head><meta charset="utf-8">';
+	echo '<meta name="viewport" content="width=device-width, initial-scale=1">';
+	echo '<title>' . esc_html__( 'Cloudflare Stream video', 'cloudflare-stream' ) . '</title>';
+	echo '<style>';
+	echo 'html,body{margin:0;height:100%;background:#000;overflow:hidden}';
+	echo '.cloudflare-stream{position:relative;height:100%;padding-top:0!important}';
+	echo '.cloudflare-stream iframe{position:absolute;inset:0;width:100%;height:100%;border:0}';
+	echo '</style></head><body>';
+	// Embed markup is built with escaped attributes in get_video_embed_template().
+	echo $embed; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	echo '</body></html>';
+	exit;
+}
+add_action( 'wp_ajax_cloudflare-stream-preview-bridge', 'cloudflare_stream_ajax_preview_bridge' );
 
 /**
  * AJAX method for initializing a video upload.

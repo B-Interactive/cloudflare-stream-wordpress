@@ -836,11 +836,19 @@ class Cloudflare_Stream_Settings {
 	 */
 	public function api_signed_urls_cb() {
 		$signed_urls = get_option( self::OPTION_SIGNED_URLS, self::DEFAULT_SIGNED_URLS );
-		$site_host   = wp_parse_url( home_url(), PHP_URL_HOST );
-		$site_host   = is_string( $site_host ) && '' !== $site_host ? $site_host : 'your-site-host';
+
+		$origin_hosts = array();
+		foreach ( array( home_url(), site_url() ) as $url ) {
+			$host = wp_parse_url( $url, PHP_URL_HOST );
+			if ( is_string( $host ) && '' !== $host ) {
+				$origin_hosts[] = $host;
+			}
+		}
+		$origin_hosts = array_values( array_unique( $origin_hosts ) );
+		$origins_label = ! empty( $origin_hosts ) ? implode( ', ', $origin_hosts ) : 'your-site-host';
 
 		echo '<label><input type="checkbox" class="regular-text" name="cloudflare_stream_signed_urls" id="cloudflare_stream_signed_urls" value="1"' . checked( $signed_urls, true, false ) . '>' . esc_html__( 'Protects video links from being copied, by creating a unique temporary URL.', 'cloudflare-stream' ) . '</label>'
-		. '<small class="form-text text-muted">' . esc_html__( 'New uploads will require signed URLs and allow this site as an embed origin', 'cloudflare-stream' ) . ' (' . esc_html( $site_host ) . '). '
+		. '<small class="form-text text-muted">' . esc_html__( 'New uploads will require signed URLs and allow this site as an embed origin', 'cloudflare-stream' ) . ' (' . esc_html( $origins_label ) . '). '
 		. esc_html__( 'Existing videos are unchanged; update them in the Cloudflare Stream dashboard if needed.', 'cloudflare-stream' ) . '</small>';
 	}
 
