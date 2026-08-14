@@ -1279,6 +1279,149 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 	}
 
 	/**
+	 * HTTP 429 Retry-After (delta-seconds) sets the per-uid negative cache TTL.
+	 */
+	public function test_mint_token_429_retry_after_sets_negative_cache_ttl() {
+		$this->reset_signing_runtime_state();
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, true );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION, 60 );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		$uid      = 'ffffffffffffffffffffffffffffffff';
+		$duration = 60;
+		$fail_key = 'cfstream_token_fail_' . md5( strtolower( $uid ) . '|' . $duration );
+		$retry_after = 120;
+
+		$api  = Cloudflare_Stream_API::instance();
+		$ref  = new ReflectionClass( $api );
+		$mint = $ref->getMethod( 'mint_token_via_api' );
+		$reason = $ref->getProperty( 'last_api_reason' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$mint->setAccessible( true );
+			$reason->setAccessible( true );
+		}
+
+		$filter = static function () use ( $retry_after ) {
+			return array(
+				'headers'  => array(
+					'Retry-After' => (string) $retry_after,
+				),
+				'body'     => wp_json_encode(
+					array(
+						'success' => false,
+						'errors'  => array(
+							array(
+								'code'    => 429,
+								'message' => 'Rate limited',
+							),
+						),
+						'messages' => array(),
+						'result'   => null,
+					)
+				),
+				'response' => array(
+					'code'    => 429,
+					'message' => 'Too Many Requests',
+				),
+				'cookies'  => array(),
+				'filename' => null,
+			);
+		};
+		add_filter( 'cfstream_test_pre_http_response', $filter, 10, 2 );
+
+		cfstream_test_clear_http_attempts();
+		$before = time();
+		$result = $mint->invoke( $api, $uid, time() + 3600, array() );
+		remove_filter( 'cfstream_test_pre_http_response', $filter, 10 );
+
+		$this->assertFalse( $result, 'rate-limited mint must fail closed' );
+		$this->assertSame( 'api_rate_limited', $reason->getValue( $api ) );
+		$this->assertNotEmpty( cfstream_test_get_http_attempts(), 'first mint must call the token API' );
+		$this->assertNotFalse( get_transient( $fail_key ), 'negative cache must be set after 429' );
+
+		$timeout = (int) get_option( '_transient_timeout_' . $fail_key );
+		$this->assertGreaterThan( 0, $timeout, 'negative cache must have a timeout' );
+
+		// TTL should follow Retry-After (120), not only the fixed 60s default.
+		$remaining = $timeout - $before;
+		$this->assertGreaterThan(
+			Cloudflare_Stream_Signing_Health::NEGATIVE_CACHE_TTL,
+			$remaining,
+			'Retry-After TTL must exceed the default negative-cache lifetime'
+		);
+		$this->assertGreaterThanOrEqual( $retry_after - 5, $remaining );
+		$this->assertLessThanOrEqual( $retry_after + 5, $remaining );
+
+		// Cached failure must suppress further HTTP without clearing the fail key.
+		cfstream_test_clear_http_attempts();
+		$result2 = $mint->invoke( $api, $uid, time() + 3600, array() );
+		$this->assertFalse( $result2 );
+		$this->assertSame( 'api_token_failed', $reason->getValue( $api ) );
+		$this->assertSame( array(), cfstream_test_get_http_attempts(), 'negative cache must block a second mint HTTP call' );
+	}
+
+	/**
+	 * HTTP 429 Retry-After as an HTTP-date sets a future negative cache TTL.
+	 */
+	public function test_mint_token_429_retry_after_http_date_sets_negative_cache_ttl() {
+		$this->reset_signing_runtime_state();
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, true );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION, 60 );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		$uid      = 'f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0';
+		$duration = 60;
+		$fail_key = 'cfstream_token_fail_' . md5( strtolower( $uid ) . '|' . $duration );
+		$delta    = 90;
+		$http_date = gmdate( 'D, d M Y H:i:s', time() + $delta ) . ' GMT';
+
+		$api  = Cloudflare_Stream_API::instance();
+		$ref  = new ReflectionClass( $api );
+		$mint = $ref->getMethod( 'mint_token_via_api' );
+		$reason = $ref->getProperty( 'last_api_reason' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$mint->setAccessible( true );
+			$reason->setAccessible( true );
+		}
+
+		$filter = static function () use ( $http_date ) {
+			return array(
+				'headers'  => array(
+					'Retry-After' => $http_date,
+				),
+				'body'     => '',
+				'response' => array(
+					'code'    => 429,
+					'message' => 'Too Many Requests',
+				),
+				'cookies'  => array(),
+				'filename' => null,
+			);
+		};
+		add_filter( 'cfstream_test_pre_http_response', $filter, 10, 2 );
+
+		$before = time();
+		$result = $mint->invoke( $api, $uid, time() + 3600, array() );
+		remove_filter( 'cfstream_test_pre_http_response', $filter, 10 );
+
+		$this->assertFalse( $result );
+		$this->assertSame( 'api_rate_limited', $reason->getValue( $api ) );
+		$this->assertNotFalse( get_transient( $fail_key ) );
+
+		$timeout   = (int) get_option( '_transient_timeout_' . $fail_key );
+		$remaining = $timeout - $before;
+		$this->assertGreaterThan(
+			Cloudflare_Stream_Signing_Health::NEGATIVE_CACHE_TTL,
+			$remaining,
+			'HTTP-date Retry-After must exceed the default negative-cache lifetime'
+		);
+		$this->assertGreaterThanOrEqual( $delta - 10, $remaining );
+		$this->assertLessThanOrEqual( $delta + 10, $remaining );
+	}
+
+	/**
 	 * Capture settings_page() HTML with settings fields registered.
 	 *
 	 * @param Cloudflare_Stream_Settings $settings Settings instance.
