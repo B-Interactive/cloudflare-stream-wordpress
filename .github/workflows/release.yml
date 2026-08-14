@@ -114,9 +114,12 @@ jobs:
             cloudflare-stream.zip.sha256
             cloudflare-stream.zip.blake2
           body: |
-            ## Checksums
+            ## New Installations
+            * Download the full plugin ZIP file from the [latest release of this plugin](https://github.com/B-Interactive/cloudflare-stream-wordpress/releases/latest)
+            * In the WordPress admin panel, go to Plugins > Add New > Upload Plugin and upload the ZIP file
 
-            SHA256 and BLAKE2b (via `b2sum`) digests for `cloudflare-stream.zip` are attached as `cloudflare-stream.zip.sha256` and `cloudflare-stream.zip.blake2`. Use them for manual supply-chain verification; WordPress does not verify these files automatically.
+            ## Updating
+            * If you're currently using plugin version 1.1.7 or newer, updating should hopefully now be supported within WordPress.
           generate_release_notes: true
           fail_on_unmatched_files: true
         env:
