@@ -429,12 +429,15 @@ class CFStream_Smoke_Assertions {
 	}
 
 	/**
-	 * Site Health registers the signing test.
+	 * Site Health registers the signing and signed-cache tests.
 	 */
 	public function s11_site_health_test() {
 		$tests = apply_filters( 'site_status_tests', array( 'direct' => array(), 'async' => array() ) );
 		if ( empty( $tests['direct']['cloudflare_stream_signing'] ) ) {
 			$this->fail( 'S11: site_status_tests missing cloudflare_stream_signing' );
+		}
+		if ( empty( $tests['direct']['cloudflare_stream_signed_cache'] ) ) {
+			$this->fail( 'S11: site_status_tests missing cloudflare_stream_signed_cache' );
 		}
 	}
 

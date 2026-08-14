@@ -434,9 +434,9 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Library listing under signed mode without a local key mints only a budgeted set of thumbnails.
+	 * Library listing under signed mode without a local key mints one token per page row.
 	 */
-	public function test_admin_mint_budget_limits_library_thumbnails() {
+	public function test_admin_mint_budget_covers_library_page() {
 		cfstream_test_clear_http_attempts();
 
 		$this->reset_signing_runtime_state();
@@ -450,8 +450,9 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 
 		$limit  = 40;
 		$budget = (int) Cloudflare_Stream_API::ADMIN_MINT_BUDGET;
-		$this->assertSame( 12, $budget );
+		$this->assertSame( 40, $budget );
 		$this->assertSame( 40, (int) Cloudflare_Stream_API::instance()->api_limit );
+		$this->assertSame( $budget, (int) Cloudflare_Stream_API::instance()->api_limit );
 
 		// Reset again after the api_limit probe created a singleton.
 		$this->reset_signing_runtime_state();
@@ -529,7 +530,9 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 		// Mirror the library AJAX path: list videos, then budgeted playback ids.
 		$listed = $api->get_videos(
 			array(
-				'query' => 'limit=' . $limit,
+				'query' => array(
+					'limit' => $limit,
+				),
 			)
 		);
 		$this->assertIsObject( $listed );
@@ -541,17 +544,14 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 		$rows        = array();
 
 		foreach ( $listed->result as $video ) {
-			$playback_id  = $api->get_playback_id( $video->uid, true );
-			$signed_thumb = ( false !== $playback_id )
-				? $api->get_poster_url( $playback_id, $poster_time )
-				: '';
-			$rows[]       = array(
-				'uid'   => $video->uid,
-				'thumb' => $signed_thumb,
-			);
-			if ( '' !== $signed_thumb ) {
+			$attachment = cloudflare_stream_attachment_from_video( $video, $api, $poster_time, '' );
+			$this->assertIsArray( $attachment );
+			$rows[] = $attachment;
+			if ( ! empty( $attachment['image']['src'] ) ) {
 				++$with_thumb;
 			}
+			$this->assertFalse( $attachment['previewUnavailable'] );
+			$this->assertSame( '', $attachment['playbackReason'] );
 		}
 
 		remove_filter( 'cfstream_test_pre_http_response', $filter, 10 );
@@ -560,9 +560,152 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 		$this->assertSame(
 			$budget,
 			$with_thumb,
-			'signed library listing should attach thumbnails for ' . $budget . ' of ' . $limit . ' rows'
+			'signed library listing should attach thumbnails for every row on the page'
 		);
 
+		cfstream_test_clear_http_attempts();
+	}
+
+	/**
+	 * Budget exhaustion is reported separately from mint failure.
+	 */
+	public function test_admin_mint_budget_exhaustion_reason() {
+		cfstream_test_clear_http_attempts();
+		$this->reset_signing_runtime_state();
+
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, true );
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS_DURATION, 60 );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_ID );
+		delete_option( Cloudflare_Stream_Settings::OPTION_SIGNING_KEY_PEM );
+
+		$token_calls = 0;
+		$filter      = static function ( $pre, $url ) use ( &$token_calls ) {
+			unset( $pre );
+			if ( false === strpos( (string) $url, '/token' ) ) {
+				return null;
+			}
+			++$token_calls;
+			return array(
+				'headers'  => array(),
+				'body'     => wp_json_encode(
+					array(
+						'success' => true,
+						'result'  => array(
+							'token' => 'minted-' . $token_calls,
+						),
+					)
+				),
+				'response' => array(
+					'code'    => 200,
+					'message' => 'OK',
+				),
+				'cookies'  => array(),
+				'filename' => null,
+			);
+		};
+		add_filter( 'cfstream_test_pre_http_response', $filter, 10, 2 );
+
+		$api    = Cloudflare_Stream_API::instance();
+		$budget = (int) Cloudflare_Stream_API::ADMIN_MINT_BUDGET;
+
+		for ( $i = 0; $i < $budget; $i++ ) {
+			$uid = sprintf( 'a%031x', $i );
+			$this->assertNotFalse( $api->get_playback_id( $uid, true ) );
+			$this->assertSame( '', $api->get_last_playback_reason() );
+		}
+
+		$overflow = sprintf( 'a%031x', $budget );
+		$this->assertFalse( $api->get_playback_id( $overflow, true ) );
+		$this->assertSame( 'mint_budget_exhausted', $api->get_last_playback_reason() );
+		$this->assertSame( $budget, $token_calls );
+
+		$attachment = cloudflare_stream_attachment_from_video(
+			(object) array(
+				'uid'      => $overflow,
+				'created'  => '2024-01-01T00:00:00Z',
+				'size'     => 1000,
+				'duration' => 10,
+				'meta'     => (object) array(
+					'name' => 'Overflow',
+				),
+			),
+			$api,
+			'0s',
+			''
+		);
+		$this->assertTrue( $attachment['previewUnavailable'] );
+		$this->assertSame( 'mint_budget_exhausted', $attachment['playbackReason'] );
+		$this->assertNotEmpty( $attachment['previewMessage'] );
+
+		remove_filter( 'cfstream_test_pre_http_response', $filter, 10 );
+		cfstream_test_clear_http_attempts();
+	}
+
+	/**
+	 * Account subdomain discovery is memoised and shares the stream list probe.
+	 */
+	public function test_account_subdomain_probe_is_shared_and_cached() {
+		cfstream_test_clear_http_attempts();
+		$this->reset_signing_runtime_state();
+		delete_transient( Cloudflare_Stream_API::TRANSIENT_ACCOUNT_SUBDOMAIN );
+
+		$list_calls = 0;
+		$filter     = static function ( $pre, $url ) use ( &$list_calls ) {
+			unset( $pre );
+			$path = (string) wp_parse_url( (string) $url, PHP_URL_PATH );
+			if ( false === strpos( (string) $url, '/stream' ) && ! preg_match( '#/stream/?$#', $path ) ) {
+				return null;
+			}
+			if ( false !== strpos( (string) $url, '/token' ) ) {
+				return null;
+			}
+			++$list_calls;
+			return array(
+				'headers'  => array(),
+				'body'     => wp_json_encode(
+					array(
+						'success' => true,
+						'result'  => array(
+							(object) array(
+								'uid'       => 'b' . str_repeat( '1', 31 ),
+								'thumbnail' => 'https://customer-abc123.cloudflarestream.com/b' . str_repeat( '1', 31 ) . '/thumbnails/thumbnail.jpg',
+							),
+						),
+					)
+				),
+				'response' => array(
+					'code'    => 200,
+					'message' => 'OK',
+				),
+				'cookies'  => array(),
+				'filename' => null,
+			);
+		};
+		add_filter( 'cfstream_test_pre_http_response', $filter, 10, 2 );
+
+		$api = Cloudflare_Stream_API::instance();
+		$this->assertTrue( $api->stream_list_probe_succeeded( $api->get_stream_list_probe() ) );
+		$this->assertSame( 1, $list_calls );
+
+		$host = $api->get_account_subdomain();
+		$this->assertSame( 'customer-abc123.cloudflarestream.com', $host );
+		$this->assertSame( 1, $list_calls, 'subdomain must reuse the shared list probe' );
+
+		// Second call in the same request stays on the in-memory memo.
+		$this->assertSame( $host, $api->get_account_subdomain() );
+		$this->assertSame( 1, $list_calls );
+
+		// Fresh instance still hits the durable transient, not the network.
+		$api_prop = new ReflectionProperty( 'Cloudflare_Stream_API', 'instance' );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$api_prop->setAccessible( true );
+		}
+		$api_prop->setValue( null, false );
+		$api2 = Cloudflare_Stream_API::instance();
+		$this->assertSame( $host, $api2->get_account_subdomain() );
+		$this->assertSame( 1, $list_calls );
+
+		remove_filter( 'cfstream_test_pre_http_response', $filter, 10 );
 		cfstream_test_clear_http_attempts();
 	}
 

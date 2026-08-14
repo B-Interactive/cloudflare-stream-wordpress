@@ -92,6 +92,7 @@ class Test_CFStream_Block_Editor_Source extends WP_UnitTestCase {
 		$edit = $this->read_src( 'src/block/edit.js' );
 		$lib  = $this->read_src( 'src/block/lib.js' );
 		$init = $this->read_src( 'src/init.php' );
+		$ajax = $this->read_src( 'src/lib/ajax.js' );
 
 		$this->assertStringContainsString( 'previewIframeSource', $edit );
 		$this->assertStringContainsString( 'cloudflare-stream-playback-urls', $edit );
@@ -117,6 +118,12 @@ class Test_CFStream_Block_Editor_Source extends WP_UnitTestCase {
 			'bridge must restrict framing to this site'
 		);
 		$this->assertStringNotContainsString( 'CFSTREAM_DEBUG', $init );
+
+		$this->assertStringContainsString( 'options.signal', $ajax );
+		$this->assertStringContainsString( 'ENCODE_POLL_MAX_MS', $edit );
+		$this->assertStringContainsString( 'AbortController', $edit );
+		$this->assertStringContainsString( 'previewAbortRef', $edit );
+		$this->assertStringContainsString( 'encodeAbortRef', $edit );
 	}
 
 	/**
