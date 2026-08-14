@@ -19,6 +19,7 @@ import { userCanManageStream } from '../lib/capabilities';
  * WordPress dependencies
  */
 import { sprintf, __ } from '@wordpress/i18n';
+import { speak } from '@wordpress/a11y';
 import {
 	Disabled,
 	Button,
@@ -48,6 +49,12 @@ const ENCODE_POLL_MAX_ATTEMPTS = 3;
 
 /** Overall wall-clock limit for one encoding poll run (30 minutes). */
 const ENCODE_POLL_MAX_MS = 30 * 60 * 1000;
+
+/** Minimum gap between polite progress percentage announcements. */
+const PROGRESS_SPEAK_MIN_MS = 4000;
+
+/** Minimum percentage step between polite progress announcements. */
+const PROGRESS_SPEAK_MIN_STEP = 10;
 
 /**
  * Resolve the UI status from block attributes.
@@ -227,7 +234,6 @@ function CloudflareStreamEdit( {
 		statusFromAttributes( attributes, canManage )
 	);
 	const [ progress, setProgress ] = useState( null );
-	const [ errorMessage, setErrorMessage ] = useState( '' );
 	// Preview URLs are built server-side and held in state only, so no
 	// short-lived token is ever written into block attributes / post content.
 	const [ previewUrls, setPreviewUrls ] = useState( null );
@@ -243,6 +249,9 @@ function CloudflareStreamEdit( {
 	const encodePollAttemptsRef = useRef( 0 );
 	const readySnapshotRef = useRef( snapshotReadyAttributes( attributes ) );
 	const mediaFrameRef = useRef( null );
+	const progressSpeakPhaseRef = useRef( '' );
+	const progressSpeakLastAtRef = useRef( 0 );
+	const progressSpeakLastPctRef = useRef( null );
 
 	// Async upload/encode callbacks read the latest props via refs.
 	const attributesRef = useRef( attributes );
@@ -313,7 +322,6 @@ function CloudflareStreamEdit( {
 
 		setStatus( 'error' );
 		setProgress( null );
-		setErrorMessage( text );
 	}, [] );
 
 	const toggleAttribute = useCallback(
@@ -437,7 +445,6 @@ function CloudflareStreamEdit( {
 					} );
 					setStatus( 'idle' );
 					setProgress( null );
-					setErrorMessage( '' );
 				} )
 				.catch( ( error ) => {
 					console.error( error );
@@ -504,7 +511,6 @@ function CloudflareStreamEdit( {
 
 			setStatus( 'ready' );
 			setProgress( null );
-			setErrorMessage( '' );
 		},
 		[
 			abortUpload,
@@ -534,37 +540,32 @@ function CloudflareStreamEdit( {
 		mediaFrameRef.current.open();
 	}, [ canManage ] );
 
+	const idleInstructions = canManage
+		? __(
+				'Select a file from your library, or choose a video from Stream.',
+				'cloudflare-stream'
+		  )
+		: __(
+				'Choose a video from the Stream library. An administrator uploads new videos.',
+				'cloudflare-stream'
+		  );
+
+	// Errors are shown once via noticeUI; keep placeholder copy for recovery.
 	const instructions =
-		status === 'error'
-			? errorMessage
-			: {
-					idle: canManage
-						? __(
-								'Select a file from your library, or choose a video from Stream.',
-								'cloudflare-stream'
-						  )
-						: __(
-								'Choose a video from the Stream library. An administrator uploads new videos.',
-								'cloudflare-stream'
-						  ),
-					uploading: __(
-						'Uploading your video.',
-						'cloudflare-stream'
-					),
-					encoding: __(
-						'Upload complete. Processing video.',
-						'cloudflare-stream'
-					),
-			  }[ status ] ||
-			  ( canManage
-					? __(
-							'Select a file from your library, or choose a video from Stream.',
-							'cloudflare-stream'
-					  )
-					: __(
-							'Choose a video from the Stream library. An administrator uploads new videos.',
-							'cloudflare-stream'
-					  ) );
+		{
+			idle: idleInstructions,
+			error: idleInstructions,
+			uploading: __( 'Uploading your video.', 'cloudflare-stream' ),
+			encoding: __(
+				'Upload complete. Processing video.',
+				'cloudflare-stream'
+			),
+		}[ status ] || idleInstructions;
+
+	const progressBarLabel =
+		status === 'encoding'
+			? __( 'Video processing progress', 'cloudflare-stream' )
+			: __( 'Video upload progress', 'cloudflare-stream' );
 
 	/**
 	 * Return to the empty/edit placeholder so the user can pick another file.
@@ -595,7 +596,6 @@ function CloudflareStreamEdit( {
 
 		setStatus( 'idle' );
 		setProgress( null );
-		setErrorMessage( '' );
 	}, [
 		abortUpload,
 		clearEncodingPoller,
@@ -624,7 +624,6 @@ function CloudflareStreamEdit( {
 			} );
 			setStatus( 'ready' );
 			setProgress( null );
-			setErrorMessage( '' );
 			return;
 		}
 
@@ -636,7 +635,6 @@ function CloudflareStreamEdit( {
 		} );
 		setStatus( 'idle' );
 		setProgress( null );
-		setErrorMessage( '' );
 	}, [
 		abortUpload,
 		clearEncodingPoller,
@@ -655,7 +653,6 @@ function CloudflareStreamEdit( {
 		clearNotices();
 		setStatus( 'idle' );
 		setProgress( null );
-		setErrorMessage( '' );
 	}, [ clearNotices ] );
 
 	/**
@@ -854,7 +851,6 @@ function CloudflareStreamEdit( {
 							retriedRef.current = true;
 							setStatus( 'uploading' );
 							setProgress( null );
-							setErrorMessage( '' );
 							uploadFromFilesRef.current( selectedFileRef.current );
 							return;
 						}
@@ -907,7 +903,6 @@ function CloudflareStreamEdit( {
 						};
 						setStatus( 'ready' );
 						setProgress( null );
-						setErrorMessage( '' );
 						return;
 					}
 
@@ -1018,7 +1013,6 @@ function CloudflareStreamEdit( {
 			encodePollStartedAtRef.current = Date.now();
 			setStatus( 'encoding' );
 			setProgress( null );
-			setErrorMessage( '' );
 			encode( activeGeneration );
 		},
 		[ canManage, encode ]
@@ -1138,7 +1132,6 @@ function CloudflareStreamEdit( {
 
 			setStatus( 'uploading' );
 			setProgress( null );
-			setErrorMessage( '' );
 			uploadFromFiles( file );
 		},
 		[
@@ -1211,6 +1204,83 @@ function CloudflareStreamEdit( {
 		uploadFromFilesRef.current = uploadFromFiles;
 	} );
 
+	// Polite live region for long-running upload and encoding progress.
+	useEffect( () => {
+		if ( status !== 'uploading' && status !== 'encoding' ) {
+			progressSpeakPhaseRef.current = '';
+			progressSpeakLastAtRef.current = 0;
+			progressSpeakLastPctRef.current = null;
+			return;
+		}
+
+		const phaseChanged = progressSpeakPhaseRef.current !== status;
+		if ( phaseChanged ) {
+			progressSpeakPhaseRef.current = status;
+			progressSpeakLastAtRef.current = Date.now();
+			progressSpeakLastPctRef.current =
+				typeof progress === 'number' ? progress : null;
+
+			if ( status === 'uploading' ) {
+				speak(
+					__( 'Uploading your video.', 'cloudflare-stream' ),
+					'polite'
+				);
+			} else {
+				speak(
+					__(
+						'Upload complete. Processing video.',
+						'cloudflare-stream'
+					),
+					'polite'
+				);
+			}
+
+			if ( typeof progress === 'number' ) {
+				speak(
+					sprintf(
+						/* translators: %d: progress percentage */
+						__( '%d percent complete.', 'cloudflare-stream' ),
+						progress
+					),
+					'polite'
+				);
+			}
+			return;
+		}
+
+		if ( typeof progress !== 'number' ) {
+			return;
+		}
+
+		const now = Date.now();
+		const lastPct = progressSpeakLastPctRef.current;
+		const elapsed = now - progressSpeakLastAtRef.current;
+		const stepped =
+			lastPct === null ||
+			Math.abs( progress - lastPct ) >= PROGRESS_SPEAK_MIN_STEP;
+		const isComplete = progress >= 100;
+		const due = elapsed >= PROGRESS_SPEAK_MIN_MS;
+
+		if ( ! isComplete && ! ( due && stepped ) ) {
+			return;
+		}
+
+		if ( lastPct !== null && progress === lastPct && ! isComplete ) {
+			return;
+		}
+
+		progressSpeakLastAtRef.current = now;
+		progressSpeakLastPctRef.current = progress;
+		speak(
+			sprintf(
+				/* translators: %d: progress percentage */
+				__( '%d percent complete.', 'cloudflare-stream' ),
+				progress
+			),
+			'polite'
+		);
+	}, [ status, progress ] );
+
 	// Resume encoding for blocks that already have a uid but no thumbnail.
 	useEffect( () => {
 		if ( canManage && attributes.uid && ! attributes.thumbnail ) {
@@ -1266,7 +1336,6 @@ function CloudflareStreamEdit( {
 			if ( status !== 'idle' ) {
 				setStatus( 'idle' );
 				setProgress( null );
-				setErrorMessage( '' );
 			}
 			return;
 		}
@@ -1276,7 +1345,6 @@ function CloudflareStreamEdit( {
 			if ( status !== 'ready' ) {
 				setStatus( 'ready' );
 				setProgress( null );
-				setErrorMessage( '' );
 			}
 			return;
 		}
@@ -1291,7 +1359,6 @@ function CloudflareStreamEdit( {
 		if ( status !== 'ready' ) {
 			setStatus( 'ready' );
 			setProgress( null );
-			setErrorMessage( '' );
 		}
 	}, [
 		attributes.fingerprint,
@@ -1422,8 +1489,13 @@ function CloudflareStreamEdit( {
 			<>
 				{ showProgress && (
 					<div className="cloudflare-stream-progress">
-						<ProgressBar value={ progress } />
-						{ null !== progress && <p>{ progress }%</p> }
+						<ProgressBar
+							value={ progress }
+							aria-label={ progressBarLabel }
+						/>
+						{ null !== progress && (
+							<p aria-hidden="true">{ progress }%</p>
+						) }
 					</div>
 				) }
 				{ showRetry && (
@@ -1585,19 +1657,23 @@ function CloudflareStreamEdit( {
 								'Cloudflare Stream video',
 								'cloudflare-stream'
 							) }
+							aria-hidden="true"
+							tabIndex={ -1 }
 						></iframe>
 					) : (
-						<Placeholder
-							icon={ cloudflareStream.icon }
-							label={ __(
-								'Cloudflare Stream Video',
-								'cloudflare-stream'
-							) }
-							instructions={ __(
-								'Loading the video preview…',
-								'cloudflare-stream'
-							) }
-						/>
+						<div aria-hidden="true">
+							<Placeholder
+								icon={ cloudflareStream.icon }
+								label={ __(
+									'Cloudflare Stream Video',
+									'cloudflare-stream'
+								) }
+								instructions={ __(
+									'Loading the video preview…',
+									'cloudflare-stream'
+								) }
+							/>
+						</div>
 					) }
 				</Disabled>
 			</figure>
