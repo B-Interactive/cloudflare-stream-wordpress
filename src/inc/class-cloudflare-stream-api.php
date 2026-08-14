@@ -165,7 +165,7 @@ class Cloudflare_Stream_API {
 	/**
 	 * Define and register singleton
 	 *
-	 * @var $instance The singleton instance of the class.
+	 * @var self|false
 	 */
 	private static $instance = false;
 
@@ -197,10 +197,14 @@ class Cloudflare_Stream_API {
 	/**
 	 * Make the request to the API
 	 *
-	 * @param string $endpoint API Endpoint.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
-	 * @param string $api_type Which API to make the request to. Defaults to 'accounts'.
+	 * @param string      $endpoint       API Endpoint.
+	 * @param array       $args           Additional API arguments.
+	 * @param bool|string $return_headers When true or 'headers', return response headers.
+	 *                                    When 'response', return code, headers and body.
+	 *                                    When false, return the response body string.
+	 * @param string      $api_type       Which API to make the request to. Defaults to 'accounts'.
+	 * @return string|array|\WP_HTTP_Headers|\WP_Error Body string, headers object/array,
+	 *                                                structured response array, or WP_Error on transport failure.
 	 * @since 1.0.0
 	 */
 	public function request( $endpoint, $args = array(), $return_headers = false, $api_type = 'accounts' ) {
@@ -287,9 +291,10 @@ class Cloudflare_Stream_API {
 	/**
 	 * Make a POST request
 	 *
-	 * @param string $endpoint API Endpoint.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @param string      $endpoint       API Endpoint.
+	 * @param array       $args           Additional API arguments.
+	 * @param bool|string $return_headers Same contract as request().
+	 * @return string|array|\WP_HTTP_Headers|\WP_Error
 	 * @since 1.0.0
 	 */
 	public function post( $endpoint, $args = array(), $return_headers = false ) {
@@ -301,12 +306,11 @@ class Cloudflare_Stream_API {
 	/**
 	 * Make a DELETE request
 	 *
-	 * @param string $endpoint API Endpoint.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @param string      $endpoint       API Endpoint.
+	 * @param array       $args           Additional API arguments.
+	 * @param bool|string $return_headers Same contract as request().
+	 * @return string|array|\WP_HTTP_Headers|\WP_Error
 	 * @since 1.0.0
-	 *
-	 * @returns object $response HTTP response object.
 	 */
 	public function delete( $endpoint, $args = array(), $return_headers = false ) {
 		$args['method'] = 'DELETE';
@@ -317,8 +321,9 @@ class Cloudflare_Stream_API {
 	/**
 	 * Wrapper for listing videos
 	 *
-	 * @param array $args Additional API arguments.
-	 * @param bool  $return_headers Return the response headers intead of the response body.
+	 * @param array       $args           Additional API arguments.
+	 * @param bool|string $return_headers Same contract as request(); decoded when body is returned.
+	 * @return object|null Decoded JSON object, or null when the body cannot be decoded.
 	 * @since 1.0.0
 	 */
 	public function get_videos( $args = array(), $return_headers = 'false' ) {
@@ -329,9 +334,10 @@ class Cloudflare_Stream_API {
 	/**
 	 * API wrapper for requesting a specific video's details
 	 *
-	 * @param string $uid Unique Video ID.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @param string      $uid            Unique Video ID.
+	 * @param array       $args           Additional API arguments.
+	 * @param bool|string $return_headers Same contract as request(); decoded when body is returned.
+	 * @return object|null Decoded JSON object, or null when invalid or undecodable.
 	 * @since 1.0.0
 	 */
 	public function get_video_details( $uid, $args = array(), $return_headers = false ) {
@@ -346,9 +352,10 @@ class Cloudflare_Stream_API {
 	/**
 	 * API wrapper for updating a specific video's details
 	 *
-	 * @param string $uid Unique Video ID.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @param string      $uid            Unique Video ID.
+	 * @param array       $args           Additional API arguments.
+	 * @param bool|string $return_headers Same contract as request(); decoded when body is returned.
+	 * @return object|null Decoded JSON object, or null when invalid or undecodable.
 	 * @since 1.0.0
 	 */
 	public function update_video_details( $uid, $args = array(), $return_headers = false ) {
@@ -1402,15 +1409,12 @@ class Cloudflare_Stream_API {
 	 * falls back to POST stream/{uid}/token (still signed). Without a key, uses the
 	 * API path as normal (not degraded).
 	 *
-	 * @param string $uid Unique Video ID.
+	 * @param string $uid  Unique Video ID.
 	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Unused; kept for backward compatibility.
 	 * @since 1.0.5
 	 * @return string|false Token string on success, false on failure.
 	 */
-	public function get_signed_video_token( $uid, $args = array(), $return_headers = false ) {
-		unset( $return_headers );
-
+	public function get_signed_video_token( $uid, $args = array() ) {
 		$this->last_local_reason = '';
 		$this->last_api_reason   = '';
 
@@ -1802,9 +1806,10 @@ class Cloudflare_Stream_API {
 	/**
 	 * Delete video.
 	 *
-	 * @param string $uid Unique Video ID.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
+	 * @param string      $uid            Unique Video ID.
+	 * @param array       $args           Additional API arguments.
+	 * @param bool|string $return_headers Same contract as request(); decoded when body is returned.
+	 * @return object|null Decoded JSON object, or null when invalid or undecodable.
 	 * @since 1.0.0
 	 */
 	public function delete_video( $uid, $args = array(), $return_headers = false ) {

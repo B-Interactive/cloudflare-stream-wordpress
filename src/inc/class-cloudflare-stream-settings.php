@@ -21,7 +21,7 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Define and register singleton
 	 *
-	 * @var $instance The singleton instance of the class.
+	 * @var self|false
 	 */
 	private static $instance = false;
 
@@ -96,7 +96,8 @@ class Cloudflare_Stream_Settings {
 	/**
 	 * Register stylesheets for admin area.
 	 *
-	 * @param array $hook Additional API arguments.
+	 * @param string $hook Current admin page hook suffix.
+	 * @return void
 	 * @since 1.0.9
 	 */
 	public function cloudflare_stream_admin_enqueue_styles( $hook ): void {

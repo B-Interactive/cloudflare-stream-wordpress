@@ -22,7 +22,7 @@ class Cloudflare_Stream_Shortcode {
 	/**
 	 * Define and register singleton
 	 *
-	 * @var $instance The singleton instance of the class.
+	 * @var self|false
 	 */
 	private static $instance = false;
 
@@ -66,6 +66,7 @@ class Cloudflare_Stream_Shortcode {
 	 * Cloudflare Stream Shortcode Handler
 	 *
 	 * @param array $atts Video attributes.
+	 * @return string Embed HTML, or empty when the video cannot be rendered.
 	 * @since 1.0.0
 	 */
 	public function video_shortcode_handler( $atts ) {

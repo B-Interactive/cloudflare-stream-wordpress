@@ -32,7 +32,7 @@ export function cloudflareChunkSize( fileSize ) {
 		return MIN_CHUNK_SIZE;
 	}
 
-	// Whole file fits under the minimum — one request, final-chunk exemption.
+	// Whole file fits under the minimum: one request, final-chunk exemption.
 	if ( size < MIN_CHUNK_SIZE ) {
 		return size;
 	}
