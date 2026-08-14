@@ -1443,6 +1443,53 @@ class Test_CFStream_Security_Settings extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Signed playback ids ignore inbound unsigned posterurl and use a matching poster.
+	 *
+	 * The editor bridge stores a token-free thumbnail on the block, then mints a
+	 * short-lived path token for the nested player. The poster query must use that
+	 * same token or Cloudflare returns 401 for the thumbnail.
+	 */
+	public function test_build_iframe_src_signed_token_replaces_unsigned_posterurl() {
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, true );
+		update_option( Cloudflare_Stream_Settings::OPTION_MEDIA_DOMAIN, 'cloudflarestream.com' );
+		update_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME, 10 );
+
+		$api           = Cloudflare_Stream_API::instance();
+		$uid           = 'dddddddddddddddddddddddddddddddd';
+		// Shape matches a minted playback JWT path segment (not a bare video uid).
+		$playback_token = 'eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.e30.signature';
+		$unsigned_poster = $api->get_poster_url( $uid, '10s' );
+
+		$src = $api->build_iframe_src(
+			$playback_token,
+			array(
+				'posterurl' => $unsigned_poster,
+				'controls'  => true,
+			)
+		);
+
+		$expected_poster = $api->get_poster_url( $playback_token, '10s' );
+		$this->assert_iframe_poster_query( $src, $expected_poster, 'signed token poster' );
+		// Path and poster both carry the token; bare uid must not appear in either.
+		$this->assertStringContainsString( '/' . $playback_token . '/iframe', $src );
+		$this->assertStringContainsString( '/' . $playback_token . '/thumbnails/', $expected_poster );
+		$this->assertStringNotContainsString( $uid, $expected_poster );
+
+		// Unsigned mode still keeps an allow-listed bare-uid posterurl.
+		update_option( Cloudflare_Stream_Settings::OPTION_SIGNED_URLS, false );
+		$unsigned_src = $api->build_iframe_src(
+			$uid,
+			array(
+				'posterurl' => $unsigned_poster,
+				'controls'  => true,
+			)
+		);
+		$this->assert_iframe_poster_query( $unsigned_src, $unsigned_poster, 'unsigned bare-uid poster kept' );
+
+		update_option( Cloudflare_Stream_Settings::OPTION_POSTER_TIME, Cloudflare_Stream_Settings::DEFAULT_POSTER_TIME );
+	}
+
+	/**
 	 * Build a disposable RSA private key PEM for local validation tests.
 	 *
 	 * @return string PEM or empty string on failure.

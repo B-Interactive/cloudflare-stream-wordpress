@@ -677,6 +677,8 @@ class Cloudflare_Stream_API {
 	 * Build the Stream iframe src from a playback id and playback options.
 	 *
 	 * Poster is encoded once as a query value. Playback flags should be booleans.
+	 * When the path id is a signed token, the poster always uses that same token
+	 * so an unsigned block thumbnail cannot be injected into a signed player.
 	 *
 	 * @param string $uid  Unique Video ID or signed token.
 	 * @param array  $args Playback options and optional posterurl / postertime.
@@ -693,9 +695,16 @@ class Cloudflare_Stream_API {
 		$poster_time = empty( $args['postertime'] )
 			? cloudflare_stream_poster_time()
 			: absint( $args['postertime'] ) . 's';
-		$poster_url  = empty( $args['posterurl'] )
-			? $this->get_poster_url( $uid, $poster_time )
-			: $this->sanitize_poster_url( $args['posterurl'], $uid, $poster_time );
+
+		// Signed path ids must pair with a matching signed poster. Bare-uid
+		// callers may still supply an allow-listed posterurl (unsigned mode).
+		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			$poster_url = $this->get_poster_url( $uid, $poster_time );
+		} else {
+			$poster_url = empty( $args['posterurl'] )
+				? $this->get_poster_url( $uid, $poster_time )
+				: $this->sanitize_poster_url( $args['posterurl'], $uid, $poster_time );
+		}
 
 		// Callers pass real booleans; defaults match the player when a flag is omitted.
 		$autoplay = ! empty( $args['autoplay'] );
