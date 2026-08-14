@@ -186,6 +186,79 @@ class Test_CFStream_Block_Editor_Source extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Block edit surface announces progress, names the bar, and hides inert preview.
+	 */
+	public function test_edit_accessibility_progress_and_inert_preview() {
+		$edit = $this->read_src( 'src/block/edit.js' );
+
+		$this->assertStringContainsString(
+			"import { speak } from '@wordpress/a11y'",
+			$edit,
+			'edit.js must import speak from @wordpress/a11y'
+		);
+		$this->assertStringContainsString(
+			'PROGRESS_SPEAK_MIN_MS',
+			$edit,
+			'edit.js must throttle progress announcements by time'
+		);
+		$this->assertStringContainsString(
+			'PROGRESS_SPEAK_MIN_STEP',
+			$edit,
+			'edit.js must throttle progress announcements by percentage step'
+		);
+		$this->assertStringContainsString(
+			"speak(",
+			$edit,
+			'edit.js must call speak for status messages'
+		);
+		$this->assertStringContainsString(
+			"'polite'",
+			$edit,
+			'progress announcements must use the polite live region'
+		);
+		$this->assertStringContainsString(
+			'%d percent complete.',
+			$edit,
+			'progress percentage must be announced in plain language'
+		);
+		$this->assertStringContainsString(
+			'Video upload progress',
+			$edit,
+			'ProgressBar must have an upload accessible name'
+		);
+		$this->assertStringContainsString(
+			'Video processing progress',
+			$edit,
+			'ProgressBar must have a processing accessible name'
+		);
+		$this->assertStringContainsString(
+			'aria-label={ progressBarLabel }',
+			$edit,
+			'ProgressBar must receive an accessible name prop'
+		);
+		$this->assertStringContainsString(
+			'aria-hidden="true"',
+			$edit,
+			'inert editor preview must leave the accessibility tree'
+		);
+		$this->assertStringContainsString(
+			'tabIndex={ -1 }',
+			$edit,
+			'inert editor preview iframe must not be tabbable'
+		);
+		$this->assertStringContainsString(
+			"error: idleInstructions",
+			$edit,
+			'error state must not reuse the notice text as placeholder instructions'
+		);
+		$this->assertStringNotContainsString(
+			'errorMessage',
+			$edit,
+			'error text must not be mirrored into placeholder instructions state'
+		);
+	}
+
+	/**
 	 * Deprecated iframe save shape stays stable for migration matching.
 	 */
 	public function test_deprecated_iframe_save_shape() {

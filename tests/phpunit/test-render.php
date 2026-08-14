@@ -366,6 +366,16 @@ class Test_CFStream_Render extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'id="stream-player-' . $uid . '"', $direct, 'template must emit a uid-derived iframe id' );
 		$this->assertStringContainsString( 'class="stream-player"', $direct, 'template must emit the stream-player class' );
 		$this->assertStringContainsString( 'title="', $direct, 'template must emit an accessible iframe title' );
+		$this->assertMatchesRegularExpression(
+			'/title="[^"]+"/',
+			$direct,
+			'front-end iframe title attribute must be non-empty'
+		);
+		$this->assertStringContainsString(
+			'title="' . esc_attr( __( 'Cloudflare Stream video', 'cloudflare-stream' ) ) . '"',
+			$direct,
+			'front-end iframe title must identify the Stream player'
+		);
 
 		$other_uid = 'cccccccccccccccccccccccccccccccc';
 		$other     = $api->get_video_embed_template(
