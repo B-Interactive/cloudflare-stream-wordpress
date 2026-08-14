@@ -37,20 +37,13 @@
 	}
 }
 
-/* Stream library sidebar: fields the Cloudflare library does not use. */
-label[data-setting="url"],
-label[data-setting="caption"],
-label[data-setting="description"] {
-	display: none !important;
-}
-
 /* Content editors may browse and select only. */
 .cloudflare-stream-media-frame--view-only {
 	.delete-attachment {
-		display: none !important;
+		display: none;
 	}
 
-	label[data-setting="title"] input {
+	.cloudflare-stream-attachment-details [data-setting="title"] input {
 		pointer-events: none;
 	}
 }

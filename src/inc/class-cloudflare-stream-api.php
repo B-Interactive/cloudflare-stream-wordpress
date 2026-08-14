@@ -192,9 +192,18 @@ class Cloudflare_Stream_API {
 			$args['timeout'] = 15;
 		}
 
-		$query_string = isset( $args['query'] ) ? '?' . $args['query'] : '';
-		$endpoint    .= $query_string;
-		$route        = $base_url . $endpoint;
+		// Named query args are encoded with add_query_arg(); a string is only
+		// for trusted internal callers that already built the query.
+		if ( isset( $args['query'] ) ) {
+			if ( is_array( $args['query'] ) ) {
+				$endpoint = add_query_arg( $args['query'], $endpoint );
+			} elseif ( is_string( $args['query'] ) && '' !== $args['query'] ) {
+				$endpoint .= ( false === strpos( $endpoint, '?' ) ? '?' : '&' ) . ltrim( $args['query'], '?&' );
+			}
+			unset( $args['query'] );
+		}
+
+		$route = $base_url . $endpoint;
 
 		$response = wp_remote_request( $route, $args );
 

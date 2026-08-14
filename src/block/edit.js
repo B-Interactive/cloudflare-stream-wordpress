@@ -11,6 +11,7 @@ import {
 	checkUploadStatus,
 } from './stream-upload';
 import { streamAjax } from '../lib/ajax';
+import { userCanManageStream } from '../lib/capabilities';
 
 /* global cloudflareStream */
 
@@ -214,12 +215,7 @@ function CloudflareStreamEdit( {
 	const { autoplay, controls, loop, muted } = attributes;
 	const blockProps = useBlockProps();
 	// Explicit manage flag from PHP; nonce alone is not the upload gate.
-	const canManage = Boolean(
-		typeof cloudflareStream !== 'undefined' &&
-			( cloudflareStream.canManage === true ||
-				cloudflareStream.canManage === 1 ||
-				cloudflareStream.canManage === '1' )
-	);
+	const canManage = userCanManageStream();
 	const hasNonce = Boolean(
 		typeof cloudflareStream !== 'undefined' && cloudflareStream.nonce
 	);
@@ -359,7 +355,7 @@ function CloudflareStreamEdit( {
 						return;
 					}
 
-					// Drop the library selection only after Cloudflare delete succeeds.
+					// Drop the library item only after Cloudflare delete succeeds.
 					if (
 						mediaFrameRef.current &&
 						typeof mediaFrameRef.current.state === 'function'
@@ -369,16 +365,41 @@ function CloudflareStreamEdit( {
 							state && state.get
 								? state.get( 'selection' )
 								: null;
-						if ( selection ) {
-							const model =
-								( attachment &&
-									attachment._selectionModel ) ||
-								selection.get( deletedUid ) ||
-								selection.findWhere( { uid: deletedUid } ) ||
-								selection.findWhere( { id: deletedUid } );
-							if ( model ) {
+						const library =
+							state && state.get
+								? state.get( 'library' )
+								: null;
+						const model =
+							( attachment && attachment._selectionModel ) ||
+							( selection &&
+								( selection.get( deletedUid ) ||
+									selection.findWhere( {
+										uid: deletedUid,
+									} ) ||
+									selection.findWhere( {
+										id: deletedUid,
+									} ) ) ) ||
+							( library &&
+								( library.get( deletedUid ) ||
+									library.findWhere( {
+										uid: deletedUid,
+									} ) ||
+									library.findWhere( {
+										id: deletedUid,
+									} ) ) );
+
+						if ( model ) {
+							if ( selection ) {
 								selection.remove( model );
 							}
+							if ( library ) {
+								library.remove( model );
+							}
+							// Mark destroyed so mirrored collections drop it.
+							if ( typeof model.set === 'function' ) {
+								model.set( 'destroyed', true );
+							}
+							model.destroyed = true;
 						}
 						if ( state && typeof state.reset === 'function' ) {
 							state.reset();

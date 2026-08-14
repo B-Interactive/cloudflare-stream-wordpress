@@ -4,26 +4,66 @@
  * @package cloudflare-stream
  */
 
-import { streamAjax } from '../../lib/ajax';
+import './attachment-details.js';
+import { userCanManageStream } from '../../lib/capabilities';
 
 /* global cloudflareStream */
 
 const Post = wp.media.view.MediaFrame.Post,
-	Library = wp.media.controller.Library,
-	l10n = wp.media.view.l10n;
+	Library = wp.media.controller.Library;
 
 /**
- * Whether the current user may rename or delete Stream library items.
- *
- * @return {boolean} True when PHP localised canManage is set.
+ * Register the Stream attachment details template once.
  */
-function userCanManageStream() {
-	return Boolean(
-		typeof cloudflareStream !== 'undefined' &&
-			( cloudflareStream.canManage === true ||
-				cloudflareStream.canManage === 1 ||
-				cloudflareStream.canManage === '1' )
-	);
+function ensureAttachmentDetailsTemplate() {
+	if ( document.getElementById( 'tmpl-cloudflare-stream-attachment-details' ) ) {
+		return;
+	}
+
+	const script = document.createElement( 'script' );
+	script.type = 'text/html';
+	script.id = 'tmpl-cloudflare-stream-attachment-details';
+	script.textContent = `
+		<h2>
+			${ wp.i18n.__( 'Attachment Details', 'cloudflare-stream' ) }
+			<span class="settings-save-status" role="status">
+				<span class="spinner"></span>
+				<span class="saved">${ wp.i18n.__( 'Saved.', 'cloudflare-stream' ) }</span>
+			</span>
+		</h2>
+		<div class="attachment-info">
+			<# if ( data.image && data.image.src ) { #>
+				<div class="thumbnail thumbnail-video">
+					<img src="{{ data.image.src }}" class="icon" draggable="false" alt="" />
+				</div>
+			<# } else { #>
+				<div class="thumbnail thumbnail-video">
+					<img src="{{ data.icon }}" class="icon" draggable="false" alt="" />
+				</div>
+			<# } #>
+			<div class="details">
+				<div class="filename">{{ data.filename }}</div>
+				<div class="uploaded">{{ data.dateFormatted }}</div>
+				<# if ( data.filesizeHumanReadable ) { #>
+					<div class="file-size">{{ data.filesizeHumanReadable }}</div>
+				<# } #>
+				<# if ( data.fileLength && data.fileLengthHumanReadable ) { #>
+					<div class="file-length">${ wp.i18n.__( 'Length:', 'cloudflare-stream' ) }
+						<span aria-hidden="true">{{ data.fileLengthHumanReadable }}</span>
+						<span class="screen-reader-text">{{ data.fileLengthHumanReadable }}</span>
+					</div>
+				<# } #>
+				<# if ( data.can && data.can.remove ) { #>
+					<button type="button" class="button-link delete-attachment">${ wp.i18n.__( 'Delete permanently', 'cloudflare-stream' ) }</button>
+				<# } #>
+			</div>
+		</div>
+		<span class="setting" data-setting="title">
+			<label for="cloudflare-stream-attachment-details-title" class="name">${ wp.i18n.__( 'Title', 'cloudflare-stream' ) }</label>
+			<input type="text" id="cloudflare-stream-attachment-details-title" value="{{ data.title }}" {{ data.maybeReadOnly }} <# if ( ! data.can || ! data.can.save ) { #>disabled="disabled"<# } #> />
+		</span>
+	`;
+	document.body.appendChild( script );
 }
 
 /**
@@ -44,9 +84,8 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		initialize( options ) {
 			this.select = options;
 			this.canManage = userCanManageStream();
-			this._sidebarBound = false;
-			this._onSidebarClick = null;
-			this._onSidebarChange = null;
+
+			ensureAttachmentDetailsTemplate();
 
 			_.defaults( this.options, {
 				id: 'cloudflare-stream',
@@ -78,16 +117,20 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 					toolbar: 'main-insert',
 					menu: false,
 					filterable: false,
-					searchable: false,
+					searchable: true,
 					date: false,
-					library: new cloudflareStream.media.model.Query(
+					// Attachments with query:true mirror a Stream Query so search
+					// and pagination hit admin-ajax instead of client filters only.
+					library: new cloudflareStream.media.model.Attachments(
 						null,
-						_.defaults(
-							{},
-							{
+						{
+							props: {
+								query: true,
 								type: 'video',
-							}
-						)
+								orderby: 'date',
+								order: 'DESC',
+							},
+						}
 					),
 					multiple: options.multiple ? 'reset' : false,
 					// Title edits and delete stay with manage capability.
@@ -102,8 +145,6 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 					// Update user settings when users adjust the
 					// attachment display settings.
 					displayUserSettings: false,
-
-					//AttachmentView: wp.media.view.Attachments.EditSelection,
 				} ),
 			] );
 		},
@@ -114,6 +155,7 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			Post.prototype.bindHandlers.apply( this, arguments );
 
 			this.on( 'activate', this.activate, this );
+			this.on( 'content:render:browse', this.patchBrowserDetails, this );
 
 			// Only bother checking media type counts if one of the counts is zero.
 			checkCounts = _.find( this.counts, function ( type ) {
@@ -129,14 +171,6 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 			}
 
 			this.on( 'toolbar:create:main-insert', this.createToolbar, this );
-
-			if ( this.canManage ) {
-				this.on( 'selection:toggle', this.bindSidebarItems, this );
-			} else {
-				// Keep delete/title controls out of reach for content editors.
-				this.on( 'selection:toggle', this.lockSidebarForViewers, this );
-				this.on( 'open', this.lockSidebarForViewers, this );
-			}
 
 			handlers = {
 				toolbar: {
@@ -164,173 +198,60 @@ cloudflareStream.media.view.MediaFrame = Post.extend(
 		},
 
 		/**
-		 * Hide delete and lock the title field when the user cannot manage Stream.
+		 * Use the Stream details view in the library browser sidebar.
+		 *
+		 * The browse render event supplies the browser view before it is
+		 * attached to the frame, so the handler uses that argument.
+		 *
+		 * @param {wp.media.view.AttachmentsBrowser} browser Browser view.
+		 * @return {void}
 		 */
-		lockSidebarForViewers() {
-			if ( this.canManage || ! this.el ) {
+		patchBrowserDetails( browser ) {
+			const content =
+				browser ||
+				( this.content && this.content.get
+					? this.content.get()
+					: null );
+			if (
+				! content ||
+				typeof content.createSingle !== 'function' ||
+				content._cfstreamDetailsPatched
+			) {
 				return;
 			}
 
-			window.requestAnimationFrame( () => {
-				if ( ! this.el ) {
+			content._cfstreamDetailsPatched = true;
+
+			const frame = this;
+
+			content.createSingle = function patchedCreateSingle() {
+				const selection = this.options.selection;
+				const single =
+					selection && selection.single ? selection.single() : null;
+
+				if ( ! single || ! this.sidebar ) {
 					return;
 				}
 
-				this.el
-					.querySelectorAll( '.delete-attachment' )
-					.forEach( ( node ) => {
-						node.hidden = true;
-						node.setAttribute( 'aria-hidden', 'true' );
-						node.style.display = 'none';
-					} );
+				this.sidebar.set(
+					'details',
+					new cloudflareStream.media.view.AttachmentDetails( {
+						controller: this.controller,
+						model: single,
+						priority: 80,
+					} )
+				);
 
-				this.el
-					.querySelectorAll(
-						'label[data-setting="title"] input'
-					)
-					.forEach( ( input ) => {
-						input.readOnly = true;
-						input.disabled = true;
-					} );
-			} );
-		},
+				// Stream attachments have no WordPress compat fields or display settings.
+				this.sidebar.unset( 'compat' );
+				this.sidebar.unset( 'display' );
 
-		/**
-		 * Bind sidebar delete/title handlers once on the frame root.
-		 * Delegation survives sidebar re-renders on selection change.
-		 */
-		bindSidebarItems() {
-			const el = this.el;
-			if ( ! this.canManage || ! el || this._sidebarBound ) {
-				return;
-			}
-
-			this._sidebarBound = true;
-
-			this._onSidebarClick = ( event ) => {
-				if ( event.target.closest( '.delete-attachment' ) ) {
-					this.deleteAttachment( event );
+				if ( this.model && this.model.id === 'insert' ) {
+					this.sidebar.$el.addClass( 'visible' );
 				}
+
+				frame.trigger( 'selection:toggle' );
 			};
-
-			this._onSidebarChange = ( event ) => {
-				if (
-					event.target.closest( 'label[data-setting="title"] input' )
-				) {
-					this.updateAttachment( event );
-				}
-			};
-
-			el.addEventListener( 'click', this._onSidebarClick );
-			el.addEventListener( 'change', this._onSidebarChange );
-		},
-
-		/**
-		 * Tear down delegated sidebar listeners with the frame.
-		 */
-		remove() {
-			const el = this.el;
-
-			if ( el && this._sidebarBound ) {
-				if ( this._onSidebarClick ) {
-					el.removeEventListener( 'click', this._onSidebarClick );
-				}
-				if ( this._onSidebarChange ) {
-					el.removeEventListener( 'change', this._onSidebarChange );
-				}
-			}
-
-			this._sidebarBound = false;
-			this._onSidebarClick = null;
-			this._onSidebarChange = null;
-
-			return Post.prototype.remove.apply( this, arguments );
-		},
-
-		/**
-		 * Delete Attachment
-		 *
-		 * @param {Object} event The Delete Event
-		 */
-		deleteAttachment( event ) {
-			event.preventDefault();
-			event.stopPropagation();
-
-			if ( ! this.canManage ) {
-				return;
-			}
-
-			/* eslint-disable */
-			if ( window.confirm( l10n.warnDelete ) ) {
-				/* eslint-enable */
-				const state = this.state(),
-					selection = state.get( 'selection' ),
-					model = selection.first(),
-					attachment = model ? model.toJSON() : null;
-
-				if ( ! attachment ) {
-					return;
-				}
-
-				// Keep the model so the block can drop selection after success.
-				attachment._selectionModel = model;
-
-				// Server delete is owned by the block edit handler; only fire
-				// after the user confirms so the selection can drop on success.
-				state.trigger( 'delete', attachment );
-			}
-		},
-
-		/**
-		 * Update Attachment
-		 *
-		 * @param {Object} event The Update Event
-		 */
-		updateAttachment( event ) {
-			event.preventDefault();
-			event.stopPropagation();
-
-			if ( ! this.canManage ) {
-				return;
-			}
-
-			const state = this.state(),
-				selection = state.get( 'selection' ),
-				attachment = selection.first().toJSON();
-
-			const input = this.el.querySelector(
-				'label[data-setting="title"] input'
-			);
-			const newTitle = input ? input.value : '';
-			const spinner = this.el.querySelector( '.media-sidebar .spinner' );
-
-			if ( spinner ) {
-				spinner.style.visibility = 'visible';
-			}
-
-			streamAjax( 'cloudflare-stream-update', {
-				uid: attachment.uid,
-				title: newTitle,
-				upload:
-					attachment.cloudflare && attachment.cloudflare.meta
-						? attachment.cloudflare.meta.upload
-						: '',
-			} )
-				.then( () => {
-					selection.models[ 0 ].set( 'filename', newTitle );
-				} )
-				.catch( ( err ) => {
-					// eslint-disable-next-line no-console
-					console.error(
-						'Error: ',
-						err && err.message ? err.message : err
-					);
-				} )
-				.finally( () => {
-					if ( spinner ) {
-						spinner.style.visibility = 'hidden';
-					}
-				} );
 		},
 
 		/**

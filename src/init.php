@@ -258,6 +258,191 @@ function cloudflare_stream_poster_time() {
 }
 
 /**
+ * Whether a value looks like an RFC 3339 / ISO 8601 timestamp for Stream list filters.
+ *
+ * @param string $value Candidate timestamp.
+ * @return bool
+ */
+function cloudflare_stream_is_stream_list_timestamp( $value ) {
+	if ( ! is_string( $value ) || '' === $value ) {
+		return false;
+	}
+
+	// Cloudflare accepts RFC 3339 style created bounds; keep the charset tight.
+	if ( ! preg_match( '/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/', $value ) ) {
+		return false;
+	}
+
+	$parsed = strtotime( $value );
+	return false !== $parsed;
+}
+
+/**
+ * Build named Cloudflare Stream list query arguments from a request-like array.
+ *
+ * Only known keys are forwarded. The client never supplies a raw query fragment.
+ *
+ * @param array $input Raw input (usually $_REQUEST).
+ * @return array {
+ *     @type array    $query        Query args for Cloudflare_Stream_API::get_videos().
+ *     @type string[] $exclude_uids Video UIDs to drop from the result set.
+ * }
+ */
+function cloudflare_stream_build_stream_list_query( $input ) {
+	$api   = Cloudflare_Stream_API::instance();
+	$input = is_array( $input ) ? $input : array();
+	$query = array(
+		'limit' => (int) $api->api_limit,
+		'asc'   => 'false',
+	);
+
+	if ( isset( $input['limit'] ) ) {
+		$limit = absint( $input['limit'] );
+		if ( $limit > 0 ) {
+			// Cloudflare caps list results at 1000; stay within the plugin page size.
+			$query['limit'] = min( $limit, (int) $api->api_limit, 1000 );
+		}
+	}
+
+	if ( isset( $input['asc'] ) ) {
+		$asc = strtolower( sanitize_text_field( wp_unslash( $input['asc'] ) ) );
+		if ( in_array( $asc, array( 'true', '1', 'false', '0' ), true ) ) {
+			$query['asc'] = in_array( $asc, array( 'true', '1' ), true ) ? 'true' : 'false';
+		}
+	}
+
+	if ( isset( $input['search'] ) ) {
+		$search = sanitize_text_field( wp_unslash( $input['search'] ) );
+		if ( '' !== $search ) {
+			$query['search'] = $search;
+		}
+	}
+
+	// Newest-first pages use before/end; oldest-first pages use after/start.
+	foreach ( array( 'before', 'end', 'after', 'start' ) as $key ) {
+		if ( ! isset( $input[ $key ] ) ) {
+			continue;
+		}
+		$timestamp = sanitize_text_field( wp_unslash( $input[ $key ] ) );
+		if ( cloudflare_stream_is_stream_list_timestamp( $timestamp ) ) {
+			$query[ $key ] = $timestamp;
+		}
+	}
+
+	$exclude_uids = array();
+	if ( isset( $input['exclude_uids'] ) ) {
+		$raw_exclude = wp_unslash( $input['exclude_uids'] );
+		if ( is_array( $raw_exclude ) ) {
+			$candidates = $raw_exclude;
+		} else {
+			$candidates = preg_split( '/[\s,]+/', (string) $raw_exclude );
+		}
+		if ( is_array( $candidates ) ) {
+			foreach ( $candidates as $candidate ) {
+				$uid = strtolower( sanitize_text_field( (string) $candidate ) );
+				if ( 1 === preg_match( '/^[a-f0-9]{32}$/', $uid ) ) {
+					$exclude_uids[] = $uid;
+				}
+			}
+		}
+		$exclude_uids = array_values( array_unique( $exclude_uids ) );
+	}
+
+	return array(
+		'query'        => $query,
+		'exclude_uids' => $exclude_uids,
+	);
+}
+
+/**
+ * Map a Cloudflare Stream video object to a media-frame attachment payload.
+ *
+ * @param object                $video        Cloudflare video result row.
+ * @param Cloudflare_Stream_API $api          API instance.
+ * @param string                $poster_time  Poster time suffix, e.g. "0s".
+ * @param string                $delete_nonce Real delete nonce, or empty.
+ * @return array|null Attachment array, or null when the row is unusable.
+ */
+function cloudflare_stream_attachment_from_video( $video, $api, $poster_time, $delete_nonce = '' ) {
+	if ( ! is_object( $video ) || empty( $video->uid ) ) {
+		return null;
+	}
+
+	$datetime = new DateTime( $video->created );
+
+	// Signed playback needs a token in the path; a bare uid returns 401.
+	// Budgeted so a full page of videos cannot stall admin-ajax when tokens
+	// are minted over HTTP (no local signing key configured).
+	$playback_id = $api->get_playback_id( $video->uid, true );
+
+	// Rendered in the grid. Empty when a token could not be minted, so the
+	// item degrades to the generic video icon instead of a broken image.
+	$signed_thumb = ( false !== $playback_id )
+		? $api->get_poster_url( $playback_id, $poster_time )
+		: '';
+
+	// Stored on the block when selected, so it must never contain a token:
+	// block attributes are saved into post content and tokens expire.
+	$unsigned_thumb = $api->get_poster_url( $video->uid, $poster_time );
+
+	$title = isset( $video->meta->name ) && is_string( $video->meta->name ) && '' !== $video->meta->name
+		? $video->meta->name
+		: $video->uid;
+
+	// Player page for this video; signed when the site requires it.
+	$player_url = ( false !== $playback_id ) ? $api->get_iframe_url( $playback_id ) : '';
+
+	$nonces = array();
+	if ( is_string( $delete_nonce ) && '' !== $delete_nonce ) {
+		$nonces['delete'] = $delete_nonce;
+	}
+
+	return array(
+		'uid'                     => $video->uid,
+		'id'                      => $video->uid,
+		'title'                   => $title,
+		'filename'                => $title,
+		'url'                     => $player_url,
+		'link'                    => $player_url,
+		// Caption and description stay empty; the Stream details view omits them.
+		'description'             => '',
+		'caption'                 => '',
+		'status'                  => 'inherit',
+		'uploadedTo'              => 0,
+		'date'                    => $video->created,
+		'modified'                => $video->created,
+		'menuOrder'               => 0,
+		'mime'                    => 'video/mp4',
+		'type'                    => 'video',
+		'subtype'                 => 'mp4',
+		'icon'                    => '' !== $signed_thumb ? $signed_thumb : wp_mime_type_icon( 'video' ),
+		'dateFormatted'           => $datetime->format( 'F j, Y' ),
+		'nonces'                  => $nonces,
+		'filesizeInBytes'         => $video->size,
+		'filesizeHumanReadable'   => size_format( $video->size ),
+		'image'                   => array(
+			'src'    => $signed_thumb,
+			'width'  => 64,
+			'height' => 48,
+		),
+		'fileLength'              => gmdate( 'H:i:s', round( $video->duration ) ),
+		'fileLengthHumanReadable' => human_readable_duration( gmdate( 'H:i:s', round( $video->duration ) ) ),
+		'thumb'                   => array(
+			'src'    => $signed_thumb,
+			'width'  => 64,
+			'height' => 48,
+		),
+		// Token-free poster for block attributes (see $unsigned_thumb above).
+		'unsignedThumb'           => $unsigned_thumb,
+		'compat'                  => array(
+			'item' => '',
+			'meta' => '',
+		),
+		'cloudflare'              => $video,
+	);
+}
+
+/**
  * AJAX method for retrieving a collection of Stream videos.
  *
  * @since 1.0.0
@@ -266,109 +451,106 @@ function cloudflare_stream_ajax_query_attachments() {
 	check_ajax_referer( Cloudflare_Stream_Settings::NONCE, 'nonce' );
 	cloudflare_stream_verify_ajax_capability( cloudflare_stream_ajax_edit_capability() );
 
-	$api            = Cloudflare_Stream_API::instance();
-	$args['query']  = isset( $_REQUEST['query'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['query'] ) ) : '';
-	$args['query'] .= '&limit=' . $api->api_limit;
+	$api   = Cloudflare_Stream_API::instance();
+	$built = cloudflare_stream_build_stream_list_query( $_REQUEST ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- verified above.
+	$query = $built['query'];
+	$args  = array(
+		'query' => $query,
+	);
 
-	$data   = array();
-	$videos = $api->get_videos( $args );
-
-	if ( empty( $videos ) || ! is_object( $videos ) || empty( $videos->result ) || ! is_array( $videos->result ) ) {
-		wp_send_json(
-			array(
-				'success' => true,
-				'data'    => array(),
-				'args'    => $args,
-			),
-			200
-		);
-		return;
+	$exclude = array_fill_keys( $built['exclude_uids'], true );
+	$limit   = isset( $query['limit'] ) ? (int) $query['limit'] : (int) $api->api_limit;
+	if ( $limit < 1 ) {
+		$limit = (int) $api->api_limit;
 	}
 
 	$poster_time = cloudflare_stream_poster_time();
+	$can_manage  = current_user_can( 'manage_options' );
+	// Only a real delete nonce is sent, and only when the user may delete.
+	$delete_nonce = $can_manage ? wp_create_nonce( Cloudflare_Stream_Settings::NONCE ) : '';
 
-	foreach ( $videos->result as $video ) {
-		$datetime = new DateTime( $video->created );
+	$data       = array();
+	$seen       = array();
+	$max_hops   = 5;
+	$hop        = 0;
+	$data_count = 0;
 
-		// Signed playback needs a token in the path; a bare uid returns 401.
-		// Budgeted so a full page of videos cannot stall admin-ajax when tokens
-		// are minted over HTTP (no local signing key configured).
-		$playback_id = $api->get_playback_id( $video->uid, true );
+	// Refill when exclude_uids thins a page so the client still receives a
+	// full page until Cloudflare has no further rows.
+	while ( $data_count < $limit && $hop < $max_hops ) {
+		++$hop;
+		$args['query'] = $query;
+		$videos        = $api->get_videos( $args );
 
-		// Rendered in the grid. Empty when a token could not be minted, so the
-		// item degrades to the generic video icon instead of a broken image.
-		$signed_thumb = ( false !== $playback_id )
-			? $api->get_poster_url( $playback_id, $poster_time )
-			: '';
+		if ( empty( $videos ) || ! is_object( $videos ) || empty( $videos->result ) || ! is_array( $videos->result ) ) {
+			break;
+		}
 
-		// Stored on the block when selected, so it must never contain a token:
-		// block attributes are saved into post content and tokens expire.
-		$unsigned_thumb = $api->get_poster_url( $video->uid, $poster_time );
+		$page_count     = 0;
+		$oldest_created = null;
 
-		$title = isset( $video->meta->name ) && is_string( $video->meta->name ) && '' !== $video->meta->name
-			? $video->meta->name
-			: $video->uid;
+		foreach ( $videos->result as $video ) {
+			++$page_count;
 
-		// Player page for this video; signed when the site requires it.
-		$player_url = ( false !== $playback_id ) ? $api->get_iframe_url( $playback_id ) : '';
+			if ( empty( $video->uid ) ) {
+				continue;
+			}
 
-		$data[] = array(
-			'uid'                     => $video->uid,
-			'id'                      => $video->uid,
-			'title'                   => $title,
-			'filename'                => $title,
-			'url'                     => $player_url,
-			'link'                    => $player_url,
-			// Caption and description are author-facing fields; the old shortcode
-			// and legacy <stream> embed markup were never meant to live here.
-			'description'             => '',
-			'caption'                 => '',
-			'status'                  => 'inherit',
-			'uploadedTo'              => 0,
-			'date'                    => $video->created,
-			'modified'                => $video->created,
-			'menuOrder'               => 0,
-			'mime'                    => 'video/mp4',
-			'type'                    => 'video',
-			'subtype'                 => 'mp4',
-			'icon'                    => '' !== $signed_thumb ? $signed_thumb : wp_mime_type_icon( 'video' ),
-			'dateFormatted'           => $datetime->format( 'F j, Y' ),
-			'nonces'                  =>
-			array(
-				'delete' => Cloudflare_Stream_Settings::NONCE,
-			),
-			'filesizeInBytes'         => $video->size,
-			'filesizeHumanReadable'   => size_format( $video->size ),
-			'image'                   => array(
-				'src'    => $signed_thumb,
-				'width'  => 64,
-				'height' => 48,
-			),
-			'fileLength'              => gmdate( 'H:i:s', round( $video->duration ) ),
-			'fileLengthHumanReadable' => human_readable_duration( gmdate( 'H:i:s', round( $video->duration ) ) ),
-			'thumb'                   => array(
-				'src'    => $signed_thumb,
-				'width'  => 64,
-				'height' => 48,
-			),
-			// Token-free poster for block attributes (see $unsigned_thumb above).
-			'unsignedThumb'           => $unsigned_thumb,
-			'compat'                  => array(
-				'item' => '',
-				'meta' => '',
-			),
-			'cloudflare'              => $video,
-		);
-	}//end foreach
+			$uid_key = strtolower( (string) $video->uid );
+			if ( isset( $exclude[ $uid_key ] ) || isset( $seen[ $uid_key ] ) ) {
+				if ( ! empty( $video->created ) ) {
+					$oldest_created = $video->created;
+				}
+				continue;
+			}
 
-	$response = array( 'success' => true );
+			$attachment = cloudflare_stream_attachment_from_video( $video, $api, $poster_time, $delete_nonce );
+			if ( null === $attachment ) {
+				continue;
+			}
 
-	if ( isset( $data ) ) {
-		$response['args']    = $args;
-		$response['data']    = $data;
-		$response['success'] = true;
-	}
-	wp_send_json( $response, 200 );
+			$seen[ $uid_key ]    = true;
+			$exclude[ $uid_key ] = true;
+			$data[]              = $attachment;
+			++$data_count;
+			$oldest_created = $video->created;
+
+			if ( $data_count >= $limit ) {
+				break 2;
+			}
+		}
+
+		// A short page means Cloudflare has no further rows for this query.
+		if ( $page_count < $limit ) {
+			break;
+		}
+
+		// Advance the created bound from the oldest row on this Cloudflare page.
+		if ( ! is_string( $oldest_created ) || '' === $oldest_created ) {
+			break;
+		}
+		if ( ! cloudflare_stream_is_stream_list_timestamp( $oldest_created ) ) {
+			break;
+		}
+
+		$parsed = strtotime( $oldest_created );
+		if ( false === $parsed ) {
+			break;
+		}
+
+		// Inclusive upper bound for the next hop; seen/exclude drop duplicates.
+		$query['before'] = gmdate( 'Y-m-d\TH:i:s\Z', $parsed + 1 );
+		unset( $query['end'] );
+	}//end while
+
+	wp_send_json(
+		array(
+			'success' => true,
+			'args'    => $args,
+			'data'    => $data,
+		),
+		200
+	);
 }
 add_action( 'wp_ajax_query-cloudflare-stream-attachments', 'cloudflare_stream_ajax_query_attachments' );
 
@@ -438,20 +620,17 @@ function cloudflare_stream_ajax_playback_urls() {
 		if ( ! array_key_exists( $flag, $_REQUEST ) ) {
 			continue;
 		}
-		$raw            = sanitize_text_field( wp_unslash( $_REQUEST[ $flag ] ) );
+		$raw           = sanitize_text_field( wp_unslash( $_REQUEST[ $flag ] ) );
 		$args[ $flag ] = Cloudflare_Stream_API::normalize_bool( $raw );
 	}
 
-	if ( isset( $_REQUEST['posterurl'] ) ) {
-		$raw_poster = wp_unslash( $_REQUEST['posterurl'] );
-		// Arrays and non-strings are ignored; matches sanitize_poster_url.
-		$args['posterurl'] = is_string( $raw_poster ) ? esc_url_raw( $raw_poster ) : '';
+	if ( isset( $_REQUEST['posterurl'] ) && is_string( $_REQUEST['posterurl'] ) ) {
+		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['posterurl'] ) );
 	}
 
 	// Prefer the token-free thumbnail stored on the block when present.
-	if ( empty( $args['posterurl'] ) && isset( $_REQUEST['thumbnail'] ) ) {
-		$raw_thumb = wp_unslash( $_REQUEST['thumbnail'] );
-		$args['posterurl'] = is_string( $raw_thumb ) ? esc_url_raw( $raw_thumb ) : '';
+	if ( empty( $args['posterurl'] ) && isset( $_REQUEST['thumbnail'] ) && is_string( $_REQUEST['thumbnail'] ) ) {
+		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['thumbnail'] ) );
 	}
 
 	$iframe_src = $api->build_iframe_src( $playback_id, $args );
@@ -570,15 +749,25 @@ function cloudflare_stream_ajax_update() {
 	$uid    = isset( $_REQUEST['uid'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['uid'] ) ) : '';
 	$title  = isset( $_REQUEST['title'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['title'] ) ) : '';
 	$upload = isset( $_REQUEST['upload'] ) ? sanitize_text_field( wp_unslash( $_REQUEST['upload'] ) ) : '';
-	$args   = array(
+
+	if ( '' === $title ) {
+		wp_send_json_error(
+			array(
+				'message' => __( 'Title cannot be empty.', 'cloudflare-stream' ),
+			)
+		);
+	}
+
+	// Always pass upload through so a rename does not clear upload metadata.
+	$args = array(
 		'uid'  => $uid,
 		'meta' => array(
 			'name'   => $title,
 			'upload' => $upload,
 		),
 	);
-	$api    = Cloudflare_Stream_API::instance();
-	$data   = $api->update_video_details( $uid, $args );
+	$api  = Cloudflare_Stream_API::instance();
+	$data = $api->update_video_details( $uid, $args );
 
 	if ( ! is_object( $data ) || empty( $data->success ) ) {
 		wp_send_json_error( array( 'message' => __( 'Could not update video.', 'cloudflare-stream' ) ) );
