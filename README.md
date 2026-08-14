@@ -13,15 +13,17 @@ Upload, browse and embed [Cloudflare Stream](https://developers.cloudflare.com/s
 - Optional Signed URLs, so playback requires a short-lived token whose lifetime you control.
 - Signing keys can be generated from the plugin's own settings page and tokens minted locally (RS256 JWT), or you can fall back to Cloudflare's token endpoint.
 - Credentials and signing keys can be defined as PHP constants, so they never touch the database.
+- When secrets are stored in the database, they are encrypted at rest (AES-256-GCM).
 - New uploads can automatically be locked to signed playback and to your own site's host.
 - Choose your preferred Cloudflare media domain, and set an automatic thumbnail time site-wide or per video.
+- Content editors can browse the library, select videos and preview playback; administrators manage credentials and library mutations (upload, rename, delete).
 
 ## Installation
 
 1. Download the plugin ZIP from the [latest release](https://github.com/B-Interactive/cloudflare-stream-wordpress/releases/latest).
 2. In WordPress, go to **Plugins → Add New → Upload Plugin** and upload the ZIP.
 3. Click **Activate**.
-4. Configure the plugin at **Settings → Cloudflare Stream** in the WordPress admin.
+4. Configure the plugin at **Settings → Cloudflare Stream** in the WordPress admin (on multisite, under **Network Admin → Settings**).
 
 The block and library browser only load once an Account ID and API Token are saved.
 
@@ -29,7 +31,7 @@ The block and library browser only load once an Account ID and API Token are sav
 
 This plugin is distributed from GitHub Releases, not from wordpress.org. After you install it from a release ZIP, WordPress checks GitHub for newer releases and shows updates on the Plugins screen like other plugins. You can turn automatic updates on or off there in the usual way.
 
-Release tags must match the version in the plugin header, `readme.txt`, `package.json`, and `package-lock.json` (`1.1.7` or `v1.1.7`). Each release attaches `cloudflare-stream.zip` plus SHA256 (`cloudflare-stream.zip.sha256`) and BLAKE2b (`cloudflare-stream.zip.blake2`) checksum files for manual verification. WordPress does not check those digests automatically.
+Release tags must match the version in the plugin header, `readme.txt`, `package.json`, and `package-lock.json` (`1.1.8` or `v1.1.8`). Each release attaches `cloudflare-stream.zip` plus SHA256 (`cloudflare-stream.zip.sha256`) and BLAKE2b (`cloudflare-stream.zip.blake2`) checksum files for manual verification. WordPress does not check those digests automatically.
 
 ## Configuration
 
@@ -37,8 +39,8 @@ Release tags must match the version in the plugin header, `readme.txt`, `package
 
 Both of these come from the Cloudflare dashboard at [dash.cloudflare.com](https://dash.cloudflare.com/), not from WordPress:
 
-- **Account ID** — open your domain's **Overview** page and copy the Account ID from the API section on the right.
-- **API Token** — create a token for this plugin only, following [Cloudflare's create-token guide](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/). It needs one permission: **Account → Stream:Edit**. Also apply [Client IP Address Filtering](https://developers.cloudflare.com/fundamentals/api/how-to/restrict-tokens), restricted to your web server's IP where practical.
+- **Account ID**: open your domain's **Overview** page and copy the Account ID from the API section on the right.
+- **API Token**: create a token for this plugin only, following [Cloudflare's create-token guide](https://developers.cloudflare.com/fundamentals/api/get-started/create-token/). It needs one permission: **Account → Stream:Edit**. Also apply [Client IP Address Filtering](https://developers.cloudflare.com/fundamentals/api/how-to/restrict-tokens), restricted to your web server's IP where practical.
 
 Back in WordPress, both values can be saved at **Settings → Cloudflare Stream**, or defined in `wp-config.php` (preferred in production, as they stay out of database backups):
 
@@ -60,18 +62,23 @@ define( 'CLOUDFLARE_STREAM_ENCRYPTION_KEY', 'your-long-random-secret-or-64-hex-c
 
 Without that constant the plugin derives a key from `wp_salt()`. If salts change and no dedicated encryption key was set, stored secrets become unreadable until you save a new API token and generate a new signing key. The signing key id stays in plaintext so an unreadable PEM can still be revoked at Cloudflare by id.
 
+### Who can do what
+
+- **Content editors** (anyone who can edit posts) can insert the block or shortcode, open the Stream library to browse and search, select a video, and preview signed playback in the editor.
+- **Administrators** manage API credentials, signing keys and player settings, and perform library mutations: upload, rename and delete. On a multisite network those settings live under Network Admin, so the practical gate is reaching the network admin screens.
+
 ### Signed URLs
 
 Three terms get used loosely and are worth separating:
 
-- **API Token** — the long-lived server-side secret this plugin uses to manage your Stream account. It never appears on the front end.
-- **Playback token** — a short-lived signed credential (a JWT) that authorises playing one specific video until it expires.
-- **Signed URL** — the player URL with a playback token substituted in place of the plain video ID, so `https://iframe.cloudflarestream.com/VIDEO_ID` becomes `https://iframe.cloudflarestream.com/<playback-token>`. The signed URL is not a separate credential; it is simply how the playback token is delivered.
+- **API Token**: the long-lived server-side secret this plugin uses to manage your Stream account. It never appears on the front end.
+- **Playback token**: a short-lived signed credential (a JWT) that authorises playing one specific video until it expires.
+- **Signed URL**: the player URL with a playback token substituted in place of the plain video ID, so `https://iframe.cloudflarestream.com/VIDEO_ID` becomes `https://iframe.cloudflarestream.com/<playback-token>`. The signed URL is not a separate credential; it is simply how the playback token is delivered.
 
 Plugin settings, at **Settings → Cloudflare Stream** in the WordPress admin:
 
-- **Use Signed URLs** (default: on) — render embeds as signed URLs rather than plain video IDs.
-- **Signed URL Expiration** (default: 60 minutes, range 1–1440) — how long each playback token stays valid, and therefore how long its signed URL works. Keep this longer than your longest video.
+- **Use Signed URLs** (default: on): render embeds as signed URLs rather than plain video IDs.
+- **Signed URL Expiration** (default: 60 minutes, range 1–1440): how long each playback token stays valid, and therefore how long its signed URL works. Keep this longer than your longest video.
 
 Playback tokens are minted locally with OpenSSL when a signing key is configured. Without a key, the plugin asks Cloudflare's `/token` endpoint for them instead. If a key is configured but local signing fails, the plugin falls back to that same Cloudflare `/token` API so playback stays signed, and surfaces the issue in Settings, an admin notice, Site Health, and an editor-only HTML comment. If both local signing and the API fail, embeds are left empty (unsigned playback is never used while Use Signed URLs is on).
 
@@ -82,18 +89,18 @@ define( 'CLOUDFLARE_STREAM_SIGNING_KEY_ID', 'your-key-id' );
 define( 'CLOUDFLARE_STREAM_SIGNING_KEY_PEM', "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" );
 ```
 
-Both constants are required together; setting only one leaves signing on the Cloudflare fallback. You can choose **Save in the database instead**. If the key is already stored in the database, use **Move key to wp-config.php**: a new key is shown once, you confirm the constants, the database copy is removed, and the previous key is revoked in Cloudflare. **Remove signing key** clears the stored key and revokes it in Cloudflare when possible. The private key material is only shown once during setup or move, and is never exposed to the front end or the editor.
+Both constants are required together; setting only one leaves signing on the Cloudflare fallback. You can choose **Save in the database instead**. If the key is already stored in the database, use **Move key to wp-config.php**: a new key is shown once, you confirm the constants, the database copy is removed, and the previous key is revoked in Cloudflare. **Remove signing key** clears the stored key and revokes it in Cloudflare when possible. The private key material is only shown once during setup or move, and is never exposed to the front end or the editor. Rotating or moving a key never re-displays a previously stored private key from the database.
 
-Enabling these settings is only half the job — see [Securing video access](#securing-video-access) for the steps that actually restrict playback.
+Enabling these settings is only half the job: see [Securing video access](#securing-video-access) for the steps that actually restrict playback.
 
 ### Media domain and thumbnails
 
-- **Preferred Media Domain** (default: `cloudflarestream.com`) — also offers `videodelivery.net`, plus your account-specific subdomain once at least one video exists in your Stream account.
-- **Thumbnail Time** (default: 0 seconds) — the point each auto-generated poster image is taken from. Override per video with the `postertime` shortcode attribute.
+- **Preferred Media Domain** (default: `cloudflarestream.com`): also offers `videodelivery.net`, plus your account-specific subdomain once at least one video exists in your Stream account.
+- **Thumbnail Time** (default: 0 seconds): the point each auto-generated poster image is taken from. Override per video with the `postertime` shortcode attribute.
 
 ## Securing video access
 
-Locking down playback is the main reason this fork exists, and it takes two halves working together: WordPress must issue signed URLs, and Cloudflare must refuse to play the video without one. Turning on **Use Signed URLs** by itself is not enough — a video that does not require signed URLs at Cloudflare will still play from its bare video ID.
+Locking down playback is the main reason this fork exists, and it takes two halves working together: WordPress must issue signed URLs, and Cloudflare must refuse to play the video without one. Turning on **Use Signed URLs** by itself is not enough: a video that does not require signed URLs at Cloudflare will still play from its bare video ID.
 
 That means you will be working in two separate places, and the steps below say which one each time:
 
@@ -106,7 +113,7 @@ That means you will be working in two separate places, and the steps below say w
 
     ![The plugin's Use Signed URLs setting in the WordPress admin](https://user-images.githubusercontent.com/16984998/166195570-6e2ecfd4-72af-4f11-a52c-f615df470a36.png)
 
-    With the setting off, new uploads are left public — no `requireSignedURLs`, no `allowedOrigins`.
+    With the setting off, new uploads are left public: no `requireSignedURLs`, no `allowedOrigins`.
 
 2. **Set Signed URL Expiration** to suit your content. The default is 60 minutes; keep it comfortably longer than your longest video, or playback can expire mid-view. Shorter lifetimes mean a leaked URL is useful for less time.
 
@@ -118,13 +125,13 @@ That means you will be working in two separate places, and the steps below say w
 
     ![The Require Signed URLs toggle on a video in the Cloudflare dashboard](https://user-images.githubusercontent.com/16984998/166195689-f52c48c6-86f4-40c5-8e96-b9f6ae5790d0.png)
 
-5. **Check each video's allowed origins.** Uploads made through the plugin are restricted to the host from your WordPress home URL only, which means `example.com` does not also cover `www.example.com`, and staging or CDN hostnames are not included. Add any additional hosts on the same Cloudflare video settings screen, and keep the list as tight as you can — it stops a valid playback token being replayed on someone else's page.
+5. **Check each video's allowed origins.** Uploads made through the plugin are restricted to the host from your WordPress home URL only, which means `example.com` does not also cover `www.example.com`, and staging or CDN hostnames are not included. Add any additional hosts on the same Cloudflare video settings screen, and keep the list as tight as you can: it stops a valid playback token being replayed on someone else's page.
 
     ![The Allowed Origins field on a video in the Cloudflare dashboard](https://user-images.githubusercontent.com/16984998/166195828-80c23260-fc02-47bb-89b1-ceb8a4217638.png)
 
 ### On your server
 
-6. **Mind your page caches.** The signed URL, playback token and all, is written into the page HTML, so a full-page cache that outlives the token will hand every visitor the same URL, or an expired player once it lapses. The plugin marks front-end responses containing a Stream embed as uncacheable for common WordPress caches and sends no-cache headers, but you must still keep any external HTML cache TTL (for example Cloudflare's own HTML caching) no longer than your expiration setting.
+6. **Mind your page caches.** The signed URL, playback token and all, is written into the page HTML, so a full-page cache that outlives the token will hand every visitor the same URL, or an expired player once it lapses. The plugin marks front-end responses containing a Stream embed as uncacheable for common WordPress page caches and sends no-cache headers. That only covers WordPress and caches that honour those signals. A reverse proxy, CDN, or host-level HTML cache in front of WordPress can still store the page after the token inside it has expired. Exclude pages that embed Stream videos from any external full-page cache, or keep those caches shorter than your signed URL expiration. Site Health includes a **Cloudflare Stream signed embeds and page cache** check when signed URLs are on and a page cache appears to be active.
 
 ## Adding videos
 
@@ -134,9 +141,11 @@ Insert the **Cloudflare Stream Video** block (`cloudflare-stream/block-video`), 
 
 The block inspector offers **Autoplay**, **Loop**, **Muted** and **Playback Controls**, and the block supports the standard alignment controls.
 
-The block renders dynamically on the front end, so it uses the same signed embed path as the shortcode. There is no block UI for `preload`, `postertime` or `posterurl` — use the shortcode when you need those. Blocks saved by older versions (static iframe or the old `<stream>` tag) keep working in a deprecated form, but will not get signed playback until the block is updated or converted.
+The block renders dynamically on the front end, so it uses the same signed embed path as the shortcode. There is no block UI for `preload`, `postertime` or `posterurl`: use the shortcode when you need those. Blocks saved by older versions (static iframe or the old `<stream>` tag) keep working in a deprecated form, but will not get signed playback until the block is updated or converted.
 
-Content editors (`edit_posts`) can open the Stream library, select a video, and preview playback. Uploading, renaming, deleting, and plugin settings require the `manage_options` capability.
+In the editor, signed playback for the selected video is loaded through a short-lived admin-ajax preview URL so the iframe never needs the API token in the browser.
+
+Content editors can open the Stream library, select a video, and preview playback. Uploading, renaming, deleting, and plugin settings require an administrator.
 
 ### Shortcode
 
@@ -163,7 +172,7 @@ Example:
 
 ## Developers
 
-The block editor interface is built with WordPress block editor components; `tus-js-client` is the only production dependency. Node 22 or newer is required.
+The block editor UI is built with WordPress block editor components. The Stream library browser is the classic `wp.media` Backbone media frame (`media-views`), not block editor components. `tus-js-client` is the only production dependency. Node 22 or newer is required.
 
 Clone the repository, then from the project directory:
 
@@ -178,10 +187,20 @@ npm run package     # metadata check, production build, and plugin ZIP
 Checks:
 
 ```bash
-npm run lint:css     # stylelint
-npm run check:meta   # version, lockfile, and Update URI checks
-npm run test:compat  # PHPCompatibility and PHPCS
-npm run test:php     # PHPUnit via wp-env, skipped when Docker is unavailable
+npm run lint:css       # stylelint on src CSS
+npm run lint:md:docs   # markdownlint via @wordpress/scripts (README and docs)
+npm run lint:pkg-json  # package.json lint via @wordpress/scripts
+npm run check:meta     # version, lockfile, and Update URI checks
+npm run test:compat    # PHPCompatibility and PHPCS
+npm run test:php       # PHPUnit via wp-env, skipped when Docker is unavailable
+npm run packages-update  # refresh @wordpress/scripts related packages
+```
+
+Composer:
+
+```bash
+composer run lint         # PHPCS against phpcs.xml.dist
+composer run lint:fix    # PHPCBF
 ```
 
 ## Licence
