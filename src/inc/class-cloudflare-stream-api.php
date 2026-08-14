@@ -56,19 +56,51 @@ class Cloudflare_Stream_API {
 	/**
 	 * REST API limit
 	 *
-	 * @var string $api_limit Number of results to return from the API by default.
+	 * @var int $api_limit Number of results to return from the API by default.
 	 */
 	public $api_limit = 40;
 
 	/**
 	 * Maximum uncached API token mints allowed in a single admin request.
 	 *
-	 * Only applies when no local signing key is configured, where each mint is a
-	 * sequential HTTP round trip. Local RS256 signing is cheap and unbudgeted.
+	 * Matches the default library page size so each listed row can receive a
+	 * thumbnail when tokens are minted over HTTP. Only applies when no local
+	 * signing key is configured. Local RS256 signing is cheap and unbudgeted.
 	 *
 	 * @var int
 	 */
-	const ADMIN_MINT_BUDGET = 12;
+	const ADMIN_MINT_BUDGET = 40;
+
+	/**
+	 * Default HTTP timeout for admin and background API calls, in seconds.
+	 *
+	 * @var int
+	 */
+	const HTTP_TIMEOUT_DEFAULT = 15;
+
+	/**
+	 * HTTP timeout for front-end page renders, in seconds.
+	 *
+	 * Kept short so a slow token mint cannot hold HTML generation for the full
+	 * admin timeout. Cached tokens and local signing avoid the round trip.
+	 *
+	 * @var int
+	 */
+	const HTTP_TIMEOUT_FRONTEND = 5;
+
+	/**
+	 * Transient key for the cached customer media subdomain.
+	 *
+	 * @var string
+	 */
+	const TRANSIENT_ACCOUNT_SUBDOMAIN = 'cfstream_account_subdomain';
+
+	/**
+	 * How long a resolved account subdomain is cached (one week).
+	 *
+	 * @var int
+	 */
+	const ACCOUNT_SUBDOMAIN_TTL = 604800;
 
 	/**
 	 * Uncached API token mints used by the current admin request.
@@ -99,16 +131,36 @@ class Cloudflare_Stream_API {
 	private $last_api_reason = '';
 
 	/**
+	 * Last get_playback_id() outcome reason for the current request.
+	 *
+	 * Empty on success. Known values include mint_budget_exhausted and the API
+	 * mint reason codes from mint_token_via_api().
+	 *
+	 * @var string
+	 */
+	private $last_playback_reason = '';
+
+	/**
+	 * In-request memo for a lightweight Stream list probe (success object or false).
+	 *
+	 * Shared by credential checks and account subdomain discovery so one settings
+	 * page load does not issue two identical list calls.
+	 *
+	 * @var object|false|null
+	 */
+	private $stream_list_probe = null;
+
+	/**
+	 * In-request memo for get_account_subdomain() (host string, false, or null).
+	 *
+	 * @var string|false|null
+	 */
+	private $account_subdomain_memo = null;
+
+	/**
 	 * The accounts API.
 	 */
 	const ACCOUNTS_API = 'accounts';
-
-	/**
-	 * The zones API.
-	 *
-	 * @deprecated
-	 */
-	const ZONES_API = 'zones';
 
 	/**
 	 * Define and register singleton
@@ -125,7 +177,6 @@ class Cloudflare_Stream_API {
 	public static function instance() {
 		if ( ! self::$instance ) {
 			self::$instance = new self();
-			self::$instance->setup();
 		}
 		return self::$instance;
 	}
@@ -142,16 +193,6 @@ class Cloudflare_Stream_API {
 	 * @since 1.0.0
 	 */
 	private function __clone() { }
-
-	/**
-	 * Add actions and filters
-	 *
-	 * @uses add_action, add_filter
-	 * @since 1.0.0
-	 */
-	private function setup() {
-		return false;
-	}
 
 	/**
 	 * Make the request to the API
@@ -187,9 +228,11 @@ class Cloudflare_Stream_API {
 
 		$args['headers'] = $headers;
 
-		// Keep outbound API calls from hanging the page render.
+		// Front-end HTML stays responsive when Cloudflare is slow; admin keeps the longer default.
 		if ( empty( $args['timeout'] ) ) {
-			$args['timeout'] = 15;
+			$args['timeout'] = $this->is_frontend_page_request()
+				? self::HTTP_TIMEOUT_FRONTEND
+				: self::HTTP_TIMEOUT_DEFAULT;
 		}
 
 		// Named query args are encoded with add_query_arg(); a string is only
@@ -227,26 +270,18 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Get API ID based on API type.
+	 * Cloudflare account id used for Stream API routes.
 	 *
-	 * @deprecated The zones API is no longer used by the plugin.
-	 * @param string $api_type The API type, defaulting to 'accounts'.
-	 * @return string API ID.
+	 * @param string $api_type Reserved; only the accounts API is used.
+	 * @return string Account id, or empty when not configured.
 	 * @since 1.0.9
 	 */
 	public function get_api_id( $api_type = null ) {
-		$api_id = '';
-		if ( self::ZONES_API === $api_type ) {
-			$api_id = get_option( Cloudflare_Stream_Settings::OPTION_API_ZONE_ID );
-		} else {
-			$api_id = Cloudflare_Stream_Settings::get_api_account();
+		unset( $api_type );
 
-			// If Account ID missing, try to use Zone ID to fetch it.
-			if ( empty( $api_id ) ) {
-				$api_id = $this->get_account_id( true );
-			}
-		}
-		return $api_id;
+		$api_id = Cloudflare_Stream_Settings::get_api_account();
+
+		return is_string( $api_id ) ? $api_id : '';
 	}
 
 	/**
@@ -486,7 +521,10 @@ class Cloudflare_Stream_API {
 	 *                      but no token could be minted.
 	 */
 	public function get_playback_id( $uid, $budgeted = false ) {
+		$this->last_playback_reason = '';
+
 		if ( ! $this->is_valid_video_uid( $uid ) ) {
+			$this->last_playback_reason = 'invalid_uid';
 			return false;
 		}
 
@@ -497,6 +535,7 @@ class Cloudflare_Stream_API {
 		// Without a local key each miss is an HTTP round trip; cap them per request.
 		if ( $budgeted && ! $this->has_signing_key() && ! $this->has_cached_signed_token( $uid ) ) {
 			if ( $this->admin_mints_used >= self::ADMIN_MINT_BUDGET ) {
+				$this->last_playback_reason = 'mint_budget_exhausted';
 				return false;
 			}
 			++$this->admin_mints_used;
@@ -504,7 +543,27 @@ class Cloudflare_Stream_API {
 
 		$token = $this->get_signed_video_token( $uid );
 
-		return ( is_string( $token ) && '' !== $token ) ? $token : false;
+		if ( is_string( $token ) && '' !== $token ) {
+			return $token;
+		}
+
+		$this->last_playback_reason = $this->last_api_reason
+			? $this->last_api_reason
+			: ( $this->last_local_reason ? $this->last_local_reason : 'mint_failed' );
+
+		return false;
+	}
+
+	/**
+	 * Reason code from the most recent get_playback_id() call on this instance.
+	 *
+	 * Empty when the last call succeeded. mint_budget_exhausted means the listing
+	 * mint cap was hit; other values are mint failure codes.
+	 *
+	 * @return string
+	 */
+	public function get_last_playback_reason() {
+		return is_string( $this->last_playback_reason ) ? $this->last_playback_reason : '';
 	}
 
 	/**
@@ -1185,13 +1244,48 @@ class Cloudflare_Stream_API {
 	 * @param Cloudflare_Stream_Signing_Health $health   Health tracker.
 	 * @param string                           $fail_key Negative cache key.
 	 * @param string                           $reason   API reason code.
+	 * @param int                              $ttl      Negative cache lifetime in seconds.
 	 * @return false
 	 */
-	private function note_api_fail( $health, $fail_key, $reason ) {
+	private function note_api_fail( $health, $fail_key, $reason, $ttl = null ) {
 		$this->last_api_reason = $reason;
-		set_transient( $fail_key, 1, Cloudflare_Stream_Signing_Health::NEGATIVE_CACHE_TTL );
+		if ( null === $ttl ) {
+			$ttl = Cloudflare_Stream_Signing_Health::NEGATIVE_CACHE_TTL;
+		}
+		$ttl = max( 1, (int) $ttl );
+		set_transient( $fail_key, 1, $ttl );
 		$health->record_api_failure_only( $reason );
 		return false;
+	}
+
+	/**
+	 * Parse a Retry-After header into a bounded negative-cache TTL in seconds.
+	 *
+	 * @param mixed $headers Response headers from wp_remote_*.
+	 * @return int TTL between 1 and 300 seconds, or 0 when the header is absent/unusable.
+	 */
+	private function retry_after_ttl_seconds( $headers ) {
+		$raw = $this->get_response_header( $headers, 'Retry-After' );
+		if ( '' === $raw ) {
+			return 0;
+		}
+
+		$raw = trim( $raw );
+		if ( 1 === preg_match( '/^\d+$/', $raw ) ) {
+			return max( 1, min( 300, (int) $raw ) );
+		}
+
+		$when = strtotime( $raw );
+		if ( false === $when ) {
+			return 0;
+		}
+
+		$delta = $when - time();
+		if ( $delta < 1 ) {
+			return 1;
+		}
+
+		return min( 300, $delta );
 	}
 
 	/**
@@ -1245,18 +1339,38 @@ class Cloudflare_Stream_API {
 			)
 		);
 
-		$response_text = $this->post( 'stream/' . rawurlencode( $uid ) . '/token', $args, false );
+		// Need status and headers so Retry-After on 429 can set the fail cache TTL.
+		$response = $this->post( 'stream/' . rawurlencode( $uid ) . '/token', $args, 'response' );
 
-		// Transport failure keeps the WP_Error from request().
-		if ( is_wp_error( $response_text ) ) {
+		if ( is_wp_error( $response ) ) {
 			return $this->note_api_fail( $health, $fail_key, 'api_transport_error' );
 		}
 
-		if ( ! is_string( $response_text ) || '' === $response_text ) {
+		if ( ! is_array( $response ) ) {
 			return $this->note_api_fail( $health, $fail_key, 'api_http_error' );
 		}
 
-		$data = $this->decode_api_response( $response_text );
+		$code    = isset( $response['code'] ) ? (int) $response['code'] : 0;
+		$headers = isset( $response['headers'] ) ? $response['headers'] : array();
+		$body    = isset( $response['body'] ) ? $response['body'] : '';
+
+		if ( 429 === $code ) {
+			$retry_ttl = $this->retry_after_ttl_seconds( $headers );
+			if ( $retry_ttl < 1 ) {
+				$retry_ttl = Cloudflare_Stream_Signing_Health::NEGATIVE_CACHE_TTL;
+			}
+			return $this->note_api_fail( $health, $fail_key, 'api_rate_limited', $retry_ttl );
+		}
+
+		if ( $code < 200 || $code >= 300 ) {
+			return $this->note_api_fail( $health, $fail_key, 'api_http_error' );
+		}
+
+		if ( ! is_string( $body ) || '' === $body ) {
+			return $this->note_api_fail( $health, $fail_key, 'api_http_error' );
+		}
+
+		$data = $this->decode_api_response( $body );
 		if ( null === $data ) {
 			return $this->note_api_fail( $health, $fail_key, 'api_bad_payload' );
 		}
@@ -1342,35 +1456,6 @@ class Cloudflare_Stream_API {
 		// No local key - normal API mode, no degradation writes.
 		$token = $this->mint_token_via_api( $uid, $exp, $args );
 		return ( is_string( $token ) && '' !== $token ) ? $token : false;
-	}
-
-	/**
-	 * Get a specific video's hotlink.
-	 *
-	 * @param string $uid Unique Video ID.
-	 * @param array  $args Additional API arguments.
-	 * @param bool   $return_headers Return the response headers intead of the response body.
-	 * @since 1.0.0
-	 */
-	public function get_video_link( $uid, $args = array(), $return_headers = false ) {
-		if ( ! $this->is_valid_video_uid( $uid ) ) {
-			return '';
-		}
-
-		$response_text = $this->request( 'stream/' . rawurlencode( $uid ) . '/preview', $args, $return_headers );
-		return $response_text;
-	}
-
-	/**
-	 * Setup video.
-	 *
-	 * @param array $args Additional API arguments.
-	 * @param bool  $return_headers Return the response headers intead of the response body.
-	 * @since 1.0.0
-	 */
-	public function init_video( $args = array(), $return_headers = true ) {
-		$response_text = $this->post( 'stream', $args, $return_headers );
-		return $response_text;
 	}
 
 	/**
@@ -1732,54 +1817,115 @@ class Cloudflare_Stream_API {
 	}
 
 	/**
-	 * Retrieve unique Cloudflare account subdomain.
+	 * Lightweight GET stream list used by credential and subdomain probes.
 	 *
-	 * @param array $args Additional API arguments.
-	 * @param bool  $return_headers Return the response headers intead of the response body.
-	 * @since 1.0.9
+	 * Memoised for the request so settings-page checks share one outbound call.
+	 * Read paths stay outside the API mint breaker: a mint outage must not block
+	 * listing or subdomain discovery, and the shared probe already prevents
+	 * duplicate hangs on the settings screen.
+	 *
+	 * @return object|false Decoded list body on a usable response, false otherwise.
 	 */
-	public function get_account_subdomain( $args = array(), $return_headers = false ) {
-		$response_text = $this->decode_api_response( $this->request( 'stream/', $args, $return_headers ) );
+	public function get_stream_list_probe() {
+		if ( null !== $this->stream_list_probe ) {
+			return $this->stream_list_probe;
+		}
 
-		if ( null === $response_text || empty( $response_text->success ) ) {
+		$videos = $this->get_videos(
+			array(
+				'query'   => array(
+					'limit' => 1,
+				),
+				'timeout' => self::HTTP_TIMEOUT_DEFAULT,
+			)
+		);
+
+		if ( ! is_object( $videos ) ) {
+			$this->stream_list_probe = false;
 			return false;
 		}
 
-		if ( ! empty( $response_text->result ) && is_array( $response_text->result ) && count( $response_text->result ) > 0 ) {
-			$thumbnail = isset( $response_text->result[0]->thumbnail ) ? $response_text->result[0]->thumbnail : '';
-			if ( ! is_string( $thumbnail ) || '' === $thumbnail ) {
-				return false;
-			}
-			$text_array = explode( '/', $thumbnail );
-			return isset( $text_array[2] ) ? $text_array[2] : false;
-		}
-
-		return false;
+		$this->stream_list_probe = $videos;
+		return $videos;
 	}
 
 	/**
-	 * Retrieve Cloudflare Account ID using the Zones API.
+	 * Whether a stream list probe body looks like a successful API response.
 	 *
-	 * @deprecated The zones API is no longer used by the plugin.
-	 * @param bool $save If true, saves retrieved Account ID to database, but only if the option does not already exist.
-	 * @since 1.0.9
+	 * @param object|false $videos Probe result from get_stream_list_probe().
+	 * @return bool
 	 */
-	public function get_account_id( $save = false ) {
-		$response_text = $this->decode_api_response( $this->request( '', array(), false, self::ZONES_API ) );
-
-		if ( null === $response_text || empty( $response_text->success ) || empty( $response_text->result->account->id ) ) {
+	public function stream_list_probe_succeeded( $videos ) {
+		if ( ! is_object( $videos ) ) {
 			return false;
 		}
 
-		$api_id = $response_text->result->account->id;
-		if ( strlen( $api_id ) === 32 ) {
-			if ( $save ) {
-				add_option( Cloudflare_Stream_Settings::OPTION_API_ACCOUNT, $api_id );
-			}
-			return $api_id;
+		if ( isset( $videos->success ) ) {
+			return ! empty( $videos->success );
 		}
 
-		return false;
+		return empty( $videos->errors );
+	}
+
+	/**
+	 * Customer media host from the first video thumbnail URL, when available.
+	 *
+	 * Cached across requests and memoised within the request. Uses the shared
+	 * stream list probe so settings credential checks do not double the call.
+	 *
+	 * @param array $args Unused; kept for call-site compatibility.
+	 * @param bool  $return_headers Unused; kept for call-site compatibility.
+	 * @return string|false Hostname, or false when unknown.
+	 * @since 1.0.9
+	 */
+	public function get_account_subdomain( $args = array(), $return_headers = false ) {
+		unset( $args, $return_headers );
+
+		if ( null !== $this->account_subdomain_memo ) {
+			return $this->account_subdomain_memo;
+		}
+
+		$cached = get_transient( self::TRANSIENT_ACCOUNT_SUBDOMAIN );
+		if ( is_string( $cached ) && '' !== $cached ) {
+			$this->account_subdomain_memo = $cached;
+			return $cached;
+		}
+
+		// Negative cache marker: avoid repeated outbound calls while the API is down.
+		if ( '0' === $cached ) {
+			$this->account_subdomain_memo = false;
+			return false;
+		}
+
+		$videos = $this->get_stream_list_probe();
+		if ( ! $this->stream_list_probe_succeeded( $videos ) ) {
+			set_transient( self::TRANSIENT_ACCOUNT_SUBDOMAIN, '0', 5 * MINUTE_IN_SECONDS );
+			$this->account_subdomain_memo = false;
+			return false;
+		}
+
+		if ( empty( $videos->result ) || ! is_array( $videos->result ) || count( $videos->result ) < 1 ) {
+			// Empty library is a valid account; do not treat as a hard failure.
+			$this->account_subdomain_memo = false;
+			return false;
+		}
+
+		$thumbnail = isset( $videos->result[0]->thumbnail ) ? $videos->result[0]->thumbnail : '';
+		if ( ! is_string( $thumbnail ) || '' === $thumbnail ) {
+			$this->account_subdomain_memo = false;
+			return false;
+		}
+
+		$text_array = explode( '/', $thumbnail );
+		$host       = isset( $text_array[2] ) ? $text_array[2] : '';
+		if ( ! is_string( $host ) || '' === $host ) {
+			$this->account_subdomain_memo = false;
+			return false;
+		}
+
+		set_transient( self::TRANSIENT_ACCOUNT_SUBDOMAIN, $host, self::ACCOUNT_SUBDOMAIN_TTL );
+		$this->account_subdomain_memo = $host;
+		return $host;
 	}
 }
 Cloudflare_Stream_API::instance();

@@ -49,7 +49,6 @@ class Cloudflare_Stream_Settings {
 	const SETTING_SECTION_PLAYER      = 'cloudflare_stream_settings_player';
 	const SETTING_SECTION_REPORTING   = 'cloudflare_stream_settings_reporting';
 	const OPTION_API_TOKEN            = 'cloudflare_stream_api_token';
-	const OPTION_API_ZONE_ID          = 'cloudflare_stream_api_zone_id'; // Deprecated.
 	const OPTION_API_KEY              = 'cloudflare_stream_api_key';
 	const OPTION_API_EMAIL            = 'cloudflare_stream_api_email';
 	const OPTION_API_ACCOUNT          = 'cloudflare_stream_api_account';
@@ -796,12 +795,6 @@ class Cloudflare_Stream_Settings {
 
 		$api_account = self::get_api_account();
 
-		if ( '' === $api_account ) {
-			// Older installs can still resolve the account ID from a stored zone ID.
-			$legacy      = $this->get_account_id();
-			$api_account = is_string( $legacy ) ? $legacy : '';
-		}
-
 		echo '<input type="text" class="regular-text" name="cloudflare_stream_api_account" id="cloudflare_stream_api_account" value="' . esc_attr( $api_account ) . '" autocomplete="on">';
 		echo '<p class="description">' . esc_html__( 'In Cloudflare, open your domain, go to Overview, then copy the Account ID from the API panel on the right.', 'cloudflare-stream' ) . '</p>';
 	}
@@ -844,7 +837,7 @@ class Cloudflare_Stream_Settings {
 				$origin_hosts[] = $host;
 			}
 		}
-		$origin_hosts = array_values( array_unique( $origin_hosts ) );
+		$origin_hosts  = array_values( array_unique( $origin_hosts ) );
 		$origins_label = ! empty( $origin_hosts ) ? implode( ', ', $origin_hosts ) : 'your-site-host';
 
 		echo '<label><input type="checkbox" class="regular-text" name="cloudflare_stream_signed_urls" id="cloudflare_stream_signed_urls" value="1"' . checked( $signed_urls, true, false ) . '>' . esc_html__( 'Protects video links from being copied, by creating a unique temporary URL.', 'cloudflare-stream' ) . '</label>'
@@ -2051,26 +2044,10 @@ class Cloudflare_Stream_Settings {
 	}
 
 	/**
-	 * Try to fetch and save the Cloudflare Account ID using Zone ID.
-	 *
-	 * @deprecated The zones API is no longer used by the plugin.
-	 * @since      1.0.9
-	 */
-	public function get_account_id() {
-		$api_token   = self::get_api_token();
-		$api_zone_id = get_option( self::OPTION_API_ZONE_ID );
-
-		if ( ! empty( $api_token ) && ! empty( $api_zone_id ) ) {
-			$api = Cloudflare_Stream_API::instance();
-			return $api->get_account_id( true );
-		}
-		return false;
-	}
-
-	/**
 	 * Make a test call to an endpoint to test the API keys.
 	 *
-	 * The result is reused for the rest of the request.
+	 * Shares the stream list probe with account subdomain discovery so one
+	 * settings page load makes a single outbound call when the API is down.
 	 *
 	 * @since 1.0.0
 	 */
@@ -2079,17 +2056,8 @@ class Cloudflare_Stream_Settings {
 			return self::$api_keys_work;
 		}
 
-		$api    = Cloudflare_Stream_API::instance();
-		$videos = $api->get_videos();
-
-		if ( ! is_object( $videos ) ) {
-			self::$api_keys_work = false;
-		} elseif ( isset( $videos->success ) ) {
-			// Successful list responses omit errors or return an empty list.
-			self::$api_keys_work = ! empty( $videos->success );
-		} else {
-			self::$api_keys_work = empty( $videos->errors );
-		}
+		$api                 = Cloudflare_Stream_API::instance();
+		self::$api_keys_work = $api->stream_list_probe_succeeded( $api->get_stream_list_probe() );
 
 		return self::$api_keys_work;
 	}

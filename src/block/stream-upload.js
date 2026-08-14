@@ -152,8 +152,10 @@ export function tusUploadFile( file, uploadURL, handlers ) {
  * branch on both success and data.data.status / readyToStream.
  *
  * @param {string} uid Stream video id.
+ * @param {Object} [options] Optional request options.
+ * @param {AbortSignal} [options.signal] AbortSignal to cancel the request.
  * @return {Promise<Object>} AJAX response body from WordPress.
  */
-export function checkUploadStatus( uid ) {
-	return streamAjax( 'cloudflare-stream-check-upload', { uid } );
+export function checkUploadStatus( uid, options = {} ) {
+	return streamAjax( 'cloudflare-stream-check-upload', { uid }, options );
 }

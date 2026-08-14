@@ -46,6 +46,9 @@ import {
 /** Transient poll failures before surfacing an error. */
 const ENCODE_POLL_MAX_ATTEMPTS = 3;
 
+/** Overall wall-clock limit for one encoding poll run (30 minutes). */
+const ENCODE_POLL_MAX_MS = 30 * 60 * 1000;
+
 /**
  * Resolve the UI status from block attributes.
  *
@@ -230,6 +233,9 @@ function CloudflareStreamEdit( {
 	const [ previewUrls, setPreviewUrls ] = useState( null );
 
 	const encodingPollerRef = useRef( null );
+	const encodeAbortRef = useRef( null );
+	const encodePollStartedAtRef = useRef( 0 );
+	const previewAbortRef = useRef( null );
 	const uploadRef = useRef( null );
 	const selectedFileRef = useRef( null );
 	const retriedRef = useRef( false );
@@ -255,6 +261,10 @@ function CloudflareStreamEdit( {
 		if ( encodingPollerRef.current ) {
 			clearTimeout( encodingPollerRef.current );
 			encodingPollerRef.current = null;
+		}
+		if ( encodeAbortRef.current ) {
+			encodeAbortRef.current.abort();
+			encodeAbortRef.current = null;
 		}
 	}, [] );
 
@@ -677,6 +687,34 @@ function CloudflareStreamEdit( {
 				return;
 			}
 
+			// Aborted requests are expected when the block unmounts or generation changes.
+			if (
+				cause &&
+				( cause.name === 'AbortError' ||
+					cause.code === 'ABORT_ERR' ||
+					( typeof DOMException !== 'undefined' &&
+						cause instanceof DOMException &&
+						cause.name === 'AbortError' ) )
+			) {
+				return;
+			}
+
+			const startedAt = encodePollStartedAtRef.current;
+			if (
+				startedAt > 0 &&
+				Date.now() - startedAt >= ENCODE_POLL_MAX_MS
+			) {
+				clearEncodingPoller();
+				showUploadError(
+					__(
+						'Processing is taking too long. Try again in a moment.',
+						'cloudflare-stream'
+					),
+					cause !== undefined ? cause : message
+				);
+				return;
+			}
+
 			encodePollAttemptsRef.current += 1;
 
 			if ( encodePollAttemptsRef.current < ENCODE_POLL_MAX_ATTEMPTS ) {
@@ -741,7 +779,33 @@ function CloudflareStreamEdit( {
 				return;
 			}
 
-			checkUploadStatus( currentAttributes.uid )
+			if (
+				encodePollStartedAtRef.current > 0 &&
+				Date.now() - encodePollStartedAtRef.current >= ENCODE_POLL_MAX_MS
+			) {
+				clearEncodingPoller();
+				showUploadError(
+					__(
+						'Processing is taking too long. Try again in a moment.',
+						'cloudflare-stream'
+					)
+				);
+				return;
+			}
+
+			if ( encodeAbortRef.current ) {
+				encodeAbortRef.current.abort();
+			}
+			const abortController =
+				typeof AbortController !== 'undefined'
+					? new AbortController()
+					: null;
+			encodeAbortRef.current = abortController;
+
+			checkUploadStatus(
+				currentAttributes.uid,
+				abortController ? { signal: abortController.signal } : {}
+			)
 				.then( ( data ) => {
 					if ( ! isCurrentGeneration( activeGeneration ) ) {
 						return;
@@ -849,6 +913,22 @@ function CloudflareStreamEdit( {
 
 					// Successful poll with progress still running - reset transient failures.
 					encodePollAttemptsRef.current = 0;
+
+					if (
+						encodePollStartedAtRef.current > 0 &&
+						Date.now() - encodePollStartedAtRef.current >=
+							ENCODE_POLL_MAX_MS
+					) {
+						clearEncodingPoller();
+						showUploadError(
+							__(
+								'Processing is taking too long. Try again in a moment.',
+								'cloudflare-stream'
+							)
+						);
+						return;
+					}
+
 					scheduleEncodePoll( activeGeneration, 5000 );
 
 					if (
@@ -868,6 +948,14 @@ function CloudflareStreamEdit( {
 				} )
 				.catch( ( error ) => {
 					if ( ! isCurrentGeneration( activeGeneration ) ) {
+						return;
+					}
+
+					if (
+						error &&
+						( error.name === 'AbortError' ||
+							error.code === 'ABORT_ERR' )
+					) {
 						return;
 					}
 
@@ -927,6 +1015,7 @@ function CloudflareStreamEdit( {
 					: uploadGenerationRef.current;
 
 			encodePollAttemptsRef.current = 0;
+			encodePollStartedAtRef.current = Date.now();
 			setStatus( 'encoding' );
 			setProgress( null );
 			setErrorMessage( '' );
@@ -1221,6 +1310,14 @@ function CloudflareStreamEdit( {
 		}
 
 		let cancelled = false;
+		if ( previewAbortRef.current ) {
+			previewAbortRef.current.abort();
+		}
+		const abortController =
+			typeof AbortController !== 'undefined'
+				? new AbortController()
+				: null;
+		previewAbortRef.current = abortController;
 
 		// Drop URLs built for a previous video or option set before fetching.
 		setPreviewUrls( ( current ) =>
@@ -1247,7 +1344,11 @@ function CloudflareStreamEdit( {
 			request.thumbnail = attributes.thumbnail;
 		}
 
-		streamAjax( 'cloudflare-stream-playback-urls', request )
+		streamAjax(
+			'cloudflare-stream-playback-urls',
+			request,
+			abortController ? { signal: abortController.signal } : {}
+		)
 			.then( ( data ) => {
 				if ( cancelled ) {
 					return;
@@ -1270,14 +1371,26 @@ function CloudflareStreamEdit( {
 				}
 			} )
 			.catch( ( error ) => {
-				if ( ! cancelled ) {
-					// eslint-disable-next-line no-console
-					console.error( error );
+				if (
+					cancelled ||
+					( error &&
+						( error.name === 'AbortError' ||
+							error.code === 'ABORT_ERR' ) )
+				) {
+					return;
 				}
+				// eslint-disable-next-line no-console
+				console.error( error );
 			} );
 
 		return () => {
 			cancelled = true;
+			if ( abortController ) {
+				abortController.abort();
+			}
+			if ( previewAbortRef.current === abortController ) {
+				previewAbortRef.current = null;
+			}
 		};
 	}, [
 		attributes.uid,

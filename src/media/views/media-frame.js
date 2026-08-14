@@ -36,6 +36,10 @@ function ensureAttachmentDetailsTemplate() {
 				<div class="thumbnail thumbnail-video">
 					<img src="{{ data.image.src }}" class="icon" draggable="false" alt="" />
 				</div>
+			<# } else if ( data.previewUnavailable ) { #>
+				<div class="thumbnail thumbnail-video cloudflare-stream-preview-unavailable">
+					<span>{{ data.previewMessage || ${ JSON.stringify( wp.i18n.__( 'Preview unavailable', 'cloudflare-stream' ) ) } }}</span>
+				</div>
 			<# } else { #>
 				<div class="thumbnail thumbnail-video">
 					<img src="{{ data.icon }}" class="icon" draggable="false" alt="" />

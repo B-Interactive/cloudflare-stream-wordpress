@@ -74,6 +74,8 @@ class Cloudflare_Stream_Signing_Health {
 		'api_credentials_missing',
 		'api_token_unreadable',
 		'api_http_error',
+		'api_transport_error',
+		'api_rate_limited',
 		'api_token_failed',
 		'api_breaker_open',
 	);
@@ -535,6 +537,14 @@ class Cloudflare_Stream_Signing_Health {
 					'label' => __( 'Cloudflare API request failed', 'cloudflare-stream' ),
 					'tip'   => __( 'Confirm the API token can access Stream and that api.cloudflare.com is reachable from this server.', 'cloudflare-stream' ),
 				),
+				'api_transport_error'       => array(
+					'label' => __( 'Cloudflare API could not be reached', 'cloudflare-stream' ),
+					'tip'   => __( 'Confirm that api.cloudflare.com is reachable from this server, then try again.', 'cloudflare-stream' ),
+				),
+				'api_rate_limited'          => array(
+					'label' => __( 'Cloudflare API rate limited token minting', 'cloudflare-stream' ),
+					'tip'   => __( 'Wait for the rate limit window to end, or add a local signing key so playback does not call /token on every miss.', 'cloudflare-stream' ),
+				),
 				'api_token_failed'          => array(
 					'label' => __( 'Cloudflare API did not return a playback token', 'cloudflare-stream' ),
 					'tip'   => __( 'Confirm the API token can access Stream and that api.cloudflare.com is reachable from this server.', 'cloudflare-stream' ),
@@ -786,7 +796,7 @@ class Cloudflare_Stream_Signing_Health {
 	}
 
 	/**
-	 * Register the signed playback Site Health direct test.
+	 * Register Site Health direct tests for signing and signed-embed caches.
 	 *
 	 * @param array $tests Tests.
 	 * @return array
@@ -798,15 +808,72 @@ class Cloudflare_Stream_Signing_Health {
 		if ( ! isset( $tests['direct'] ) || ! is_array( $tests['direct'] ) ) {
 			$tests['direct'] = array();
 		}
-		$tests['direct']['cloudflare_stream_signing'] = array(
+		$tests['direct']['cloudflare_stream_signing']      = array(
 			'label' => __( 'Cloudflare Stream signed playback', 'cloudflare-stream' ),
 			'test'  => array( $this, 'site_health_test' ),
+		);
+		$tests['direct']['cloudflare_stream_signed_cache'] = array(
+			'label' => __( 'Cloudflare Stream signed embeds and page cache', 'cloudflare-stream' ),
+			'test'  => array( $this, 'site_health_signed_cache_test' ),
 		);
 		return $tests;
 	}
 
 	/**
-	 * Site Health direct test callback.
+	 * Whether a full-page cache is likely active on this site.
+	 *
+	 * Best-effort signals only: WP_CACHE, common cache plugin constants, or a
+	 * known active plugin slug. External reverse proxies cannot be detected here.
+	 *
+	 * @return bool
+	 */
+	public function is_page_cache_likely_active() {
+		if ( defined( 'WP_CACHE' ) && WP_CACHE ) {
+			return true;
+		}
+
+		$constants = array(
+			'WPSC_VERSION',
+			'W3TC',
+			'LSCWP_V',
+			'WP_ROCKET_VERSION',
+			'AUTOMATTIC_CACHE_PATH',
+		);
+		foreach ( $constants as $name ) {
+			if ( defined( $name ) ) {
+				return true;
+			}
+		}
+
+		if ( ! function_exists( 'is_plugin_active' ) ) {
+			$plugin_path = ABSPATH . 'wp-admin/includes/plugin.php';
+			if ( is_readable( $plugin_path ) ) {
+				require_once $plugin_path;
+			}
+		}
+
+		if ( function_exists( 'is_plugin_active' ) ) {
+			$plugins = array(
+				'wp-super-cache/wp-cache.php',
+				'w3-total-cache/w3-total-cache.php',
+				'litespeed-cache/litespeed-cache.php',
+				'wp-rocket/wp-rocket.php',
+				'cache-enabler/cache-enabler.php',
+				'sg-cachepress/sg-cachepress.php',
+				'comet-cache/comet-cache.php',
+			);
+			foreach ( $plugins as $plugin ) {
+				if ( is_plugin_active( $plugin ) ) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Site Health direct test callback for signing health.
 	 *
 	 * @return array
 	 */
@@ -844,6 +911,61 @@ class Cloudflare_Stream_Signing_Health {
 			esc_html( $issue['body'] ),
 			$issue['detail'] ? '<p>' . esc_html( $issue['detail'] ) . '</p>' : ''
 		);
+		return $result;
+	}
+
+	/**
+	 * Site Health test: signed embeds plus an external page cache.
+	 *
+	 * The plugin marks signed HTML uncacheable and sends no-cache headers, but
+	 * reverse proxies and host caches can still store the page after the token
+	 * inside it has expired.
+	 *
+	 * @return array
+	 */
+	public function site_health_signed_cache_test() {
+		$settings_url = admin_url( 'options-general.php?page=cloudflare-stream' );
+		$result       = array(
+			'label'       => __( 'Signed Stream embeds are not exposed to a detected page cache', 'cloudflare-stream' ),
+			'status'      => 'good',
+			'badge'       => array(
+				'label' => __( 'Cloudflare Stream', 'cloudflare-stream' ),
+				'color' => 'blue',
+			),
+			'description' => sprintf(
+				'<p>%s</p>',
+				esc_html__( 'When signed URLs are on, each page render writes short-lived tokens into the HTML. The plugin asks WordPress and common page caches not to store that HTML. No full-page cache signal was detected on this site.', 'cloudflare-stream' )
+			),
+			'actions'     => sprintf(
+				'<p><a href="%s">%s</a></p>',
+				esc_url( $settings_url ),
+				esc_html__( 'Cloudflare Stream settings', 'cloudflare-stream' )
+			),
+			'test'        => 'cloudflare_stream_signed_cache',
+		);
+
+		$api = Cloudflare_Stream_API::instance();
+		if ( ! $api->is_signed_playback_enabled() ) {
+			$result['label']       = __( 'Signed Stream URLs are off', 'cloudflare-stream' );
+			$result['description'] = sprintf(
+				'<p>%s</p>',
+				esc_html__( 'Signed playback is not enabled, so page caches do not retain short-lived Stream tokens from this plugin.', 'cloudflare-stream' )
+			);
+			return $result;
+		}
+
+		if ( ! $this->is_page_cache_likely_active() ) {
+			return $result;
+		}
+
+		$result['status']      = 'recommended';
+		$result['label']       = __( 'Page cache may keep expired signed Stream embeds', 'cloudflare-stream' );
+		$result['description'] = sprintf(
+			'<p>%s</p><p>%s</p>',
+			esc_html__( 'Signed URLs are on and a page cache appears to be active. The plugin sends no-cache headers and asks common WordPress page caches to skip pages that include signed Stream embeds, but a reverse proxy, CDN, or host-level cache can still store the HTML after the token inside it has expired. Visitors may then see a player that fails until the cache entry is replaced.', 'cloudflare-stream' ),
+			esc_html__( 'Exclude pages that embed Cloudflare Stream videos from any external full-page cache, or keep those caches short-lived relative to the signed URL lifetime on the settings page.', 'cloudflare-stream' )
+		);
+
 		return $result;
 	}
 }

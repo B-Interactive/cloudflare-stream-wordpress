@@ -207,13 +207,26 @@ function cloudflare_stream_render_block( $block_attributes, $content ) {
 }
 
 /**
- * Adds 'upload-php' class to the <body> tag.
+ * Admin body class for Stream editor screens only.
  *
- * @param array $classes Array of CSS classes.
+ * @param string $classes Space-separated body classes.
+ * @return string
  * @since 1.0.0
  */
 function cloudflare_stream_admin_body_class( $classes ) {
-	return "$classes upload-php cloudflare-stream";
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	if ( ! $screen || empty( $screen->base ) ) {
+		return $classes;
+	}
+
+	// Block editor and classic post screens can open the Stream media frame.
+	$allowed_bases = array( 'post', 'site-editor', 'widgets', 'customize' );
+	if ( ! in_array( $screen->base, $allowed_bases, true ) ) {
+		return $classes;
+	}
+
+	$classes = is_string( $classes ) ? $classes : '';
+	return trim( $classes . ' cloudflare-stream' );
 }
 add_filter( 'admin_body_class', 'cloudflare_stream_admin_body_class' );
 
@@ -373,10 +386,10 @@ function cloudflare_stream_attachment_from_video( $video, $api, $poster_time, $d
 	// Signed playback needs a token in the path; a bare uid returns 401.
 	// Budgeted so a full page of videos cannot stall admin-ajax when tokens
 	// are minted over HTTP (no local signing key configured).
-	$playback_id = $api->get_playback_id( $video->uid, true );
+	$playback_id     = $api->get_playback_id( $video->uid, true );
+	$playback_reason = ( false === $playback_id ) ? $api->get_last_playback_reason() : '';
 
-	// Rendered in the grid. Empty when a token could not be minted, so the
-	// item degrades to the generic video icon instead of a broken image.
+	// Rendered in the grid. Empty when a token could not be minted.
 	$signed_thumb = ( false !== $playback_id )
 		? $api->get_poster_url( $playback_id, $poster_time )
 		: '';
@@ -391,6 +404,18 @@ function cloudflare_stream_attachment_from_video( $video, $api, $poster_time, $d
 
 	// Player page for this video; signed when the site requires it.
 	$player_url = ( false !== $playback_id ) ? $api->get_iframe_url( $playback_id ) : '';
+
+	// Explicit flag so the media UI can show "preview unavailable" instead of
+	// only a generic video icon when a signed poster could not be prepared.
+	$preview_unavailable = false;
+	$preview_message     = '';
+	if ( false === $playback_id && $api->is_signed_playback_enabled() ) {
+		$preview_unavailable = true;
+		$preview_message     = __( 'Preview unavailable', 'cloudflare-stream' );
+	}
+
+	$fallback_icon = wp_mime_type_icon( 'video' );
+	$grid_icon     = '' !== $signed_thumb ? $signed_thumb : $fallback_icon;
 
 	$nonces = array();
 	if ( is_string( $delete_nonce ) && '' !== $delete_nonce ) {
@@ -415,7 +440,7 @@ function cloudflare_stream_attachment_from_video( $video, $api, $poster_time, $d
 		'mime'                    => 'video/mp4',
 		'type'                    => 'video',
 		'subtype'                 => 'mp4',
-		'icon'                    => '' !== $signed_thumb ? $signed_thumb : wp_mime_type_icon( 'video' ),
+		'icon'                    => $grid_icon,
 		'dateFormatted'           => $datetime->format( 'F j, Y' ),
 		'nonces'                  => $nonces,
 		'filesizeInBytes'         => $video->size,
@@ -434,6 +459,9 @@ function cloudflare_stream_attachment_from_video( $video, $api, $poster_time, $d
 		),
 		// Token-free poster for block attributes (see $unsigned_thumb above).
 		'unsignedThumb'           => $unsigned_thumb,
+		'previewUnavailable'      => $preview_unavailable,
+		'previewMessage'          => $preview_message,
+		'playbackReason'          => $playback_reason,
 		'compat'                  => array(
 			'item' => '',
 			'meta' => '',
@@ -588,27 +616,32 @@ function cloudflare_stream_ajax_check_upload() {
 add_action( 'wp_ajax_cloudflare-stream-check-upload', 'cloudflare_stream_ajax_check_upload' );
 
 /**
- * Collect playback flags and optional poster from an AJAX request.
+ * Collect playback flags and optional poster from a request-like array.
  *
+ * Callers must verify the AJAX nonce before reading the request into $input.
+ *
+ * @param array $input Raw input (usually $_REQUEST after nonce verification).
  * @return array Args suitable for build_iframe_src() / get_video_embed_template().
  */
-function cloudflare_stream_playback_args_from_request() {
-	$args = array();
+function cloudflare_stream_playback_args_from_request( $input = array() ) {
+	$input = is_array( $input ) ? $input : array();
+	$args  = array();
+
 	foreach ( array( 'controls', 'autoplay', 'loop', 'muted', 'preload' ) as $flag ) {
-		if ( ! array_key_exists( $flag, $_REQUEST ) ) {
+		if ( ! array_key_exists( $flag, $input ) ) {
 			continue;
 		}
-		$raw           = sanitize_text_field( wp_unslash( $_REQUEST[ $flag ] ) );
+		$raw           = sanitize_text_field( wp_unslash( $input[ $flag ] ) );
 		$args[ $flag ] = Cloudflare_Stream_API::normalize_bool( $raw );
 	}
 
-	if ( isset( $_REQUEST['posterurl'] ) && is_string( $_REQUEST['posterurl'] ) ) {
-		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['posterurl'] ) );
+	if ( isset( $input['posterurl'] ) && is_string( $input['posterurl'] ) ) {
+		$args['posterurl'] = esc_url_raw( wp_unslash( $input['posterurl'] ) );
 	}
 
 	// Prefer the token-free thumbnail stored on the block when present.
-	if ( empty( $args['posterurl'] ) && isset( $_REQUEST['thumbnail'] ) && is_string( $_REQUEST['thumbnail'] ) ) {
-		$args['posterurl'] = esc_url_raw( wp_unslash( $_REQUEST['thumbnail'] ) );
+	if ( empty( $args['posterurl'] ) && isset( $input['thumbnail'] ) && is_string( $input['thumbnail'] ) ) {
+		$args['posterurl'] = esc_url_raw( wp_unslash( $input['thumbnail'] ) );
 	}
 
 	return $args;
@@ -669,8 +702,9 @@ function cloudflare_stream_ajax_playback_urls() {
 		);
 	}
 
-	$api  = Cloudflare_Stream_API::instance();
-	$args = cloudflare_stream_playback_args_from_request();
+	$api = Cloudflare_Stream_API::instance();
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- verified above.
+	$args = cloudflare_stream_playback_args_from_request( $_REQUEST );
 
 	// Fail closed early when signed playback cannot be prepared.
 	if ( $api->is_signed_playback_enabled() ) {
@@ -748,7 +782,8 @@ function cloudflare_stream_ajax_preview_bridge() {
 		exit;
 	}
 
-	$args = cloudflare_stream_playback_args_from_request();
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- verified above.
+	$args = cloudflare_stream_playback_args_from_request( $_REQUEST );
 	// Element id stays on the stable uid; src path may carry a short-lived token.
 	$embed = $api->get_video_embed_template( $playback_id, $args, $uid );
 

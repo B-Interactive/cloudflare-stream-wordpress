@@ -64,6 +64,9 @@ cloudflareStream.media.view.AttachmentDetails = AttachmentDetails.extend( {
 			fileLength: '',
 			fileLengthHumanReadable: '',
 			image: null,
+			previewUnavailable: false,
+			previewMessage: '',
+			playbackReason: '',
 		} );
 
 		data.can = {
