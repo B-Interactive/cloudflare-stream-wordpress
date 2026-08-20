@@ -4,7 +4,7 @@
 ![license](https://badgen.net//github/license/B-Interactive/cloudflare-stream-wordpress)
 ![blocks-build](https://github.com/B-Interactive/cloudflare-stream-wordpress/actions/workflows/build.yml/badge.svg)
 
-Upload, browse and embed [Cloudflare Stream](https://developers.cloudflare.com/stream/) videos in WordPress. This is a fork of the official Cloudflare Stream plugin 1.0.5 ([WordPress](https://wordpress.org/plugins/cloudflare-stream/) / [GitHub](https://github.com/cloudflare/stream-wordpress)), rebuilt to use a limited-scope API Token instead of the global API key, and to support optional signed (token-protected) playback.
+Securely upload, browse and embed [Cloudflare Stream](https://developers.cloudflare.com/stream/) videos in WordPress. This is a fork of the official Cloudflare Stream plugin 1.0.5 ([WordPress](https://wordpress.org/plugins/cloudflare-stream/) / [GitHub](https://github.com/cloudflare/stream-wordpress)), advanced to fully leverage Cloudflare Stream's and WordPress' security features.
 
 ## Features
 
@@ -31,8 +31,6 @@ The block and library browser only load once an Account ID and API Token are sav
 
 This plugin is distributed from GitHub Releases, not from wordpress.org. After you install it from a release ZIP, WordPress checks GitHub for newer releases and shows updates on the Plugins screen like other plugins. You can turn automatic updates on or off there in the usual way.
 
-Release tags must match the version in the plugin header, `readme.txt`, `package.json`, and `package-lock.json` (`1.1.8` or `v1.1.8`). Each release attaches `cloudflare-stream.zip` plus SHA256 (`cloudflare-stream.zip.sha256`) and BLAKE2b (`cloudflare-stream.zip.blake2`) checksum files for manual verification. WordPress does not check those digests automatically.
-
 ## Configuration
 
 ### API credentials
@@ -44,14 +42,20 @@ Both of these come from the Cloudflare dashboard at [dash.cloudflare.com](https:
 
 Back in WordPress, both values can be saved at **Settings → Cloudflare Stream**, or defined in `wp-config.php` (preferred in production, as they stay out of database backups):
 
+#### Option 1: Store Credentials as Constants
+
+These are defined in `wp-config.php`, or elsewhere in your environment (eg: `.env`).
+
 ```php
 define( 'CLOUDFLARE_STREAM_API_ACCOUNT', 'your-account-id' );
 define( 'CLOUDFLARE_STREAM_API_TOKEN', 'your-api-token' );
 ```
 
-Constants always override database values, and those fields become read only. Each field shows its status: **Stored in wp-config.php**, **Stored in the database**, or **Not set**. When you open the plugin settings with a constant set, the matching database copy is removed and a one-time notice tells you what was cleared. Any API key and account email left over from the official plugin are also deleted at that point. The API Token is never sent to the browser, and leaving its field blank on save keeps the stored value.
+Constants always override database values, and those fields become read only. Each field shows its status: **Stored in wp-config.php**, **Stored in the database**, or **Not set**. When you open the plugin settings with a constant set, the matching database copy is removed and a one-time notice tells you what was cleared. Any API key and account email left over from the official plugin are also deleted at that point.
 
-When the API token or signing key PEM is kept in the database, the plugin stores it encrypted (AES-256-GCM). That protects database backups and similar option-table exposure. It does not protect against someone who can read `wp-config.php` or the filesystem, because the encryption key is derived from WordPress salts unless you set your own. Defining the token and signing key as PHP constants remains the stronger choice: the secrets never enter the database at all.
+#### Option 2: Store Credentials in the WordPress Database
+
+When the API token or signing key PEM is kept in the database, it is encrypted before storing. That protects leaking raw credentials into a database backup or other means of exposing database data. It does not protect against someone who can read `wp-config.php` or the filesystem, because the encryption key is derived from WordPress salts, unless you define your own in your environment (see below).
 
 Optional encryption key (recommended if you store secrets in the database and may rotate WordPress salts later):
 
